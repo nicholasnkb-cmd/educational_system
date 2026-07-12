@@ -4,6 +4,10 @@ let requestCount = 0;
 let lastEndpoint = "localStorage://educonnect-mock-api-v1";
 let lastStatus = "Ready";
 
+function unwrapApiPayload(payload) {
+  return payload && typeof payload === "object" && "data" in payload ? payload.data : payload;
+}
+
 function delay() {
   return new Promise((resolve) => setTimeout(resolve, 80));
 }
@@ -26,7 +30,7 @@ async function requestServerState(method, body) {
     throw new Error(`Server API request failed with ${response.status}`);
   }
   lastStatus = "Connected";
-  return response.json();
+  return unwrapApiPayload(await response.json());
 }
 
 async function requestServer(path, options = {}) {
@@ -43,7 +47,7 @@ async function requestServer(path, options = {}) {
     throw new Error(payload.error || `Server API request failed with ${response.status}`);
   }
   lastStatus = "Connected";
-  return response.json();
+  return unwrapApiPayload(await response.json());
 }
 
 export async function saveMockApiState(snapshot, mode = "mock-api") {

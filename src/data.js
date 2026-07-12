@@ -388,5 +388,5 @@ export const deployPipeline = [
   { step: "Build", status: "Passing", detail: "Vite production build generates static assets" },
   { step: "Tests", status: "Passing", detail: "Playwright local and live smoke tests available" },
   { step: "FTP deploy", status: "Live", detail: "educationalsystem.fieldserviceit.com is serving the app" },
-  { step: "GitHub sync", status: "Blocked", detail: "Local Git credentials still return 403" },
+  { step: "GitHub sync", status: "Connected", detail: "Backend repository deploys through Hostinger hPanel" },
 ];

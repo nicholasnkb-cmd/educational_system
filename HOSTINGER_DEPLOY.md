@@ -3,6 +3,7 @@
 Target detected from the Hostinger API:
 
 - Domain: `educationalsystem.fieldserviceit.com`
+- Dedicated API: `https://api.educationalsystem.fieldserviceit.com`
 - Hostinger username: `u209468809`
 - Web root: `/home/u209468809/domains/educationalsystem.fieldserviceit.com/public_html`
 
@@ -62,6 +63,26 @@ npm run test:live
 ```
 
 This checks the live home, messages, and community routes.
+
+## Dedicated API
+
+The frontend should use:
+
+```text
+https://api.educationalsystem.fieldserviceit.com
+```
+
+The dedicated API files live in `api/` and are deployed to the Hostinger subdomain directory:
+
+```text
+educonnect-api
+```
+
+Required health check:
+
+```text
+https://api.educationalsystem.fieldserviceit.com/api/health
+```
 
 ## Hostinger hPanel Steps
 

@@ -84,6 +84,21 @@ Required health check:
 https://api.educationalsystem.fieldserviceit.com/api/health
 ```
 
+Admin operations page:
+
+```text
+https://api.educationalsystem.fieldserviceit.com/admin.html
+```
+
+Current production hardening:
+
+- SQLite-backed API storage on Hostinger when PDO SQLite is available, with JSON fallback.
+- Rate limiting for API traffic and login attempts.
+- Password hashing for new or reset passwords, with migration support for older demo hashes.
+- Admin-only setup/status/backup endpoints.
+- Upload size and MIME-type limits.
+- Security headers and CORS restricted to the education frontend.
+
 ## Hostinger hPanel Steps
 
 1. Open Hostinger hPanel.

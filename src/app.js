@@ -1,4 +1,45 @@
-import { createIcons, icons } from "lucide";
+import {
+  AlertTriangle,
+  Award,
+  Bell,
+  BookOpen,
+  Building2,
+  CalendarDays,
+  Check,
+  ChevronRight,
+  ClipboardCheck,
+  Clock,
+  Database,
+  Download,
+  FileText,
+  GraduationCap,
+  Layers,
+  Lock,
+  Mail,
+  Map,
+  Megaphone,
+  MessageCircle,
+  MoreHorizontal,
+  Paperclip,
+  PenLine,
+  Play,
+  Plus,
+  RefreshCw,
+  Rocket,
+  RotateCcw,
+  Search,
+  Send,
+  Settings,
+  ShieldCheck,
+  Smartphone,
+  Sparkles,
+  Star,
+  TrendingUp,
+  Users,
+  Video,
+  X,
+  createIcons,
+} from "lucide";
 import {
   roles,
   state,
@@ -30,6 +71,48 @@ import {
 import { hydrateDemoState, persistDemoState, resetDemoState } from "./storage.js";
 
 const app = document.querySelector("#app");
+
+const lucideIcons = {
+  AlertTriangle,
+  Award,
+  Bell,
+  BookOpen,
+  Building2,
+  CalendarDays,
+  Check,
+  ChevronRight,
+  ClipboardCheck,
+  Clock,
+  Database,
+  Download,
+  FileText,
+  GraduationCap,
+  Layers,
+  Lock,
+  Mail,
+  Map,
+  Megaphone,
+  MessageCircle,
+  MoreHorizontal,
+  Paperclip,
+  PenLine,
+  Play,
+  Plus,
+  RefreshCw,
+  Rocket,
+  RotateCcw,
+  Search,
+  Send,
+  Settings,
+  ShieldCheck,
+  Smartphone,
+  Sparkles,
+  Star,
+  TrendingUp,
+  Users,
+  Video,
+  X,
+};
 
 function icon(name) {
   return `<i class="app-icon" data-lucide="${name}" data-icon="${name}" aria-hidden="true"></i>`;
@@ -87,7 +170,7 @@ function goToRole(roleId, message = "") {
 
 function enhanceIcons() {
   createIcons({
-    icons,
+    icons: lucideIcons,
     attrs: {
       "stroke-width": 2.25,
     },
@@ -210,6 +293,7 @@ function render() {
       <main class="workspace workspace-${state.role}">
         ${renderTenantBar(school, design)}
         ${renderTopbar(role)}
+        ${renderDemoLauncher()}
         ${renderSearchResults()}
         ${state.role === "platform" ? renderPlatform() : ""}
         ${state.role === "lms" ? renderAdvancedLms() : ""}
@@ -226,6 +310,27 @@ function render() {
   bindEvents();
   enhanceIcons();
   persistDemoState();
+}
+
+function renderDemoLauncher() {
+  const school = selectedSchoolRecord();
+  const activeRole = roles.find((role) => role.id === state.role);
+  return `
+    <section class="demo-launcher" aria-label="Demo role launcher">
+      <div>
+        <p class="eyebrow">Demo login</p>
+        <h3>${activeRole.label} view at ${school.name}</h3>
+      </div>
+      <div class="demo-role-grid">
+        ${roles.map((role) => `
+          <button class="demo-role ${state.role === role.id ? "active" : ""}" data-open-role="${role.id}">
+            ${icon(role.icon)}
+            <span>${role.label}</span>
+          </button>
+        `).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function renderUtilityPanels() {

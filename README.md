@@ -14,6 +14,14 @@ An interactive front-end prototype for a multi-tenant educational system. It inc
 - Search, notifications, settings, compact mode, high-contrast mode, and demo state export
 - Local persistence through `localStorage`
 
+## Screenshots
+
+![Teacher dashboard](stitch_educonnect_interactive_portal/teacher_dashboard/screen.png)
+
+![Parent dashboard](stitch_educonnect_interactive_portal/parent_dashboard/screen.png)
+
+![Communication hub](stitch_educonnect_interactive_portal/communication_hub/screen.png)
+
 ## Local Preview
 
 ```powershell

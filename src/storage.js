@@ -9,6 +9,7 @@ import {
   lmsAssignments,
   lmsFiles,
   lmsNotifications,
+  realtimeEvents,
   offlineSyncQueue,
   activityFeed,
   conversations,
@@ -29,6 +30,7 @@ const initialSnapshot = structuredClone({
   lmsAssignments,
   lmsFiles,
   lmsNotifications,
+  realtimeEvents,
   offlineSyncQueue,
   activityFeed,
   conversations,
@@ -65,6 +67,7 @@ export function getDemoSnapshot() {
     lmsAssignments,
     lmsFiles,
     lmsNotifications,
+    realtimeEvents,
     offlineSyncQueue,
     activityFeed,
     conversations,
@@ -84,6 +87,7 @@ export function applyDemoSnapshot(snapshot) {
   if (snapshot.lmsAssignments) replaceArray(lmsAssignments, snapshot.lmsAssignments);
   if (snapshot.lmsFiles) replaceArray(lmsFiles, snapshot.lmsFiles);
   if (snapshot.lmsNotifications) replaceArray(lmsNotifications, snapshot.lmsNotifications);
+  if (snapshot.realtimeEvents) replaceArray(realtimeEvents, snapshot.realtimeEvents);
   if (snapshot.offlineSyncQueue) replaceArray(offlineSyncQueue, snapshot.offlineSyncQueue);
   if (snapshot.activityFeed) replaceArray(activityFeed, snapshot.activityFeed);
   if (snapshot.conversations) replaceArray(conversations, snapshot.conversations);
@@ -113,6 +117,7 @@ export function resetDemoState() {
   replaceArray(lmsAssignments, initialSnapshot.lmsAssignments);
   replaceArray(lmsFiles, initialSnapshot.lmsFiles);
   replaceArray(lmsNotifications, initialSnapshot.lmsNotifications);
+  replaceArray(realtimeEvents, initialSnapshot.realtimeEvents);
   replaceArray(offlineSyncQueue, initialSnapshot.offlineSyncQueue);
   replaceArray(activityFeed, initialSnapshot.activityFeed);
   replaceArray(conversations, initialSnapshot.conversations);

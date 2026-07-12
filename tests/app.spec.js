@@ -120,3 +120,34 @@ test("validates imported demo state JSON", async ({ page }) => {
   });
   await expect(page.getByText(/Import failed: Missing state object/i)).toBeVisible();
 });
+
+test("runs realtime app workflows with editable filler data", async ({ page }) => {
+  await page.goto("/#platform");
+  await page.locator(".realtime-panel").getByRole("button", { name: /Simulate Update/i }).click();
+  await expect(page.getByText("Live app data updated.")).toBeVisible();
+  await expect(page.locator(".realtime-panel").getByText(/synced|updated|message/i).first()).toBeVisible();
+
+  await page.getByRole("link", { name: /Teacher/i }).first().click();
+  const assignmentForm = page.locator("#assignment-form");
+  await assignmentForm.getByPlaceholder("Example: Reading Checkpoint").fill("Realtime Reading Draft");
+  await assignmentForm.locator("#assignment-class").selectOption("Creative Writing");
+  await assignmentForm.getByRole("button", { name: /Add Assignment/i }).click();
+  await expect(page.getByText("Realtime Reading Draft added to Creative Writing.")).toBeVisible();
+
+  const rosterRow = page.locator(".editable-roster-row").filter({ hasText: "Maya Rodriguez" });
+  await rosterRow.locator("[data-roster-status]").selectOption("Watch");
+  await expect(page.getByText("Maya Rodriguez's roster record updated.")).toBeVisible();
+
+  await page.getByRole("link", { name: /LMS/i }).first().click();
+  await expect(page.locator(".assignment-list").getByText("Realtime Reading Draft")).toBeVisible();
+
+  await page.getByLabel("Notifications").click();
+  await page.getByRole("button", { name: /Mark all read/i }).click();
+  await expect(page.getByText("All notifications marked read.")).toBeVisible();
+
+  await page.getByRole("link", { name: /Messages/i }).first().click();
+  await page.getByLabel("Start video call").click();
+  await expect(page.getByText(/Live call with/i)).toBeVisible();
+  await page.getByRole("button", { name: "End call" }).click();
+  await expect(page.getByText("Video call ended.")).toBeVisible();
+});

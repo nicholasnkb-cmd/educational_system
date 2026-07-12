@@ -58,6 +58,7 @@ import {
   lmsFiles,
   lmsAccounts,
   lmsNotifications,
+  realtimeEvents,
   workspaceIntegrations,
   classroomStrengths,
   tenantSettings,
@@ -175,6 +176,64 @@ function addAudit(event, scope = selectedSchoolRecord().name, actor = activeUser
   auditLogs.unshift({ actor, event, scope, time: "Just now" });
 }
 
+function pushNotification(level, title, target = selectedSchoolRecord().name, channel = "Live dashboard") {
+  lmsNotifications.unshift({
+    id: `notice-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    level,
+    title,
+    target,
+    channel,
+    read: false,
+  });
+}
+
+function pushRealtimeEvent(type, title, detail) {
+  realtimeEvents.unshift({
+    id: `live-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    type,
+    title,
+    detail,
+    time: "Just now",
+  });
+  if (realtimeEvents.length > 8) realtimeEvents.length = 8;
+}
+
+function unreadNotifications() {
+  return lmsNotifications.filter((notice) => !notice.read).length;
+}
+
+function simulateLiveUpdate(source = "manual") {
+  const school = selectedSchoolRecord();
+  const updates = [
+    () => {
+      const record = rosterRecords[state.realtimeTick % rosterRecords.length];
+      record.attendance = Math.min(100, record.attendance + 1);
+      activityFeed.unshift([record.student, "attendance synced from SIS", "Just now", record.className]);
+      pushRealtimeEvent("Roster", `${record.student} synced`, `Attendance is now ${record.attendance}% in ${record.className}.`);
+      pushNotification("FYI", `${record.student} roster sync completed`, record.className, "SIS");
+    },
+    () => {
+      const submission = gradebookSubmissions[state.realtimeTick % gradebookSubmissions.length];
+      submission.status = submission.status === "Missing" ? "Needs review" : submission.status;
+      pushRealtimeEvent("LMS", `${submission.student} gradebook updated`, `${submission.assignment} is ${submission.status.toLowerCase()}.`);
+      pushNotification("Action", `${submission.student} submission needs attention`, submission.assignment, "Teacher inbox");
+    },
+    () => {
+      const active = conversations.find((conversation) => conversation.id === state.activeConversationId) || conversations[0];
+      active.messages.push({ from: "them", text: `Live ${school.name} update received.`, time: "Now" });
+      active.preview = "Live school update received.";
+      active.unread = (active.unread || 0) + 1;
+      pushRealtimeEvent("Messages", `New message from ${active.name}`, "Conversation preview and unread count updated.");
+      pushNotification("Urgent", `New message from ${active.name}`, school.name, "Messages");
+    },
+  ];
+  updates[state.realtimeTick % updates.length]();
+  state.realtimeTick += 1;
+  addAudit(`Processed ${source} live update`, school.name, "Realtime service");
+  state.toast = "Live app data updated.";
+  render();
+}
+
 function activeUser() {
   return userProfiles.find((profile) => profile.id === state.currentUser) || userProfiles[0];
 }
@@ -209,6 +268,8 @@ function hashRole() {
 function setActiveRole(roleId, pushRoute = true) {
   if (!roles.some((role) => role.id === roleId)) return;
   state.role = roleId;
+  state.notificationsOpen = false;
+  state.settingsOpen = false;
   if (pushRoute && window.location.hash !== `#${roleId}`) {
     history.pushState(null, "", `#${roleId}`);
   }
@@ -442,7 +503,17 @@ function renderUtilityPanels() {
     ${state.notificationsOpen ? `
       <aside class="utility-panel" aria-label="Notifications">
         <div class="section-heading"><h3>Notifications</h3><button class="icon-button" aria-label="Close notifications" data-close-panel>${icon("x")}</button></div>
-        ${lmsNotifications.map((notice) => `<article class="notice-row ${notice.level.toLowerCase()}"><strong>${notice.level}</strong><div><span>${notice.title}</span><small>${notice.target} • ${notice.channel}</small></div></article>`).join("")}
+        <div class="utility-actions">
+          <button class="secondary-action" data-mark-notifications>${icon("check")} Mark all read</button>
+          <button class="secondary-action" data-simulate-live>${icon("refresh-cw")} Simulate live update</button>
+        </div>
+        ${lmsNotifications.length ? lmsNotifications.map((notice) => `
+          <article class="notice-row ${notice.level.toLowerCase()} ${notice.read ? "read" : ""}">
+            <strong>${notice.level}</strong>
+            <div><span>${notice.title}</span><small>${notice.target} • ${notice.channel}</small></div>
+            <button class="icon-button" aria-label="Dismiss ${escapeHtml(notice.title)}" data-dismiss-notification="${notice.id}">${icon("x")}</button>
+          </article>
+        `).join("") : `<div class="empty-state">No notifications.</div>`}
       </aside>
     ` : ""}
     ${state.settingsOpen ? `
@@ -512,7 +583,7 @@ function renderTopbar(role) {
       <div class="topbar-actions">
         <label class="searchbox">${icon("search")}<input id="global-search" value="${escapeHtml(state.searchTerm)}" placeholder="Search resources..." /></label>
         <button class="secondary-action reset-action" data-reset-demo type="button">${icon("rotate-ccw")} Reset Demo</button>
-        <button class="icon-button" aria-label="Notifications" data-toggle-notifications>${icon("bell")}<span class="status-dot"></span></button>
+        <button class="icon-button" aria-label="Notifications" data-toggle-notifications>${icon("bell")}${unreadNotifications() ? `<span class="status-dot">${unreadNotifications()}</span>` : ""}</button>
         <button class="icon-button" aria-label="Settings" data-toggle-settings>${icon("settings")}</button>
       </div>
     </header>
@@ -540,6 +611,8 @@ function renderPlatform() {
       ${statCard("States", tenantStates.length, "map", "blue")}
       ${statCard("Districts", stateRecord.districts.length, "building-2", "teal")}
       ${statCard("Schools", allSchools.length, "graduation-cap", "gold")}
+
+      ${renderRealtimePanel()}
 
       <section class="panel state-management-panel">
         <div class="section-heading"><h3>State Manages Districts</h3><span>${stateRecord.agency}</span></div>
@@ -748,6 +821,29 @@ function renderUsersRolesPanel() {
         `).join("")}
       </div>
       ${permissionNotice("manage-users", "Only administrators can change demo role permissions.")}
+    </section>
+  `;
+}
+
+function renderRealtimePanel() {
+  return `
+    <section class="panel realtime-panel">
+      <div class="section-heading">
+        <div><h3>Realtime Operations</h3><span>${state.liveUpdates ? "Live updates enabled" : "Live updates paused"}</span></div>
+        <div class="inline-actions">
+          <label class="mini-toggle"><input type="checkbox" data-toggle-live ${state.liveUpdates ? "checked" : ""} /><span>Live</span></label>
+          <button class="secondary-action" data-simulate-live>${icon("refresh-cw")} Simulate Update</button>
+        </div>
+      </div>
+      <div class="realtime-list">
+        ${realtimeEvents.map((event) => `
+          <article class="realtime-row">
+            <strong>${event.type}</strong>
+            <div><span>${event.title}</span><small>${event.detail}</small></div>
+            <time>${event.time}</time>
+          </article>
+        `).join("")}
+      </div>
     </section>
   `;
 }
@@ -991,6 +1087,16 @@ function renderTeacher() {
         </div>
         <div class="class-list">${visible.map((item) => `<article class="class-card"><div><h4>${item.name}</h4><p>${item.room}</p></div><div class="class-metrics"><span>${item.grade}% grade</span><span>${item.attendance}% attendance</span><span>${item.pending} pending</span></div><button class="icon-button" aria-label="Open ${item.name} options" data-action="${item.name} class tools opened.">${icon("more-horizontal")}</button></article>`).join("")}</div>
       </section>
+      <section class="panel assignment-composer-panel">
+        <div class="section-heading"><h3>Create Assignment</h3><span>Realtime LMS filler data</span></div>
+        <form id="assignment-form" class="assignment-form">
+          <label><span>Title</span><input id="assignment-title" placeholder="Example: Reading Checkpoint" required /></label>
+          <label><span>Class</span><select id="assignment-class">${teacherClasses.map((item) => `<option>${item.name}</option>`).join("")}</select></label>
+          <label><span>Type</span><select id="assignment-type"><option>Automated quiz</option><option>Writing task</option><option>Project</option><option>Reading response</option></select></label>
+          <label><span>Lock date</span><input id="assignment-lock" value="Next Friday, 8:00 PM" /></label>
+          <button class="primary-action" type="submit" ${permissionAttrs("teacher-tools", "Only teachers and administrators can create assignments.")}>${icon("plus")} Add Assignment</button>
+        </form>
+      </section>
       <section class="panel activity-panel">
         <div class="section-heading"><h3>Recent Student Activity</h3><button class="icon-button" aria-label="Refresh activity" data-refresh-activity>${icon("refresh-cw")}</button></div>
         ${activityFeed.map(([student, action, time, course]) => `<article class="activity-row"><div class="avatar">${initials(student)}</div><div><p><strong>${student}</strong> ${action}</p><span>${time} | ${course}</span></div><button class="icon-button" aria-label="Reply to ${student}" data-reply-student="${student}">${icon("pen-line")}</button></article>`).join("")}
@@ -1004,11 +1110,11 @@ function renderTeacher() {
         </div>
         <div class="roster-table">
           ${roster.map((record) => `
-            <article class="roster-row">
+            <article class="roster-row editable-roster-row">
               <div><strong>${record.student}</strong><small>${record.className} • Guardian: ${record.guardian}</small></div>
-              <span>${record.grade}%</span>
-              <span>${record.attendance}% attendance</span>
-              <em>${record.status}</em>
+              <label><span>Grade</span><input type="number" min="0" max="100" value="${record.grade}" data-roster-grade="${record.id}" /></label>
+              <label><span>Attendance</span><input type="number" min="0" max="100" value="${record.attendance}" data-roster-attendance="${record.id}" /></label>
+              <label><span>Status</span><select data-roster-status="${record.id}"><option ${record.status === "Active" ? "selected" : ""}>Active</option><option ${record.status === "Watch" ? "selected" : ""}>Watch</option></select></label>
             </article>
           `).join("")}
         </div>
@@ -1066,7 +1172,8 @@ function renderMessages() {
         </div>
       </aside>
       <section class="chat-panel">
-        <header class="chat-header"><div class="avatar">${initials(active.name)}</div><div><h3>${active.name}</h3><p>${active.online ? "Online now" : active.role}</p></div><div class="chat-tools"><button class="icon-button" aria-label="Start video call" data-action="Video call room opened for ${active.name}.">${icon("video")}</button><button class="icon-button" aria-label="More chat options" data-action="Chat options opened for ${active.name}.">${icon("more-horizontal")}</button></div></header>
+        <header class="chat-header"><div class="avatar">${initials(active.name)}</div><div><h3>${active.name}</h3><p>${active.online ? "Online now" : active.role}</p></div><div class="chat-tools"><button class="icon-button" aria-label="Start video call" data-start-call="${active.id}">${icon("video")}</button><button class="icon-button" aria-label="More chat options" data-action="Chat options opened for ${active.name}.">${icon("more-horizontal")}</button></div></header>
+        ${state.activeCallName ? `<div class="call-banner">${icon("video")} <strong>Live call with ${state.activeCallName}</strong><button class="text-button" data-end-call>End call</button></div>` : ""}
         <div class="work-hours-banner ${state.workHoursOpen || state.emergencyOverride ? "open" : "closed"}">
           ${icon(state.workHoursOpen || state.emergencyOverride ? "check" : "x")}
           <div><strong>${state.emergencyOverride ? "Emergency override active" : state.workHoursOpen ? "Communication window open" : "After-hours messaging paused"}</strong><span>${school.workHours}. ${state.emergencyOverride ? "Urgent administrator-approved messages can be sent now." : state.workHoursOpen ? "Parents and teachers can message now." : school.afterHours}</span></div>
@@ -1224,18 +1331,42 @@ function addDemoSchoolTenant() {
 
 function createDemoAssignment() {
   const title = `Quick Check ${lmsAssignments.length + 1}`;
-  lmsAssignments.unshift({
-    id: `quick-check-${Date.now()}`,
+  createAssignmentRecord({
     title,
+    className: state.selectedClass === "All" ? "All classes" : state.selectedClass,
     type: "Teacher-created assignment",
+    lockDate: "Next Friday, 8:00 PM",
+  });
+  goToRole("lms", `${title} was created in the LMS grading suite.`);
+}
+
+function createAssignmentRecord({ title, className, type, lockDate }) {
+  const id = `${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
+  lmsAssignments.unshift({
+    id,
+    title,
+    type,
     rubric: "Auto rubric draft",
     analytics: 0,
-    lockDate: "Next Friday, 8:00 PM",
+    lockDate: lockDate || "Next Friday, 8:00 PM",
     exception: "None",
   });
-  lmsNotifications.unshift({ level: "Action", title: `${title} is ready to publish`, target: state.selectedClass === "All" ? "All classes" : state.selectedClass, channel: "Teacher inbox" });
+  const firstStudent = rosterRecords.find((record) => className === "All classes" || record.className === className) || rosterRecords[0];
+  if (firstStudent) {
+    gradebookSubmissions.unshift({
+      id: `sub-${Date.now()}`,
+      student: firstStudent.student,
+      assignment: title,
+      status: "Needs review",
+      score: 0,
+      rubric: [["Completion", 0], ["Accuracy", 0], ["Explanation", 0]],
+      comment: "New assignment created. Awaiting student work.",
+    });
+    state.selectedSubmissionId = gradebookSubmissions[0].id;
+  }
+  pushNotification("Action", `${title} is ready to publish`, className, "Teacher inbox");
+  pushRealtimeEvent("LMS", `${title} created`, `${type} assigned to ${className}.`);
   addAudit(`Created assignment ${title}`, selectedSchoolRecord().name);
-  goToRole("lms", `${title} was created in the LMS grading suite.`);
 }
 
 function continueAdventure() {
@@ -1363,6 +1494,30 @@ function bindEvents() {
     });
   });
 
+  document.querySelector("[data-mark-notifications]")?.addEventListener("click", () => {
+    lmsNotifications.forEach((notice) => {
+      notice.read = true;
+    });
+    announce("All notifications marked read.");
+  });
+
+  document.querySelectorAll("[data-dismiss-notification]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const index = lmsNotifications.findIndex((notice) => notice.id === button.dataset.dismissNotification);
+      if (index >= 0) lmsNotifications.splice(index, 1);
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-simulate-live]").forEach((button) => {
+    button.addEventListener("click", () => simulateLiveUpdate("manual"));
+  });
+
+  document.querySelector("[data-toggle-live]")?.addEventListener("change", (event) => {
+    state.liveUpdates = event.target.checked;
+    announce(state.liveUpdates ? "Realtime updates enabled." : "Realtime updates paused.");
+  });
+
   document.querySelectorAll("[data-toggle-setting]").forEach((input) => {
     input.addEventListener("change", () => {
       state[input.dataset.toggleSetting] = input.checked;
@@ -1409,6 +1564,20 @@ function bindEvents() {
   document.querySelector("[data-add-school]")?.addEventListener("click", addDemoSchoolTenant);
 
   document.querySelector("[data-create-assignment]")?.addEventListener("click", createDemoAssignment);
+
+  document.querySelector("#assignment-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const title = document.querySelector("#assignment-title").value.trim();
+    if (!title) return;
+    const className = document.querySelector("#assignment-class").value;
+    createAssignmentRecord({
+      title,
+      className,
+      type: document.querySelector("#assignment-type").value,
+      lockDate: document.querySelector("#assignment-lock").value.trim(),
+    });
+    announce(`${title} added to ${className}.`);
+  });
 
   document.querySelector("[data-continue-adventure]")?.addEventListener("click", continueAdventure);
 
@@ -1474,6 +1643,20 @@ function bindEvents() {
   document.querySelector("#roster-filter")?.addEventListener("change", (event) => {
     state.rosterFilter = event.target.value;
     render();
+  });
+
+  document.querySelectorAll("[data-roster-grade], [data-roster-attendance], [data-roster-status]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const id = input.dataset.rosterGrade || input.dataset.rosterAttendance || input.dataset.rosterStatus;
+      const record = rosterRecords.find((item) => item.id === id);
+      if (!record) return;
+      if (input.dataset.rosterGrade) record.grade = Math.max(0, Math.min(100, Number(input.value) || 0));
+      if (input.dataset.rosterAttendance) record.attendance = Math.max(0, Math.min(100, Number(input.value) || 0));
+      if (input.dataset.rosterStatus) record.status = input.value;
+      pushRealtimeEvent("Roster", `${record.student} record updated`, `Grade ${record.grade}%, attendance ${record.attendance}%, status ${record.status}.`);
+      addAudit(`Updated roster record for ${record.student}`, record.className);
+      announce(`${record.student}'s roster record updated.`);
+    });
   });
 
   document.querySelectorAll("[data-lms-account]").forEach((button) => {
@@ -1568,6 +1751,8 @@ function bindEvents() {
   document.querySelectorAll("[data-conversation]").forEach((button) => {
     button.addEventListener("click", () => {
       state.activeConversationId = button.dataset.conversation;
+      const conversation = conversations.find((item) => item.id === state.activeConversationId);
+      if (conversation) conversation.unread = 0;
       render();
     });
   });
@@ -1587,6 +1772,24 @@ function bindEvents() {
     render();
   });
 
+  document.querySelectorAll("[data-start-call]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const conversation = conversations.find((item) => item.id === button.dataset.startCall);
+      if (!conversation) return;
+      state.activeCallName = conversation.name;
+      pushRealtimeEvent("Messages", `Live call started with ${conversation.name}`, "Video room is active in the communication hub.");
+      addAudit(`Started video call with ${conversation.name}`, selectedSchoolRecord().name);
+      announce(`Video call started with ${conversation.name}.`);
+    });
+  });
+
+  document.querySelector("[data-end-call]")?.addEventListener("click", () => {
+    const name = state.activeCallName;
+    state.activeCallName = "";
+    if (name) pushRealtimeEvent("Messages", `Live call ended with ${name}`, "Call state closed.");
+    announce("Video call ended.");
+  });
+
   document.querySelector("#compose")?.addEventListener("submit", (event) => {
     event.preventDefault();
     if (!state.workHoursOpen && !state.emergencyOverride) return;
@@ -1597,6 +1800,8 @@ function bindEvents() {
         ? { ...conversation, preview: text, messages: [...conversation.messages, { from: "me", text, time: "Now" }] }
         : conversation,
     ));
+    pushRealtimeEvent("Messages", "Message sent", `Delivered to ${activeUser().label}'s active conversation.`);
+    pushNotification("FYI", "Message delivered", selectedSchoolRecord().name, "Messages");
     state.draft = "";
     render();
   });
@@ -1617,7 +1822,10 @@ function bindEvents() {
       approverId: document.querySelector("#board-approver").value,
       time: "Awaiting administrator approval",
     });
-    render();
+    pushRealtimeEvent("Community", "Community post submitted", `${document.querySelector("#board-title").value.trim()} is waiting for approval.`);
+    pushNotification("Action", "Community post awaiting approval", school.name, "Approval queue");
+    addAudit("Submitted community post for approval", school.name);
+    announce("Post submitted for administrator approval.");
   });
 
   document.querySelectorAll("[data-approver-toggle]").forEach((input) => {
@@ -1674,3 +1882,8 @@ window.addEventListener("hashchange", () => {
 window.addEventListener("load", enhanceIcons);
 
 render();
+
+window.setInterval(() => {
+  if (!state.liveUpdates || document.hidden) return;
+  simulateLiveUpdate("automatic");
+}, 15000);

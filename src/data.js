@@ -23,6 +23,9 @@ export const state = {
   activeAccount: "teacher-school",
   selectedSubmissionId: "sub-1",
   rosterFilter: "All",
+  liveUpdates: true,
+  realtimeTick: 0,
+  activeCallName: "",
   offlinePackReady: false,
   workHoursOpen: true,
   emergencyOverride: false,
@@ -174,9 +177,15 @@ export const lmsAccounts = [
 ];
 
 export const lmsNotifications = [
-  { level: "Urgent", title: "Locked submission window closes tonight", target: "Grade 4 Math", channel: "Dashboard + SMS" },
-  { level: "Action", title: "3 rubric scores need review", target: "English Literature", channel: "Teacher inbox" },
-  { level: "FYI", title: "New family comment on community board", target: "All families", channel: "Digest" },
+  { id: "notice-lock-window", level: "Urgent", title: "Locked submission window closes tonight", target: "Grade 4 Math", channel: "Dashboard + SMS", read: false },
+  { id: "notice-rubrics", level: "Action", title: "3 rubric scores need review", target: "English Literature", channel: "Teacher inbox", read: false },
+  { id: "notice-family-comment", level: "FYI", title: "New family comment on community board", target: "All families", channel: "Digest", read: false },
+];
+
+export const realtimeEvents = [
+  { id: "live-1", type: "Roster", title: "Leo Jenkins attendance synced", detail: "SIS updated attendance to 98%.", time: "Live now" },
+  { id: "live-2", type: "LMS", title: "Rubric queue refreshed", detail: "3 submissions are ready for review.", time: "Live now" },
+  { id: "live-3", type: "Messages", title: "Parent digest prepared", detail: "Routine updates will send during the next work window.", time: "Live now" },
 ];
 
 export const workspaceIntegrations = [

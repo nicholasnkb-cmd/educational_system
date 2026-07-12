@@ -1023,18 +1023,7 @@ function renderAdvancedLms() {
       ${statCard("Rubrics active", "7", "layers", "teal")}
       ${statCard("Offline packs", state.offlinePackReady ? "Ready" : "Not built", "download", "gold")}
 
-      <section class="panel lms-panel workspace-suite">
-        <div class="section-heading"><h3>Workspace Integration</h3><span>Docs, Drive, Forms, Slides</span></div>
-        <div class="integration-grid">
-          ${workspaceIntegrations.map((item) => `
-            <article class="integration-card">
-              <div class="integration-icon">${item.app[0]}</div>
-              <div><strong>${item.app}</strong><small>${item.action}</small></div>
-              <span>${item.status}</span>
-            </article>
-          `).join("")}
-        </div>
-      </section>
+      ${renderBackgroundServices()}
 
       <section class="panel lms-panel simplicity-suite">
         <div class="section-heading"><h3>Simple Classroom Experience</h3><span>Clean by default</span></div>
@@ -1071,32 +1060,12 @@ function renderAdvancedLms() {
         `).join("")}
       </section>
 
-      <section class="panel lms-panel file-suite">
-        <div class="section-heading"><h3>File Handling</h3><span>Word, PDF, and mixed media</span></div>
-        ${lmsFiles.map((file) => `
-          <article class="file-row">
-            ${icon(file.type === "PDF" ? "paperclip" : "file-text")}
-            <div><strong>${file.name}</strong><small>${file.status}</small></div>
-          </article>
-        `).join("")}
-      </section>
-
       <section class="panel lms-panel account-suite">
         <div class="section-heading"><h3>Account Context</h3><span>No constant log-outs</span></div>
         <div class="account-switcher">
           ${lmsAccounts.map((account) => `<button class="${activeAccount.id === account.id ? "active" : ""}" data-lms-account="${account.id}"><strong>${account.name}</strong><span>${account.context}</span></button>`).join("")}
         </div>
         <p class="account-note">Current context: <strong>${activeAccount.name}</strong> can switch roles without leaving ${school.name}.</p>
-      </section>
-
-      <section class="panel lms-panel notification-suite">
-        <div class="section-heading"><h3>Organized Notifications</h3><span>Priority channels</span></div>
-        ${lmsNotifications.map((notice) => `
-          <article class="notice-row ${notice.level.toLowerCase()}">
-            <strong>${notice.level}</strong>
-            <div><span>${notice.title}</span><small>${notice.target} • ${notice.channel}</small></div>
-          </article>
-        `).join("")}
       </section>
 
       <section class="panel lms-panel workflow-suite">
@@ -1120,17 +1089,6 @@ function renderAdvancedLms() {
           <div class="offline-status ${state.offlinePackReady ? "ready" : ""}">${state.offlinePackReady ? icon("check") : icon("download")}</div>
           <div><strong>${state.offlinePackReady ? "Offline pack ready" : "Offline pack not built"}</strong><p>Includes assignments, rubrics, PDF annotations, and queued submissions for later sync.</p></div>
         </div>
-      </section>
-
-      <section class="panel lms-panel sync-suite">
-        <div class="section-heading"><h3>Offline Sync Queue</h3><span>Works without stable Wi-Fi</span></div>
-        ${offlineSyncQueue.map((item) => `
-          <article class="sync-row">
-            ${icon("refresh-cw")}
-            <div><strong>${item.item}</strong><small>${item.owner}</small></div>
-            <span>${state.offlinePackReady ? item.status : "Waiting for pack"}</span>
-          </article>
-        `).join("")}
       </section>
 
       <section class="panel lms-panel privacy-suite">
@@ -1206,6 +1164,47 @@ function renderStudent() {
         <div class="section-heading"><h3>Awards</h3>${icon("award")}</div>
         <div class="award-grid">${["Kindness Kid", "Problem Solver", "Fast Learner", "Story Teller"].map((award) => `<div class="award-tile">${icon("sparkles")}<span>${award}</span></div>`).join("")}</div>
       </section>
+    </section>
+  `;
+}
+
+function renderBackgroundServices() {
+  const unread = unreadNotifications();
+  return `
+    <section class="panel lms-panel background-services" aria-label="Passive background services">
+      <div class="section-heading">
+        <div><p class="eyebrow">Passive background layer</p><h3>Background Services</h3></div>
+        <span>Runs quietly behind LMS work</span>
+      </div>
+      <div class="background-service-grid">
+        <article class="background-service-card">
+          <div>${icon("refresh-cw")}<strong>Workspace sync</strong></div>
+          <small>${workspaceIntegrations.length} connected services attach, collect, archive, and export in the background.</small>
+          <span>Passive</span>
+        </article>
+        <article class="background-service-card">
+          <div>${icon("paperclip")}<strong>File handling</strong></div>
+          <small>${lmsFiles.length} class files are converted, attached, or archived without interrupting classroom flow.</small>
+          <span>Passive</span>
+        </article>
+        <article class="background-service-card">
+          <div>${icon("bell")}<strong>Notification routing</strong></div>
+          <small>${unread} unread alert${unread === 1 ? "" : "s"} stay in the notification tray unless action is needed.</small>
+          <span>Tray</span>
+        </article>
+        <article class="background-service-card">
+          <div>${icon("calendar-days")}<strong>Calendar bridge</strong></div>
+          <small>${calendarEvents.length} shared events inform deadlines and family reminders in the background.</small>
+          <span>Synced</span>
+        </article>
+      </div>
+      <details class="background-details">
+        <summary>View background service activity</summary>
+        <div class="background-activity">
+          ${workspaceIntegrations.map((item) => `<article><strong>${item.app}</strong><small>${item.action}</small><span>${item.status}</span></article>`).join("")}
+          ${offlineSyncQueue.map((item) => `<article><strong>${item.item}</strong><small>${item.owner}</small><span>${state.offlinePackReady ? item.status : "Waiting"}</span></article>`).join("")}
+        </div>
+      </details>
     </section>
   `;
 }

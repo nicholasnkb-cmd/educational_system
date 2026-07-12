@@ -152,6 +152,21 @@ test("runs realtime app workflows with editable filler data", async ({ page }) =
   await expect(page.getByText("Video call ended.")).toBeVisible();
 });
 
+test("keeps workspace-style services passive in the LMS background", async ({ page }) => {
+  await page.goto("/#lms");
+  const services = page.locator(".background-services");
+  await expect(services.getByRole("heading", { name: "Background Services" })).toBeVisible();
+  await expect(services.getByText("Runs quietly behind LMS work")).toBeVisible();
+  await expect(services.getByText("Workspace sync")).toBeVisible();
+  await expect(services.getByText("File handling")).toBeVisible();
+  await expect(services.getByText("Notification routing")).toBeVisible();
+  await expect(services.getByText("Calendar bridge")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Workspace Integration" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "File Handling" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Organized Notifications" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Offline Sync Queue" })).toHaveCount(0);
+});
+
 test("integrates every workspace into the platform operating system", async ({ page }) => {
   await page.goto("/#platform");
   await expect(page.getByRole("heading", { name: "Unified School Operating System" })).toBeVisible();

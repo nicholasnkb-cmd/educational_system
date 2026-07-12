@@ -2243,7 +2243,7 @@ select {
   padding: 12px;
 }
 
-.grading-suite, .notification-suite, .workspace-suite, .workflow-suite, .sync-suite { grid-column: span 8; }
+.grading-suite, .notification-suite, .workspace-suite, .workflow-suite, .sync-suite, .background-services { grid-column: span 8; }
 .deadline-suite, .file-suite, .account-suite, .offline-suite, .simplicity-suite, .free-suite, .guardrail-suite, .privacy-suite { grid-column: span 4; }
 
 .lms-panel {
@@ -2514,6 +2514,97 @@ select {
   font-weight: 900;
 }
 
+.background-services {
+  color: var(--muted);
+  background: #fbfcff;
+}
+
+.background-services .section-heading h3 {
+  color: var(--text);
+}
+
+.background-service-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.background-service-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.background-service-card > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-weight: 900;
+}
+
+.background-service-card .app-icon {
+  width: 28px;
+  height: 28px;
+  color: var(--primary);
+}
+
+.background-service-card small {
+  color: var(--muted);
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.background-service-card > span,
+.background-activity span {
+  justify-self: start;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: var(--teal);
+  background: var(--teal-soft);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.background-details {
+  border-top: 1px solid var(--line);
+  padding-top: 4px;
+}
+
+.background-details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.background-activity {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.background-activity article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.background-activity small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .free-card {
   display: grid;
   gap: 8px;
@@ -2644,7 +2735,8 @@ select {
   .auth-panel, .demo-launcher, .tour-card { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
   .profile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .demo-role-grid { grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); }
-  .hero-card, .missions-panel, .awards-panel, .class-panel, .activity-panel, .grading-card, .teacher-note, .deadline-panel, .subject-panel, .mobile-parent-panel, .tenant-controls, .hierarchy-panel, .state-management-panel, .district-management-panel, .category-panel, .district-panel, .instance-panel, .tenant-settings-panel, .design-studio-panel, .permissions-panel, .privacy-panel, .audit-panel, .calendar-panel, .users-roles-panel, .compliance-panel, .gradebook-detail-suite, .roster-panel, .realtime-panel, .assignment-composer-panel, .unified-os-panel, .production-panel, .board-composer, .published-board, .approval-queue, .approver-panel, .board-policy, .workflow-rules-panel, .grading-suite, .notification-suite, .workspace-suite, .workflow-suite, .sync-suite, .deadline-suite, .file-suite, .account-suite, .offline-suite, .simplicity-suite, .free-suite, .guardrail-suite, .privacy-suite, .stat-card { grid-column: span 12; }
+  .hero-card, .missions-panel, .awards-panel, .class-panel, .activity-panel, .grading-card, .teacher-note, .deadline-panel, .subject-panel, .mobile-parent-panel, .tenant-controls, .hierarchy-panel, .state-management-panel, .district-management-panel, .category-panel, .district-panel, .instance-panel, .tenant-settings-panel, .design-studio-panel, .permissions-panel, .privacy-panel, .audit-panel, .calendar-panel, .users-roles-panel, .compliance-panel, .gradebook-detail-suite, .roster-panel, .realtime-panel, .assignment-composer-panel, .unified-os-panel, .production-panel, .board-composer, .published-board, .approval-queue, .approver-panel, .board-policy, .workflow-rules-panel, .grading-suite, .notification-suite, .workspace-suite, .workflow-suite, .sync-suite, .background-services, .deadline-suite, .file-suite, .account-suite, .offline-suite, .simplicity-suite, .free-suite, .guardrail-suite, .privacy-suite, .stat-card { grid-column: span 12; }
+  .background-service-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hero-card { grid-template-columns: 1fr; }
   .tenant-selectors { grid-template-columns: 1fr; }
   .messages-shell { height: auto; grid-template-columns: 1fr; }
@@ -2658,7 +2750,7 @@ select {
   .complete-button, .primary-action, .secondary-action { width: 100%; }
   .award-grid { grid-template-columns: 1fr; }
   .school-profile, .category-row, .management-row, .permission-row, .mobile-parent-panel, .design-studio { grid-template-columns: 1fr; }
-  .gradebook-layout, .compliance-grid, .assignment-form, .editable-roster-row, .realtime-row, .unified-os-grid, .production-grid, .system-snapshot-grid, .snapshot-metrics, .snapshot-row, .schema-row, .delivery-row, .pipeline-row, .upload-row, .gateway-actions, .mini-form { grid-template-columns: 1fr; }
+  .gradebook-layout, .compliance-grid, .assignment-form, .editable-roster-row, .realtime-row, .unified-os-grid, .production-grid, .background-service-grid, .background-activity, .system-snapshot-grid, .snapshot-metrics, .snapshot-row, .schema-row, .delivery-row, .pipeline-row, .upload-row, .gateway-actions, .mini-form { grid-template-columns: 1fr; }
   .mini-form input { grid-column: span 1; }
   .assignment-row { grid-template-columns: 1fr; }
   .integration-grid, .workflow-steps, .settings-grid, .design-form { grid-template-columns: 1fr; }

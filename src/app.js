@@ -11,6 +11,7 @@ import {
   Clock,
   Database,
   Download,
+  Eye,
   FileText,
   GraduationCap,
   Layers,
@@ -43,10 +44,14 @@ import {
 import {
   roles,
   state,
+  userProfiles,
+  permissionCatalog,
   missions,
   tenantStates,
   governanceLevels,
   teacherClasses,
+  rosterRecords,
+  gradebookSubmissions,
   activityFeed,
   deadlines,
   lmsAssignments,
@@ -59,6 +64,7 @@ import {
   permissionMatrix,
   auditLogs,
   privacyControls,
+  complianceMetrics,
   calendarEvents,
   offlineSyncQueue,
   approvalRules,
@@ -80,13 +86,6 @@ import { mockApiStatus } from "./mockApi.js";
 
 const app = document.querySelector("#app");
 
-const userProfiles = [
-  { id: "district-admin", label: "District Admin", role: "Admin", landing: "platform", permissions: ["manage-tenants", "approve-posts", "emergency", "lms", "teacher-tools", "message"] },
-  { id: "teacher", label: "Prof. Miller", role: "Teacher", landing: "teacher", permissions: ["lms", "teacher-tools", "message", "submit-post"] },
-  { id: "parent", label: "Sarah Jenkins", role: "Parent", landing: "parent", permissions: ["message", "submit-post"] },
-  { id: "student", label: "Hero", role: "Student", landing: "student", permissions: ["student-missions"] },
-];
-
 const tourSteps = [
   { title: "Choose a role", body: "Use the demo login panel to switch between admin, teacher, parent, and student access.", role: "platform" },
   { title: "Create learning work", body: "Teachers and admins can create assignments and build offline packs in the LMS.", role: "lms" },
@@ -107,6 +106,7 @@ const lucideIcons = {
   Clock,
   Database,
   Download,
+  Eye,
   FileText,
   GraduationCap,
   Layers,
@@ -171,6 +171,10 @@ function announce(message) {
   render();
 }
 
+function addAudit(event, scope = selectedSchoolRecord().name, actor = activeUser().label) {
+  auditLogs.unshift({ actor, event, scope, time: "Just now" });
+}
+
 function activeUser() {
   return userProfiles.find((profile) => profile.id === state.currentUser) || userProfiles[0];
 }
@@ -185,6 +189,16 @@ function permissionAttrs(permission, label = "This role cannot use that action")
 
 function permissionNotice(permission, body) {
   return can(permission) ? "" : `<div class="permission-note">${icon("lock")} ${body}</div>`;
+}
+
+function validateDemoSnapshot(snapshot) {
+  const errors = [];
+  if (!snapshot || typeof snapshot !== "object") errors.push("File must contain a JSON object.");
+  if (!snapshot?.state || typeof snapshot.state !== "object") errors.push("Missing state object.");
+  if (!Array.isArray(snapshot?.tenantStates)) errors.push("Missing tenantStates array.");
+  if (!Array.isArray(snapshot?.conversations)) errors.push("Missing conversations array.");
+  if (!snapshot?.communityBoards || typeof snapshot.communityBoards !== "object") errors.push("Missing communityBoards object.");
+  return errors;
 }
 
 function hashRole() {
@@ -643,6 +657,8 @@ function renderPlatform() {
         </div>
       </section>
 
+      ${renderUsersRolesPanel()}
+
       <section class="panel privacy-panel">
         <div class="section-heading"><h3>FERPA & Privacy Controls</h3>${icon("lock")}</div>
         ${privacyControls.map((item) => `
@@ -652,6 +668,8 @@ function renderPlatform() {
           </article>
         `).join("")}
       </section>
+
+      ${renderCompliancePanel()}
 
       <section class="panel audit-panel">
         <div class="section-heading"><h3>Audit Trail</h3><span>Cross-tenant accountability</span></div>
@@ -710,6 +728,47 @@ function renderPlatform() {
   `;
 }
 
+function renderUsersRolesPanel() {
+  return `
+    <section class="panel users-roles-panel">
+      <div class="section-heading"><h3>Users & Roles</h3><span>${can("manage-users") ? "Editable" : "Read-only"}</span></div>
+      <div class="users-grid">
+        ${userProfiles.map((profile) => `
+          <article class="user-role-card">
+            <div><strong>${profile.label}</strong><small>${profile.role} • lands on ${profile.landing}</small></div>
+            <div class="permission-chip-list">
+              ${permissionCatalog.map(([id, label]) => `
+                <label class="permission-chip ${profile.permissions.includes(id) ? "active" : ""}">
+                  <input type="checkbox" data-profile-permission="${profile.id}:${id}" ${profile.permissions.includes(id) ? "checked" : ""} ${can("manage-users") ? "" : "disabled"} />
+                  <span>${label}</span>
+                </label>
+              `).join("")}
+            </div>
+          </article>
+        `).join("")}
+      </div>
+      ${permissionNotice("manage-users", "Only administrators can change demo role permissions.")}
+    </section>
+  `;
+}
+
+function renderCompliancePanel() {
+  return `
+    <section class="panel compliance-panel">
+      <div class="section-heading"><h3>Privacy & Compliance Dashboard</h3><span>FERPA operations</span></div>
+      <div class="compliance-grid">
+        ${complianceMetrics.map((item) => `
+          <article class="compliance-card">
+            ${icon("shield-check")}
+            <div><strong>${item.value}</strong><span>${item.label}</span><small>${item.status} • ${item.detail}</small></div>
+          </article>
+        `).join("")}
+      </div>
+      ${permissionNotice("view-compliance", "Compliance detail is admin-only.")}
+    </section>
+  `;
+}
+
 function renderAdvancedLms() {
   const school = selectedSchoolRecord();
   const activeAccount = lmsAccounts.find((account) => account.id === state.activeAccount) || lmsAccounts[0];
@@ -763,6 +822,8 @@ function renderAdvancedLms() {
           `).join("")}
         </div>
       </section>
+
+      ${renderGradebookDetail()}
 
       <section class="panel lms-panel deadline-suite">
         <div class="section-heading"><h3>Deadline Controls</h3><span>Firm locks + exceptions</span></div>
@@ -844,6 +905,32 @@ function renderAdvancedLms() {
   `;
 }
 
+function renderGradebookDetail() {
+  const selected = gradebookSubmissions.find((item) => item.id === state.selectedSubmissionId) || gradebookSubmissions[0];
+  return `
+    <section class="panel lms-panel gradebook-detail-suite">
+      <div class="section-heading"><h3>Gradebook Detail</h3><span>Submissions, rubric, comments</span></div>
+      <div class="gradebook-layout">
+        <div class="submission-list">
+          ${gradebookSubmissions.map((submission) => `
+            <button class="submission-row ${selected.id === submission.id ? "active" : ""}" data-submission="${submission.id}">
+              ${icon(submission.status === "Missing" ? "alert-triangle" : "file-text")}
+              <span><strong>${submission.student}</strong><small>${submission.assignment} • ${submission.status}</small></span>
+              <em>${submission.score}%</em>
+            </button>
+          `).join("")}
+        </div>
+        <article class="submission-detail">
+          <div class="section-heading"><h4>${selected.student}</h4><span>${selected.assignment}</span></div>
+          ${selected.rubric.map(([label, score]) => `<div class="rubric-row"><span>${label}</span>${progress(Math.round((score / 4) * 100))}<strong>${score}/4</strong></div>`).join("")}
+          <label><span>Teacher comment</span><textarea id="submission-comment">${escapeHtml(selected.comment)}</textarea></label>
+          <button class="primary-action" data-save-submission="${selected.id}" ${permissionAttrs("teacher-tools", "Only teachers and administrators can save grading comments.")}>${icon("check")} Save Comment</button>
+        </article>
+      </div>
+    </section>
+  `;
+}
+
 function renderStudent() {
   const school = selectedSchoolRecord();
   const points = (school.studentPoints + state.completed.length * 75).toLocaleString();
@@ -890,6 +977,7 @@ function renderStudent() {
 function renderTeacher() {
   const school = selectedSchoolRecord();
   const visible = state.selectedClass === "All" ? teacherClasses : teacherClasses.filter((item) => item.name === state.selectedClass);
+  const roster = state.rosterFilter === "All" ? rosterRecords : rosterRecords.filter((item) => item.status === state.rosterFilter);
   return `
     <section class="dashboard-grid teacher-grid">
       <div class="welcome-strip"><div><p class="eyebrow">${school.name} instance</p><h2>Welcome back, Prof. Miller.</h2><p>${school.messages} need attention in this school tenant, with class data isolated from every other school.</p></div><button class="primary-action" data-create-assignment ${permissionAttrs("teacher-tools", "Only teachers and administrators can create assignments.")}>${icon("plus")} Create Assignment</button></div>
@@ -909,6 +997,22 @@ function renderTeacher() {
       </section>
       <section class="panel grading-card"><h3>Grading To-Do</h3>${progress(68)}<p>18 submissions left across 3 classes.</p><button class="secondary-action" data-open-role="lms">${icon("clipboard-check")} Open Grading Hub</button></section>
       ${permissionNotice("teacher-tools", "Teacher tools are read-only for this signed-in role.")}
+      <section class="panel roster-panel">
+        <div class="section-heading">
+          <h3>Roster & Enrollments</h3>
+          <select id="roster-filter" aria-label="Filter roster"><option>All</option><option>Active</option><option>Watch</option></select>
+        </div>
+        <div class="roster-table">
+          ${roster.map((record) => `
+            <article class="roster-row">
+              <div><strong>${record.student}</strong><small>${record.className} • Guardian: ${record.guardian}</small></div>
+              <span>${record.grade}%</span>
+              <span>${record.attendance}% attendance</span>
+              <em>${record.status}</em>
+            </article>
+          `).join("")}
+        </div>
+      </section>
     </section>
   `;
 }
@@ -1113,7 +1217,7 @@ function addDemoSchoolTenant() {
   };
   district.schools.push(school);
   state.selectedSchool = id;
-  auditLogs.unshift({ actor: "District Admin", event: "Created demo school tenant", scope: district.name, time: "Just now" });
+  addAudit("Created demo school tenant", district.name);
   state.toast = `${school.name} was added to ${district.name}.`;
   render();
 }
@@ -1130,6 +1234,7 @@ function createDemoAssignment() {
     exception: "None",
   });
   lmsNotifications.unshift({ level: "Action", title: `${title} is ready to publish`, target: state.selectedClass === "All" ? "All classes" : state.selectedClass, channel: "Teacher inbox" });
+  addAudit(`Created assignment ${title}`, selectedSchoolRecord().name);
   goToRole("lms", `${title} was created in the LMS grading suite.`);
 }
 
@@ -1191,6 +1296,7 @@ function bindEvents() {
       const profile = userProfiles.find((item) => item.id === button.dataset.loginProfile);
       if (!profile) return;
       state.currentUser = profile.id;
+      addAudit(`Switched demo login to ${profile.role}`, selectedSchoolRecord().name, profile.label);
       state.toast = `Signed in as ${profile.label}.`;
       setActiveRole(profile.landing);
     });
@@ -1273,6 +1379,7 @@ function bindEvents() {
     link.download = "educonnect-demo-state.json";
     link.click();
     URL.revokeObjectURL(url);
+    addAudit("Exported demo state JSON");
     try {
       await navigator.clipboard.writeText(payload);
       announce("Demo state exported and copied to clipboard.");
@@ -1285,7 +1392,14 @@ function bindEvents() {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      applyDemoSnapshot(JSON.parse(await file.text()));
+      const snapshot = JSON.parse(await file.text());
+      const errors = validateDemoSnapshot(snapshot);
+      if (errors.length) {
+        announce(`Import failed: ${errors.join(" ")}`);
+        return;
+      }
+      applyDemoSnapshot(snapshot);
+      addAudit("Imported demo state JSON");
       announce("Demo state imported.");
     } catch {
       announce("That JSON file could not be imported.");
@@ -1307,7 +1421,39 @@ function bindEvents() {
   document.querySelectorAll("[data-guardrail]").forEach((input) => {
     input.addEventListener("change", () => {
       state.guardrails[input.dataset.guardrail] = input.checked;
+      addAudit(`Updated guardrail ${input.dataset.guardrail}`);
       announce("Guardrail setting updated.");
+    });
+  });
+
+  document.querySelectorAll("[data-profile-permission]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const [profileId, permission] = input.dataset.profilePermission.split(":");
+      const profile = userProfiles.find((item) => item.id === profileId);
+      if (!profile) return;
+      profile.permissions = input.checked
+        ? [...new Set([...profile.permissions, permission])]
+        : profile.permissions.filter((item) => item !== permission);
+      addAudit(`Updated ${profile.role} permission: ${permission}`);
+      announce(`${profile.role} permissions updated.`);
+    });
+  });
+
+  document.querySelectorAll("[data-submission]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedSubmissionId = button.dataset.submission;
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-save-submission]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const submission = gradebookSubmissions.find((item) => item.id === button.dataset.saveSubmission);
+      if (!submission) return;
+      submission.comment = document.querySelector("#submission-comment").value.trim();
+      submission.status = "Reviewed";
+      addAudit(`Saved gradebook comment for ${submission.student}`, submission.assignment);
+      announce("Gradebook comment saved.");
     });
   });
 
@@ -1322,6 +1468,11 @@ function bindEvents() {
 
   document.querySelector("#class-filter")?.addEventListener("change", (event) => {
     state.selectedClass = event.target.value;
+    render();
+  });
+
+  document.querySelector("#roster-filter")?.addEventListener("change", (event) => {
+    state.rosterFilter = event.target.value;
     render();
   });
 
@@ -1432,6 +1583,7 @@ function bindEvents() {
 
   document.querySelector("[data-toggle-emergency]")?.addEventListener("click", () => {
     state.emergencyOverride = !state.emergencyOverride;
+    addAudit(`${state.emergencyOverride ? "Enabled" : "Disabled"} emergency override`);
     render();
   });
 
@@ -1497,6 +1649,7 @@ function bindEvents() {
       if (!post) return;
       board.pending = board.pending.filter((item) => item.id !== post.id);
       board.published.unshift({ ...post, time: "Approved just now" });
+      addAudit(`Approved community post: ${post.title}`);
       render();
     });
   });
@@ -1504,7 +1657,9 @@ function bindEvents() {
   document.querySelectorAll("[data-reject-post]").forEach((button) => {
     button.addEventListener("click", () => {
       const board = selectedCommunityBoard();
+      const post = board.pending.find((item) => item.id === button.dataset.rejectPost);
       board.pending = board.pending.filter((item) => item.id !== button.dataset.rejectPost);
+      if (post) addAudit(`Rejected community post: ${post.title}`);
       render();
     });
   });

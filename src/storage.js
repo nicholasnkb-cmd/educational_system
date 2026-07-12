@@ -1,7 +1,10 @@
 import {
   state,
+  userProfiles,
   tenantStates,
   schoolDesigns,
+  rosterRecords,
+  gradebookSubmissions,
   auditLogs,
   lmsAssignments,
   lmsFiles,
@@ -17,8 +20,11 @@ const STORAGE_KEY = "educonnect-demo-state-v1";
 
 const initialSnapshot = structuredClone({
   state,
+  userProfiles,
   tenantStates,
   schoolDesigns,
+  rosterRecords,
+  gradebookSubmissions,
   auditLogs,
   lmsAssignments,
   lmsFiles,
@@ -41,18 +47,7 @@ function replaceArray(target, next) {
 export function hydrateDemoState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (!saved) return;
-    if (saved.state) Object.assign(state, saved.state);
-    if (saved.tenantStates) replaceArray(tenantStates, saved.tenantStates);
-    if (saved.schoolDesigns) replaceObject(schoolDesigns, saved.schoolDesigns);
-    if (saved.auditLogs) replaceArray(auditLogs, saved.auditLogs);
-    if (saved.lmsAssignments) replaceArray(lmsAssignments, saved.lmsAssignments);
-    if (saved.lmsFiles) replaceArray(lmsFiles, saved.lmsFiles);
-    if (saved.lmsNotifications) replaceArray(lmsNotifications, saved.lmsNotifications);
-    if (saved.offlineSyncQueue) replaceArray(offlineSyncQueue, saved.offlineSyncQueue);
-    if (saved.activityFeed) replaceArray(activityFeed, saved.activityFeed);
-    if (saved.conversations) replaceArray(conversations, saved.conversations);
-    if (saved.communityBoards) replaceObject(communityBoards, saved.communityBoards);
+    applyDemoSnapshot(saved);
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
@@ -61,8 +56,11 @@ export function hydrateDemoState() {
 export function getDemoSnapshot() {
   return structuredClone({
     state,
+    userProfiles,
     tenantStates,
     schoolDesigns,
+    rosterRecords,
+    gradebookSubmissions,
     auditLogs,
     lmsAssignments,
     lmsFiles,
@@ -77,8 +75,11 @@ export function getDemoSnapshot() {
 export function applyDemoSnapshot(snapshot) {
   if (!snapshot) return;
   if (snapshot.state) Object.assign(state, snapshot.state);
+  if (snapshot.userProfiles) replaceArray(userProfiles, snapshot.userProfiles);
   if (snapshot.tenantStates) replaceArray(tenantStates, snapshot.tenantStates);
   if (snapshot.schoolDesigns) replaceObject(schoolDesigns, snapshot.schoolDesigns);
+  if (snapshot.rosterRecords) replaceArray(rosterRecords, snapshot.rosterRecords);
+  if (snapshot.gradebookSubmissions) replaceArray(gradebookSubmissions, snapshot.gradebookSubmissions);
   if (snapshot.auditLogs) replaceArray(auditLogs, snapshot.auditLogs);
   if (snapshot.lmsAssignments) replaceArray(lmsAssignments, snapshot.lmsAssignments);
   if (snapshot.lmsFiles) replaceArray(lmsFiles, snapshot.lmsFiles);
@@ -92,7 +93,7 @@ export function applyDemoSnapshot(snapshot) {
 export function persistDemoState() {
   const snapshot = getDemoSnapshot();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-  if (state.apiMode === "mock-api") saveMockApiState(snapshot);
+  if (state.apiMode === "mock-api") saveMockApiState(snapshot).catch(() => {});
 }
 
 export async function hydrateMockApiState() {
@@ -103,8 +104,11 @@ export async function hydrateMockApiState() {
 export function resetDemoState() {
   localStorage.removeItem(STORAGE_KEY);
   Object.assign(state, structuredClone(initialSnapshot.state));
+  replaceArray(userProfiles, initialSnapshot.userProfiles);
   replaceArray(tenantStates, initialSnapshot.tenantStates);
   replaceObject(schoolDesigns, initialSnapshot.schoolDesigns);
+  replaceArray(rosterRecords, initialSnapshot.rosterRecords);
+  replaceArray(gradebookSubmissions, initialSnapshot.gradebookSubmissions);
   replaceArray(auditLogs, initialSnapshot.auditLogs);
   replaceArray(lmsAssignments, initialSnapshot.lmsAssignments);
   replaceArray(lmsFiles, initialSnapshot.lmsFiles);

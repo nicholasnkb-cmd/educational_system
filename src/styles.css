@@ -750,7 +750,7 @@ select {
 .subject-panel { display: grid; gap: 18px; }
 .subject-row { display: grid; grid-template-columns: 88px 1fr 48px; }
 
-.tenant-controls, .hierarchy-panel, .state-management-panel, .tenant-settings-panel, .permissions-panel, .audit-panel, .design-studio-panel { grid-column: span 8; }
+.tenant-controls, .hierarchy-panel, .state-management-panel, .tenant-settings-panel, .permissions-panel, .audit-panel, .design-studio-panel, .users-roles-panel, .compliance-panel, .gradebook-detail-suite, .roster-panel { grid-column: span 8; }
 .category-panel, .district-panel, .instance-panel, .privacy-panel, .calendar-panel { grid-column: span 4; }
 .district-management-panel { grid-column: span 4; }
 
@@ -1043,6 +1043,192 @@ select {
 .calendar-list {
   display: grid;
   gap: 10px;
+}
+
+.users-grid,
+.compliance-grid,
+.submission-list,
+.roster-table {
+  display: grid;
+  gap: 12px;
+}
+
+.user-role-card {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.user-role-card strong,
+.user-role-card small {
+  display: block;
+}
+
+.user-role-card small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.permission-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.permission-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface-low);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.permission-chip.active {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: #dae1ff;
+}
+
+.compliance-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.compliance-card,
+.submission-row,
+.roster-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.compliance-card > .app-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  color: var(--primary);
+  background: #dae1ff;
+  flex: 0 0 auto;
+}
+
+.compliance-card strong,
+.compliance-card span,
+.compliance-card small,
+.submission-row strong,
+.submission-row small,
+.roster-row strong,
+.roster-row small {
+  display: block;
+}
+
+.compliance-card strong {
+  font-family: Quicksand, Inter, sans-serif;
+  font-size: 28px;
+}
+
+.compliance-card small,
+.submission-row small,
+.roster-row small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.gradebook-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.85fr) minmax(0, 1.15fr);
+  gap: 16px;
+}
+
+.submission-row {
+  width: 100%;
+  color: var(--text);
+  text-align: left;
+}
+
+.submission-row.active {
+  border-color: var(--primary);
+  background: #f6f9ff;
+}
+
+.submission-row span {
+  flex: 1;
+  min-width: 0;
+}
+
+.submission-row em,
+.roster-row em {
+  margin-left: auto;
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: var(--teal);
+  background: var(--teal-soft);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.submission-detail {
+  display: grid;
+  gap: 12px;
+}
+
+.submission-detail h4 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.rubric-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 42px;
+  align-items: center;
+  gap: 10px;
+}
+
+.submission-detail label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.submission-detail textarea {
+  width: 100%;
+  min-height: 86px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  resize: vertical;
+}
+
+.roster-row > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.roster-row > span {
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: var(--primary);
+  background: #dae1ff;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .permission-row {
@@ -2003,7 +2189,7 @@ select {
   .auth-panel, .demo-launcher, .tour-card { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
   .profile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .demo-role-grid { grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); }
-  .hero-card, .missions-panel, .awards-panel, .class-panel, .activity-panel, .grading-card, .teacher-note, .deadline-panel, .subject-panel, .mobile-parent-panel, .tenant-controls, .hierarchy-panel, .state-management-panel, .district-management-panel, .category-panel, .district-panel, .instance-panel, .tenant-settings-panel, .design-studio-panel, .permissions-panel, .privacy-panel, .audit-panel, .calendar-panel, .board-composer, .published-board, .approval-queue, .approver-panel, .board-policy, .workflow-rules-panel, .grading-suite, .notification-suite, .workspace-suite, .workflow-suite, .sync-suite, .deadline-suite, .file-suite, .account-suite, .offline-suite, .simplicity-suite, .free-suite, .guardrail-suite, .privacy-suite, .stat-card { grid-column: span 12; }
+  .hero-card, .missions-panel, .awards-panel, .class-panel, .activity-panel, .grading-card, .teacher-note, .deadline-panel, .subject-panel, .mobile-parent-panel, .tenant-controls, .hierarchy-panel, .state-management-panel, .district-management-panel, .category-panel, .district-panel, .instance-panel, .tenant-settings-panel, .design-studio-panel, .permissions-panel, .privacy-panel, .audit-panel, .calendar-panel, .users-roles-panel, .compliance-panel, .gradebook-detail-suite, .roster-panel, .board-composer, .published-board, .approval-queue, .approver-panel, .board-policy, .workflow-rules-panel, .grading-suite, .notification-suite, .workspace-suite, .workflow-suite, .sync-suite, .deadline-suite, .file-suite, .account-suite, .offline-suite, .simplicity-suite, .free-suite, .guardrail-suite, .privacy-suite, .stat-card { grid-column: span 12; }
   .hero-card { grid-template-columns: 1fr; }
   .tenant-selectors { grid-template-columns: 1fr; }
   .messages-shell { height: auto; grid-template-columns: 1fr; }
@@ -2017,6 +2203,7 @@ select {
   .complete-button, .primary-action, .secondary-action { width: 100%; }
   .award-grid { grid-template-columns: 1fr; }
   .school-profile, .category-row, .management-row, .permission-row, .mobile-parent-panel, .design-studio { grid-template-columns: 1fr; }
+  .gradebook-layout, .compliance-grid { grid-template-columns: 1fr; }
   .assignment-row { grid-template-columns: 1fr; }
   .integration-grid, .workflow-steps, .settings-grid, .design-form { grid-template-columns: 1fr; }
   .design-form .span-2 { grid-column: span 1; }
@@ -2024,6 +2211,8 @@ select {
   .board-form, .approval-actions { grid-template-columns: 1fr; }
   .board-form .span-2 { grid-column: span 1; }
   .subject-row { grid-template-columns: 1fr; gap: 8px; }
+  .rubric-row { grid-template-columns: 1fr; gap: 8px; }
+  .roster-row { align-items: flex-start; flex-direction: column; }
   .chat-stream { padding: 16px; }
   .bubble { max-width: 94%; }
 }

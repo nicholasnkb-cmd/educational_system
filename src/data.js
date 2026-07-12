@@ -21,6 +21,8 @@ export const state = {
   draft: "",
   boardAudience: "All families",
   activeAccount: "teacher-school",
+  selectedSubmissionId: "sub-1",
+  rosterFilter: "All",
   offlinePackReady: false,
   workHoursOpen: true,
   emergencyOverride: false,
@@ -40,6 +42,26 @@ export const state = {
     parentSummaries: true,
   },
 };
+
+export const userProfiles = [
+  { id: "district-admin", label: "District Admin", role: "Admin", landing: "platform", permissions: ["manage-tenants", "approve-posts", "emergency", "lms", "teacher-tools", "message", "manage-users", "view-compliance"] },
+  { id: "teacher", label: "Prof. Miller", role: "Teacher", landing: "teacher", permissions: ["lms", "teacher-tools", "message", "submit-post"] },
+  { id: "parent", label: "Sarah Jenkins", role: "Parent", landing: "parent", permissions: ["message", "submit-post"] },
+  { id: "student", label: "Hero", role: "Student", landing: "student", permissions: ["student-missions"] },
+];
+
+export const permissionCatalog = [
+  ["manage-tenants", "Manage tenants"],
+  ["manage-users", "Manage users"],
+  ["view-compliance", "View compliance"],
+  ["approve-posts", "Approve posts"],
+  ["emergency", "Emergency override"],
+  ["lms", "Manage LMS"],
+  ["teacher-tools", "Teacher tools"],
+  ["message", "Messaging"],
+  ["submit-post", "Submit posts"],
+  ["student-missions", "Student missions"],
+];
 
 export const missions = [
   { id: 1, subject: "Science", title: "Space Explorers: The Moon", due: "Due tomorrow", action: "Start Mission", progress: 78, accent: "teal", icon: "rocket" },
@@ -107,6 +129,19 @@ export const teacherClasses = [
   { name: "English Literature", room: "Period 2, Room 304", grade: 89, attendance: 96, pending: 12 },
   { name: "Creative Writing", room: "Period 4, Room 201", grade: 92, attendance: 97, pending: 1 },
   { name: "Basic English", room: "Period 6, Room 118", grade: 84, attendance: 91, pending: 5 },
+];
+
+export const rosterRecords = [
+  { id: "stu-1", student: "Leo Jenkins", guardian: "Sarah Jenkins", teacher: "Prof. Miller", className: "English Literature", grade: 91, attendance: 98, accommodations: "Visual vocabulary cards", status: "Active" },
+  { id: "stu-2", student: "Maya Rodriguez", guardian: "Elena Rodriguez", teacher: "Prof. Miller", className: "Creative Writing", grade: 88, attendance: 94, accommodations: "Extended quiz time", status: "Active" },
+  { id: "stu-3", student: "Liam Wilson", guardian: "Marcus Wilson", teacher: "Prof. Miller", className: "English Literature", grade: 82, attendance: 91, accommodations: "Reading support", status: "Watch" },
+  { id: "stu-4", student: "Sarah Chen", guardian: "Priya Chen", teacher: "Prof. Miller", className: "Creative Writing", grade: 96, attendance: 99, accommodations: "None", status: "Active" },
+];
+
+export const gradebookSubmissions = [
+  { id: "sub-1", student: "Leo Jenkins", assignment: "Fractions Mastery Check", status: "Submitted", score: 88, rubric: [["Concepts", 4], ["Accuracy", 3], ["Explanation", 4], ["Neatness", 3]], comment: "Strong reasoning. Recheck mixed-number conversions." },
+  { id: "sub-2", student: "Maya Rodriguez", assignment: "Great Depression Essay", status: "Needs review", score: 74, rubric: [["Thesis", 3], ["Evidence", 3], ["Organization", 2], ["Conventions", 4]], comment: "Good evidence. Add a clearer argument in the introduction." },
+  { id: "sub-3", student: "Liam Wilson", assignment: "Grammar Quiz - Week 5", status: "Missing", score: 0, rubric: [["Completion", 0], ["Accuracy", 0], ["Timeliness", 0]], comment: "Family reminder queued." },
 ];
 
 export const activityFeed = [
@@ -185,6 +220,13 @@ export const privacyControls = [
   { label: "FERPA Mode", status: "Enabled", detail: "Student records are hidden outside authorized tenant scopes." },
   { label: "Media Review", status: "Required", detail: "Photos and files stay pending until an assigned approver approves them." },
   { label: "Data Export", status: "Logged", detail: "Every roster, gradebook, or message export appears in the audit trail." },
+];
+
+export const complianceMetrics = [
+  { label: "FERPA access reviews", value: "12", status: "Due this month", detail: "Confirm staff access for student records." },
+  { label: "Data export logs", value: "4", status: "Reviewed", detail: "Gradebook and roster exports are audit logged." },
+  { label: "Media approvals", value: "1", status: "Pending", detail: "Photo content waiting for administrator approval." },
+  { label: "After-hours blocks", value: "7", status: "Protected", detail: "Messages held outside school communication windows." },
 ];
 
 export const calendarEvents = [

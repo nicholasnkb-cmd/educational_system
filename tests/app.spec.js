@@ -84,3 +84,39 @@ test("runs walkthrough and opens mock API mode", async ({ page }) => {
   await page.getByLabel("Data mode").selectOption("mock-api");
   await expect(page.getByText("Mock API mode enabled.")).toBeVisible();
 });
+
+test("manages permissions, roster, gradebook, and audit trail", async ({ page }) => {
+  await page.goto("/#platform");
+  await expect(page.getByRole("heading", { name: "Users & Roles" })).toBeVisible();
+  await page.locator('[data-profile-permission="teacher:submit-post"]').click();
+  await expect(page.getByText("permissions updated")).toBeVisible();
+
+  await page.getByRole("link", { name: /Teacher/i }).first().click();
+  await page.getByLabel("Filter roster").selectOption("Watch");
+  const rosterPanel = page.locator(".roster-panel");
+  await expect(rosterPanel.getByText("Liam Wilson")).toBeVisible();
+  await expect(rosterPanel.getByText("Leo Jenkins")).not.toBeVisible();
+
+  await page.getByRole("link", { name: /LMS/i }).first().click();
+  await page.getByRole("button", { name: /Maya Rodriguez/i }).click();
+  await page.getByRole("textbox", { name: "Teacher comment" }).fill("Updated rubric feedback.");
+  await page.getByRole("button", { name: /Save Comment/i }).click();
+  await expect(page.getByText("Gradebook comment saved.")).toBeVisible();
+
+  await page.getByRole("link", { name: /Platform/i }).first().click();
+  await expect(page.getByText("Saved gradebook comment for Maya Rodriguez")).toBeVisible();
+});
+
+test("validates imported demo state JSON", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Settings").click();
+  const chooserPromise = page.waitForEvent("filechooser");
+  await page.getByText("Import JSON File").click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles({
+    name: "bad-state.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({ hello: "world" })),
+  });
+  await expect(page.getByText(/Import failed: Missing state object/i)).toBeVisible();
+});

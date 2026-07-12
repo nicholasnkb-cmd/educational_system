@@ -89,7 +89,7 @@ import {
   persistDemoState,
   resetDemoState,
 } from "./storage.js";
-import { mockApiStatus } from "./mockApi.js";
+import { loginServerProfile, mockApiStatus, sendServerNotificationTest, uploadServerFile } from "./mockApi.js";
 
 const app = document.querySelector("#app");
 
@@ -353,12 +353,19 @@ function renderAuthPanel() {
         <h3>${user.label}</h3>
         <span>${user.role} permissions</span>
       </div>
-      <label class="login-select">
-        <span>Login role</span>
-        <select id="login-profile">
-          ${userProfiles.map((profile) => `<option value="${profile.id}" ${profile.id === user.id ? "selected" : ""}>${profile.role} - ${profile.label}</option>`).join("")}
-        </select>
-      </label>
+      <form id="login-form" class="login-form">
+        <label class="login-select">
+          <span>Login role</span>
+          <select id="login-profile">
+            ${userProfiles.map((profile) => `<option value="${profile.id}" ${profile.id === user.id ? "selected" : ""}>${profile.role} - ${profile.label}</option>`).join("")}
+          </select>
+        </label>
+        <label class="login-password">
+          <span>Password</span>
+          <input id="login-password" type="password" placeholder="Password" autocomplete="current-password" />
+        </label>
+        <button class="secondary-action" type="submit">${icon("lock")} Sign in</button>
+      </form>
       <label class="api-mode-toggle">
         <span>Data mode</span>
         <select id="api-mode">
@@ -1560,13 +1567,34 @@ function bindEvents() {
     });
   });
 
-  document.querySelector("#login-profile")?.addEventListener("change", (event) => {
-    const profile = userProfiles.find((item) => item.id === event.target.value);
+  function signInProfile(profile, messagePrefix = "Signed in as") {
     if (!profile) return;
     state.currentUser = profile.id;
     addAudit(`Switched demo login to ${profile.role}`, selectedSchoolRecord().name, profile.label);
-    state.toast = `Signed in as ${profile.label}.`;
+    state.toast = `${messagePrefix} ${profile.label}.`;
     setActiveRole(profile.landing);
+  }
+
+  document.querySelector("#login-profile")?.addEventListener("change", (event) => {
+    if (state.apiMode === "live-api") return;
+    signInProfile(userProfiles.find((item) => item.id === event.target.value));
+  });
+
+  document.querySelector("#login-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const profileId = document.querySelector("#login-profile").value;
+    const profile = userProfiles.find((item) => item.id === profileId);
+    if (state.apiMode !== "live-api") {
+      signInProfile(profile);
+      return;
+    }
+    try {
+      const payload = await loginServerProfile(profileId, document.querySelector("#login-password").value);
+      localStorage.setItem("educonnect-session-token", payload.token);
+      signInProfile(payload.user, "Securely signed in as");
+    } catch (error) {
+      announce(error.message || "Invalid credentials.");
+    }
   });
 
   document.querySelector("#api-mode")?.addEventListener("change", async (event) => {
@@ -1716,31 +1744,64 @@ function bindEvents() {
     announce(`${name} invited as ${role}.`);
   });
 
-  document.querySelector("#production-file-upload")?.addEventListener("change", (event) => {
-    Array.from(event.target.files || []).forEach((file) => {
-      fileUploads.unshift({
-        id: `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        name: file.name,
-        area: state.role === "community" ? "Community" : "LMS",
-        size: `${Math.max(1, Math.round(file.size / 1024))} KB`,
-        status: "Stored in demo metadata; ready for cloud storage",
-      });
-    });
+  document.querySelector("#production-file-upload")?.addEventListener("change", async (event) => {
+    const selectedFiles = Array.from(event.target.files || []);
+    for (const file of selectedFiles) {
+      if (state.apiMode === "live-api") {
+        try {
+          const payload = await uploadServerFile(file, state.role === "community" ? "Community" : "LMS");
+          fileUploads.unshift(payload.file);
+        } catch {
+          fileUploads.unshift({
+            id: `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            name: file.name,
+            area: state.role === "community" ? "Community" : "LMS",
+            size: `${Math.max(1, Math.round(file.size / 1024))} KB`,
+            status: "Server upload failed; metadata stored locally",
+          });
+        }
+      } else {
+        fileUploads.unshift({
+          id: `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          name: file.name,
+          area: state.role === "community" ? "Community" : "LMS",
+          size: `${Math.max(1, Math.round(file.size / 1024))} KB`,
+          status: "Stored in demo metadata; ready for cloud storage",
+        });
+      }
+    }
     pushRealtimeEvent("Files", "Upload metadata captured", `${event.target.files?.length || 0} file(s) added to production upload queue.`);
     addAudit("Added production upload metadata");
     announce("File upload metadata added.");
   });
 
-  document.querySelector("[data-send-delivery-test]")?.addEventListener("click", () => {
-    ["Email", "SMS", "Push"].forEach((channel) => {
-      notificationDeliveryLog.unshift({
-        id: `delivery-${Date.now()}-${channel}`,
-        channel,
-        audience: "Launch test group",
-        status: "Delivered",
-        detail: `${channel} test generated from Launch Control`,
+  document.querySelector("[data-send-delivery-test]")?.addEventListener("click", async () => {
+    if (state.apiMode === "live-api") {
+      try {
+        const payload = await sendServerNotificationTest("Launch test group");
+        payload.records.forEach((record) => notificationDeliveryLog.unshift(record));
+      } catch {
+        ["Email", "SMS", "Push"].forEach((channel) => {
+          notificationDeliveryLog.unshift({
+            id: `delivery-${Date.now()}-${channel}`,
+            channel,
+            audience: "Launch test group",
+            status: "Failed over locally",
+            detail: `${channel} test could not reach operational API`,
+          });
+        });
+      }
+    } else {
+      ["Email", "SMS", "Push"].forEach((channel) => {
+        notificationDeliveryLog.unshift({
+          id: `delivery-${Date.now()}-${channel}`,
+          channel,
+          audience: "Launch test group",
+          status: "Delivered",
+          detail: `${channel} test generated from Launch Control`,
+        });
       });
-    });
+    }
     pushNotification("FYI", "Notification delivery test completed", selectedSchoolRecord().name, "Launch Control");
     addAudit("Sent notification delivery test batch");
     announce("Notification delivery test completed.");

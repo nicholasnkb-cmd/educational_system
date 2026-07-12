@@ -73,6 +73,13 @@ Use the **Signed in as** panel to switch between:
 
 Restricted actions remain visible but disabled with an explanatory permission note.
 
+In **Server database** mode, use the login dropdown with these starter credentials:
+
+- Admin / District Admin: `admin123`
+- Teacher / Prof. Miller: `teacher123`
+- Parent / Sarah Jenkins: `parent123`
+- Student / Hero: `student123`
+
 ## Demo State
 
 Open Settings in the top bar to:

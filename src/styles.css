@@ -362,7 +362,9 @@ a { color: inherit; text-decoration: none; }
   background: #dae1ff;
 }
 
+.login-form,
 .login-select,
+.login-password,
 .api-mode-toggle {
   display: grid;
   gap: 6px;
@@ -371,7 +373,14 @@ a { color: inherit; text-decoration: none; }
   font-weight: 900;
 }
 
+.login-form {
+  grid-template-columns: minmax(150px, 1fr) minmax(120px, 0.8fr) auto;
+  align-items: end;
+  color: var(--muted);
+}
+
 .login-select select,
+.login-password input,
 .api-mode-toggle select {
   width: 100%;
   min-height: 42px;
@@ -2755,7 +2764,7 @@ select {
   .complete-button, .primary-action, .secondary-action { width: 100%; }
   .award-grid { grid-template-columns: 1fr; }
   .school-profile, .category-row, .management-row, .permission-row, .mobile-parent-panel, .design-studio { grid-template-columns: 1fr; }
-  .gradebook-layout, .compliance-grid, .assignment-form, .editable-roster-row, .realtime-row, .unified-os-grid, .production-grid, .background-service-grid, .background-activity, .system-snapshot-grid, .snapshot-metrics, .snapshot-row, .schema-row, .delivery-row, .pipeline-row, .upload-row, .gateway-actions, .mini-form { grid-template-columns: 1fr; }
+  .gradebook-layout, .compliance-grid, .assignment-form, .editable-roster-row, .realtime-row, .unified-os-grid, .production-grid, .background-service-grid, .background-activity, .system-snapshot-grid, .snapshot-metrics, .snapshot-row, .schema-row, .delivery-row, .pipeline-row, .upload-row, .gateway-actions, .mini-form, .login-form { grid-template-columns: 1fr; }
   .mini-form input { grid-column: span 1; }
   .assignment-row { grid-template-columns: 1fr; }
   .integration-grid, .workflow-steps, .settings-grid, .design-form { grid-template-columns: 1fr; }

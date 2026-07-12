@@ -29,6 +29,23 @@ async function requestServerState(method, body) {
   return response.json();
 }
 
+async function requestServer(path, options = {}) {
+  const endpoint = `${apiBase()}${path}`;
+  lastEndpoint = endpoint;
+  const response = await fetch(endpoint, {
+    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    ...options,
+  });
+  requestCount += 1;
+  if (!response.ok) {
+    lastStatus = `HTTP ${response.status}`;
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `Server API request failed with ${response.status}`);
+  }
+  lastStatus = "Connected";
+  return response.json();
+}
+
 export async function saveMockApiState(snapshot, mode = "mock-api") {
   if (mode === "live-api") {
     return requestServerState("PUT", { snapshot });
@@ -59,4 +76,37 @@ export function mockApiStatus() {
     endpoint: lastEndpoint,
     status: lastStatus,
   };
+}
+
+export async function loginServerProfile(profileId, password) {
+  return requestServer("/api/login", {
+    method: "POST",
+    body: JSON.stringify({ profileId, password }),
+  });
+}
+
+export async function uploadServerFile(file, area = "LMS") {
+  const contentBase64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+  return requestServer("/api/files", {
+    method: "POST",
+    body: JSON.stringify({
+      name: file.name,
+      type: file.type,
+      area,
+      size: `${Math.max(1, Math.round(file.size / 1024))} KB`,
+      contentBase64,
+    }),
+  });
+}
+
+export async function sendServerNotificationTest(audience = "Launch test group") {
+  return requestServer("/api/notifications/test", {
+    method: "POST",
+    body: JSON.stringify({ audience }),
+  });
 }

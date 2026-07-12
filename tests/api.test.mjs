@@ -54,7 +54,7 @@ describe("operational API server", () => {
     const login = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profileId: "teacher" }),
+      body: JSON.stringify({ profileId: "teacher", password: "teacher123" }),
     });
     const payload = await login.json();
     assert.equal(login.status, 200);
@@ -67,5 +67,44 @@ describe("operational API server", () => {
     const sessionPayload = await session.json();
     assert.equal(session.status, 200);
     assert.equal(sessionPayload.user.id, "teacher");
+  });
+
+  it("rejects invalid login credentials", async () => {
+    const login = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId: "teacher", password: "wrong" }),
+    });
+    assert.equal(login.status, 401);
+  });
+
+  it("stores uploaded files and notification deliveries", async () => {
+    const upload = await fetch(`${baseUrl}/api/files`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "lesson-plan.txt",
+        type: "text/plain",
+        area: "LMS",
+        size: "1 KB",
+        contentBase64: Buffer.from("Operational upload").toString("base64"),
+      }),
+    });
+    const uploadPayload = await upload.json();
+    assert.equal(upload.status, 201);
+    assert.equal(uploadPayload.file.status, "Stored on server");
+
+    const notify = await fetch(`${baseUrl}/api/notifications/test`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ audience: "API test group" }),
+    });
+    const notifyPayload = await notify.json();
+    assert.equal(notify.status, 201);
+    assert.equal(notifyPayload.records.length, 3);
+
+    const state = await (await fetch(`${baseUrl}/api/state`)).json();
+    assert.equal(state.snapshot.fileUploads[0].name, "lesson-plan.txt");
+    assert.equal(state.snapshot.notificationDeliveryLog[0].audience, "API test group");
   });
 });

@@ -982,7 +982,7 @@ function renderUsersRolesPanel() {
       <div class="users-grid">
         ${userProfiles.map((profile) => `
           <article class="user-role-card">
-            <div><strong>${profile.label}</strong><small>${profile.role} • lands on ${profile.landing}</small></div>
+            <div><strong>${profile.label}</strong><small>${profile.role} • ${profile.scope || "global"} scope • lands on ${profile.landing}</small></div>
             <div class="permission-chip-list">
               ${permissionCatalog.map(([id, label]) => `
                 <label class="permission-chip ${profile.permissions.includes(id) ? "active" : ""}">

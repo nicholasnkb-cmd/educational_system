@@ -140,6 +140,48 @@ function canAdmin(session) {
   return session?.user?.permissions?.includes("manage-users");
 }
 
+function scopeForRole(role) {
+  if (role === "State Admin") return "state";
+  if (role === "District Admin") return "district";
+  if (role === "School Admin" || role === "Teacher") return "school";
+  if (role === "Parent") return "guardian";
+  return "student";
+}
+
+function normalizeProfileScope(profile, fallback = {}) {
+  const scope = profile.scope || fallback.scope || scopeForRole(profile.role);
+  const normalized = {
+    ...profile,
+    scope,
+    stateId: profile.stateId || fallback.stateId || "ny",
+  };
+  if (scope !== "state") normalized.districtId = profile.districtId || fallback.districtId || "nyc-doe";
+  if (["school", "guardian", "student"].includes(scope)) normalized.schoolId = profile.schoolId || fallback.schoolId || "ps-118";
+  if (profile.studentId || fallback.studentId) normalized.studentId = profile.studentId || fallback.studentId;
+  if (profile.studentIds || fallback.studentIds) normalized.studentIds = profile.studentIds || fallback.studentIds;
+  return normalized;
+}
+
+function canAccessScope(actor, target) {
+  if (!actor || !target) return false;
+  const actorScope = actor.scope || scopeForRole(actor.role);
+  if (actorScope === "state") return !target.stateId || !actor.stateId || target.stateId === actor.stateId;
+  if (actorScope === "district") return target.stateId === actor.stateId && target.districtId === actor.districtId;
+  if (actorScope === "school") return target.stateId === actor.stateId && target.districtId === actor.districtId && target.schoolId === actor.schoolId;
+  if (actorScope === "guardian") return target.schoolId === actor.schoolId && (!target.studentId || (actor.studentIds || []).includes(target.studentId));
+  return target.id === actor.id || (target.studentId && target.studentId === actor.studentId);
+}
+
+function scopedProfiles(profiles, session) {
+  if (!session) return profiles;
+  return profiles.filter((profile) => canAccessScope(session.user, normalizeProfileScope(profile)));
+}
+
+function scopedFiles(files, session) {
+  if (!session) return files;
+  return files.filter((file) => canAccessScope(session.user, file.scope || file));
+}
+
 function requireSession(req, adminOnly = false) {
   const session = sessionFromRequest(req);
   if (!session) {
@@ -157,7 +199,7 @@ function requireSession(req, adminOnly = false) {
 
 function publicUser(profile, account = {}) {
   return {
-    ...profile,
+    ...normalizeProfileScope(profile),
     active: account.active !== false,
     mustChangePassword: Boolean(account.mustChangePassword),
   };
@@ -190,6 +232,13 @@ async function loadSnapshot() {
     snapshot.userProfiles = [...(snapshot.userProfiles || []), ...missingProfiles];
     changed = true;
   }
+
+  const defaultProfileMap = new Map(userProfiles.map((profile) => [profile.id, profile]));
+  snapshot.userProfiles = (snapshot.userProfiles || []).map((profile) => {
+    const nextProfile = normalizeProfileScope(profile, defaultProfileMap.get(profile.id) || {});
+    if (JSON.stringify(nextProfile) !== JSON.stringify(profile)) changed = true;
+    return nextProfile;
+  });
 
   if (snapshot.state?.currentUser === "district-admin" && !profileIds.has("state-admin")) {
     snapshot.state.currentUser = "state-admin";
@@ -251,6 +300,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (pathname === "/api/state" && req.method === "PUT") {
+    requireSession(req);
     const body = await readJson(req);
     await saveSnapshot(body.snapshot);
     sendJson(res, 200, { ok: true, savedAt: new Date().toISOString() });
@@ -258,6 +308,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (pathname === "/api/reset" && req.method === "POST") {
+    requireSession(req, true);
     const snapshot = initialSnapshot();
     await saveSnapshot(snapshot);
     sendJson(res, 200, { ok: true, snapshot });
@@ -278,18 +329,19 @@ async function handleApi(req, res, pathname) {
   }
 
   if (pathname === "/api/users" && req.method === "GET") {
-    requireSession(req, true);
+    const session = requireSession(req, true);
     const snapshot = await loadSnapshot();
     const accounts = await loadAccounts();
+    const visibleProfiles = scopedProfiles(snapshot.userProfiles, session);
     sendJson(res, 200, {
       ok: true,
-      users: snapshot.userProfiles.map((profile) => publicUser(profile, accounts.find((account) => account.profileId === profile.id))),
+      users: visibleProfiles.map((profile) => publicUser(profile, accounts.find((account) => account.profileId === profile.id))),
     });
     return true;
   }
 
   if (pathname === "/api/users" && req.method === "POST") {
-    requireSession(req, true);
+    const session = requireSession(req, true);
     const body = await readJson(req);
     const snapshot = await loadSnapshot();
     const id = String(body.id || `${String(body.role || "user").toLowerCase()}-${Date.now()}`).replace(/[^a-z0-9-]+/gi, "-").toLowerCase();
@@ -298,13 +350,22 @@ async function handleApi(req, res, pathname) {
       return true;
     }
     const role = body.role || "Student";
-    const profile = {
+    const requestedProfile = normalizeProfileScope({
       id,
       label: body.label || "New User",
       role,
       landing: body.landing || (role === "Admin" ? "school-admin" : role.toLowerCase()),
+      scope: body.scope || scopeForRole(role),
+      stateId: body.stateId || session.user.stateId,
+      districtId: body.districtId || session.user.districtId,
+      schoolId: body.schoolId || session.user.schoolId,
+      studentId: body.studentId,
+      studentIds: body.studentIds,
       permissions: Array.isArray(body.permissions) ? body.permissions : role === "Admin" ? ["manage-tenants", "approve-posts", "emergency", "lms", "teacher-tools", "message", "manage-users", "view-compliance"] : role === "Teacher" ? ["lms", "teacher-tools", "message", "submit-post"] : role === "Parent" ? ["message", "submit-post"] : ["student-missions"],
-    };
+    }, session.user);
+    const profile = canAccessScope(session.user, requestedProfile)
+      ? requestedProfile
+      : normalizeProfileScope({ ...requestedProfile, stateId: session.user.stateId, districtId: session.user.districtId, schoolId: session.user.schoolId }, session.user);
     snapshot.userProfiles.push(profile);
     await saveSnapshot(snapshot);
     const accounts = await loadAccounts();
@@ -322,10 +383,16 @@ async function handleApi(req, res, pathname) {
 
   const userStatusMatch = pathname.match(/^\/api\/users\/([^/]+)$/);
   if (userStatusMatch && req.method === "PATCH") {
-    requireSession(req, true);
+    const session = requireSession(req, true);
     const body = await readJson(req);
     const accounts = await loadAccounts();
     const account = accounts.find((item) => item.profileId === userStatusMatch[1]);
+    const snapshot = await loadSnapshot();
+    const target = snapshot.userProfiles.find((profile) => profile.id === userStatusMatch[1]);
+    if (!target || !canAccessScope(session.user, normalizeProfileScope(target))) {
+      sendJson(res, 403, { ok: false, error: "User is outside your tenant scope" });
+      return true;
+    }
     if (!account) {
       sendJson(res, 404, { ok: false, error: "User account not found" });
       return true;
@@ -363,10 +430,16 @@ async function handleApi(req, res, pathname) {
   }
 
   if (pathname === "/api/password/reset" && req.method === "POST") {
-    requireSession(req, true);
+    const session = requireSession(req, true);
     const body = await readJson(req);
     const accounts = await loadAccounts();
     const account = accounts.find((item) => item.profileId === body.profileId);
+    const snapshot = await loadSnapshot();
+    const target = snapshot.userProfiles.find((profile) => profile.id === body.profileId);
+    if (!target || !canAccessScope(session.user, normalizeProfileScope(target))) {
+      sendJson(res, 403, { ok: false, error: "User is outside your tenant scope" });
+      return true;
+    }
     if (!account) {
       sendJson(res, 404, { ok: false, error: "User account not found" });
       return true;
@@ -381,6 +454,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (pathname === "/api/files" && req.method === "POST") {
+    const session = requireSession(req);
     const body = await readJson(req);
     const snapshot = await loadSnapshot();
     const id = `upload-${Date.now()}-${randomUUID().slice(0, 8)}`;
@@ -398,6 +472,12 @@ async function handleApi(req, res, pathname) {
       size: body.size || "Unknown",
       status: storedPath ? "Stored on server" : "Metadata stored on server",
       type: body.type || "application/octet-stream",
+      scope: {
+        stateId: body.stateId || session.user.stateId,
+        districtId: body.districtId || session.user.districtId,
+        schoolId: body.schoolId || session.user.schoolId,
+      },
+      ownerId: session.user.id,
       storedPath: storedPath ? storedPath.replace(dataDir, "data") : "",
     };
     snapshot.fileUploads = [file, ...(snapshot.fileUploads || [])];
@@ -407,13 +487,15 @@ async function handleApi(req, res, pathname) {
   }
 
   if (pathname === "/api/files" && req.method === "GET") {
+    const session = requireSession(req);
     const snapshot = await loadSnapshot();
-    sendJson(res, 200, { ok: true, files: snapshot.fileUploads || [] });
+    sendJson(res, 200, { ok: true, files: scopedFiles(snapshot.fileUploads || [], session) });
     return true;
   }
 
   const downloadMatch = pathname.match(/^\/api\/files\/([^/]+)\/download$/);
   if (downloadMatch && req.method === "GET") {
+    const session = requireSession(req);
     const snapshot = await loadSnapshot();
     const file = (snapshot.fileUploads || []).find((item) => item.id === downloadMatch[1]);
     if (!file?.storedPath) {
@@ -423,6 +505,10 @@ async function handleApi(req, res, pathname) {
     const filePath = resolve(file.storedPath.replace(/^data/, dataDir));
     if (!filePath.startsWith(dataDir)) {
       sendJson(res, 403, { ok: false, error: "Invalid file path" });
+      return true;
+    }
+    if (!canAccessScope(session.user, file.scope || file)) {
+      sendJson(res, 403, { ok: false, error: "File is outside your tenant scope" });
       return true;
     }
     res.writeHead(200, {
@@ -435,6 +521,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (pathname === "/api/notifications/test" && req.method === "POST") {
+    const session = requireSession(req, true);
     const body = await readJson(req);
     const snapshot = await loadSnapshot();
     const channels = body.channels || ["Email", "SMS", "Push"];
@@ -444,6 +531,7 @@ async function handleApi(req, res, pathname) {
       audience: body.audience || "Launch test group",
       status: "Delivered",
       detail: `${channel} test generated by operational API`,
+      scope: { stateId: session.user.stateId, districtId: session.user.districtId, schoolId: session.user.schoolId },
     }));
     snapshot.notificationDeliveryLog = [...records, ...(snapshot.notificationDeliveryLog || [])];
     snapshot.lmsNotifications = [{

@@ -34,13 +34,19 @@ describe("operational API server", () => {
   });
 
   it("persists and reloads application state", async () => {
+    const stateAdminLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId: "state-admin", password: "state123" }),
+    });
+    const stateAdmin = await stateAdminLogin.json();
     const initial = await (await fetch(`${baseUrl}/api/state`)).json();
     initial.snapshot.state.selectedSchool = "ms-44";
     initial.snapshot.auditLogs.unshift({ event: "API persistence test", actor: "Node test", scope: "Operational", time: "Just now" });
 
     const save = await fetch(`${baseUrl}/api/state`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${stateAdmin.token}` },
       body: JSON.stringify({ snapshot: initial.snapshot }),
     });
     assert.equal(save.status, 200);
@@ -127,6 +133,25 @@ describe("operational API server", () => {
     assert.equal(disabledLogin.status, 401);
   });
 
+  it("filters users by tenant scope", async () => {
+    const schoolLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId: "school-admin", password: "school123" }),
+    });
+    const schoolPayload = await schoolLogin.json();
+    assert.equal(schoolLogin.status, 200);
+
+    const users = await fetch(`${baseUrl}/api/users`, {
+      headers: { Authorization: `Bearer ${schoolPayload.token}` },
+    });
+    const usersPayload = await users.json();
+    assert.equal(users.status, 200);
+    assert.ok(usersPayload.users.every((user) => user.schoolId === "ps-118"));
+    assert.ok(usersPayload.users.some((user) => user.id === "teacher"));
+    assert.ok(!usersPayload.users.some((user) => user.id === "district-admin"));
+  });
+
   it("rejects invalid login credentials", async () => {
     const login = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
@@ -137,9 +162,15 @@ describe("operational API server", () => {
   });
 
   it("stores uploaded files and notification deliveries", async () => {
-    const upload = await fetch(`${baseUrl}/api/files`, {
+    const stateAdminLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId: "state-admin", password: "state123" }),
+    });
+    const stateAdmin = await stateAdminLogin.json();
+    const upload = await fetch(`${baseUrl}/api/files`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${stateAdmin.token}` },
       body: JSON.stringify({
         name: "lesson-plan.txt",
         type: "text/plain",
@@ -154,7 +185,7 @@ describe("operational API server", () => {
 
     const notify = await fetch(`${baseUrl}/api/notifications/test`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${stateAdmin.token}` },
       body: JSON.stringify({ audience: "API test group" }),
     });
     const notifyPayload = await notify.json();
@@ -165,10 +196,10 @@ describe("operational API server", () => {
     assert.equal(state.snapshot.fileUploads[0].name, "lesson-plan.txt");
     assert.equal(state.snapshot.notificationDeliveryLog[0].audience, "API test group");
 
-    const files = await (await fetch(`${baseUrl}/api/files`)).json();
+    const files = await (await fetch(`${baseUrl}/api/files`, { headers: { Authorization: `Bearer ${stateAdmin.token}` } })).json();
     assert.equal(files.files[0].name, "lesson-plan.txt");
 
-    const download = await fetch(`${baseUrl}/api/files/${uploadPayload.file.id}/download`);
+    const download = await fetch(`${baseUrl}/api/files/${uploadPayload.file.id}/download`, { headers: { Authorization: `Bearer ${stateAdmin.token}` } });
     assert.equal(download.status, 200);
     assert.equal(await download.text(), "Operational upload");
   });

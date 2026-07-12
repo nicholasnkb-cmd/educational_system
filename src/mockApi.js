@@ -16,12 +16,17 @@ function apiBase() {
   return window.__EDUCONNECT_API_BASE__ || import.meta.env.VITE_API_BASE_URL || "";
 }
 
+function authHeaders() {
+  const token = localStorage.getItem("educonnect-session-token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function requestServerState(method, body) {
   const endpoint = `${apiBase()}/api/state`;
   lastEndpoint = endpoint;
   const response = await fetch(endpoint, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: body ? JSON.stringify(body) : undefined,
   });
   requestCount += 1;
@@ -37,7 +42,7 @@ async function requestServer(path, options = {}) {
   const endpoint = `${apiBase()}${path}`;
   lastEndpoint = endpoint;
   const response = await fetch(endpoint, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: { "Content-Type": "application/json", ...authHeaders(), ...(options.headers || {}) },
     ...options,
   });
   requestCount += 1;

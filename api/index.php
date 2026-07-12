@@ -58,12 +58,12 @@ $managedJsonKeys = [
 ];
 
 $defaultProfiles = [
-    ['id' => 'state-admin', 'label' => 'NYS State Admin', 'role' => 'State Admin', 'landing' => 'state-admin', 'permissions' => ['manage-tenants', 'approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance']],
-    ['id' => 'district-admin', 'label' => 'District Admin', 'role' => 'District Admin', 'landing' => 'district-admin', 'permissions' => ['manage-tenants', 'approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance']],
-    ['id' => 'school-admin', 'label' => 'School Admin', 'role' => 'School Admin', 'landing' => 'school-admin', 'permissions' => ['approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance']],
-    ['id' => 'teacher', 'label' => 'Prof. Miller', 'role' => 'Teacher', 'landing' => 'teacher', 'permissions' => ['lms', 'teacher-tools', 'message', 'submit-post']],
-    ['id' => 'student', 'label' => 'Hero', 'role' => 'Student', 'landing' => 'student', 'permissions' => ['student-missions']],
-    ['id' => 'parent', 'label' => 'Sarah Jenkins', 'role' => 'Parent', 'landing' => 'parent', 'permissions' => ['message', 'submit-post']],
+    ['id' => 'state-admin', 'label' => 'NYS State Admin', 'role' => 'State Admin', 'landing' => 'state-admin', 'scope' => 'state', 'stateId' => 'ny', 'permissions' => ['manage-tenants', 'approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance']],
+    ['id' => 'district-admin', 'label' => 'District Admin', 'role' => 'District Admin', 'landing' => 'district-admin', 'scope' => 'district', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'permissions' => ['manage-tenants', 'approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance']],
+    ['id' => 'school-admin', 'label' => 'School Admin', 'role' => 'School Admin', 'landing' => 'school-admin', 'scope' => 'school', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'permissions' => ['approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance']],
+    ['id' => 'teacher', 'label' => 'Prof. Miller', 'role' => 'Teacher', 'landing' => 'teacher', 'scope' => 'school', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'permissions' => ['lms', 'teacher-tools', 'message', 'submit-post']],
+    ['id' => 'student', 'label' => 'Hero', 'role' => 'Student', 'landing' => 'student', 'scope' => 'student', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'studentId' => 'leo', 'permissions' => ['student-missions']],
+    ['id' => 'parent', 'label' => 'Sarah Jenkins', 'role' => 'Parent', 'landing' => 'parent', 'scope' => 'guardian', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'studentIds' => ['leo'], 'permissions' => ['message', 'submit-post']],
 ];
 
 $defaultPasswords = [
@@ -281,6 +281,11 @@ function load_snapshot(string $stateFile, array $profiles): array {
         }
         if (!$exists) $snapshot['userProfiles'][] = $defaultProfile;
     }
+    $defaultProfileMap = [];
+    foreach ($profiles as $defaultProfile) $defaultProfileMap[$defaultProfile['id']] = $defaultProfile;
+    $snapshot['userProfiles'] = array_map(function ($profile) use ($defaultProfileMap) {
+        return normalize_profile_scope($profile, $defaultProfileMap[$profile['id'] ?? ''] ?? []);
+    }, $snapshot['userProfiles'] ?? []);
     write_file_json($stateFile, $snapshot);
     return $snapshot;
 }
@@ -328,7 +333,45 @@ function require_session(string $sessionsFile, bool $adminOnly = false): array {
     return $session;
 }
 
+function scope_for_role(string $role): string {
+    if ($role === 'State Admin') return 'state';
+    if ($role === 'District Admin') return 'district';
+    if ($role === 'School Admin' || $role === 'Teacher') return 'school';
+    if ($role === 'Parent') return 'guardian';
+    return 'student';
+}
+
+function normalize_profile_scope(array $profile, array $fallback = []): array {
+    $profile['scope'] = $profile['scope'] ?? $fallback['scope'] ?? scope_for_role((string)($profile['role'] ?? 'Student'));
+    $profile['stateId'] = $profile['stateId'] ?? $fallback['stateId'] ?? 'ny';
+    if ($profile['scope'] !== 'state') $profile['districtId'] = $profile['districtId'] ?? $fallback['districtId'] ?? 'nyc-doe';
+    if (in_array($profile['scope'], ['school', 'guardian', 'student'], true)) $profile['schoolId'] = $profile['schoolId'] ?? $fallback['schoolId'] ?? 'ps-118';
+    if (!isset($profile['studentId']) && isset($fallback['studentId'])) $profile['studentId'] = $fallback['studentId'];
+    if (!isset($profile['studentIds']) && isset($fallback['studentIds'])) $profile['studentIds'] = $fallback['studentIds'];
+    return $profile;
+}
+
+function can_access_scope(array $actor, array $target): bool {
+    $scope = $actor['scope'] ?? scope_for_role((string)($actor['role'] ?? 'Student'));
+    if ($scope === 'state') return empty($target['stateId']) || empty($actor['stateId']) || $target['stateId'] === $actor['stateId'];
+    if ($scope === 'district') return ($target['stateId'] ?? '') === ($actor['stateId'] ?? '') && ($target['districtId'] ?? '') === ($actor['districtId'] ?? '');
+    if ($scope === 'school') return ($target['stateId'] ?? '') === ($actor['stateId'] ?? '') && ($target['districtId'] ?? '') === ($actor['districtId'] ?? '') && ($target['schoolId'] ?? '') === ($actor['schoolId'] ?? '');
+    if ($scope === 'guardian') return ($target['schoolId'] ?? '') === ($actor['schoolId'] ?? '') && (empty($target['studentId']) || in_array($target['studentId'], $actor['studentIds'] ?? [], true));
+    return ($target['id'] ?? '') === ($actor['id'] ?? '') || (!empty($target['studentId']) && ($target['studentId'] ?? '') === ($actor['studentId'] ?? ''));
+}
+
+function scoped_profiles(array $profiles, array $session): array {
+    $actor = $session['user'] ?? [];
+    return array_values(array_filter($profiles, fn($profile) => can_access_scope($actor, normalize_profile_scope($profile))));
+}
+
+function scoped_files(array $files, array $session): array {
+    $actor = $session['user'] ?? [];
+    return array_values(array_filter($files, fn($file) => can_access_scope($actor, $file['scope'] ?? $file)));
+}
+
 function public_user(array $profile, ?array $account): array {
+    $profile = normalize_profile_scope($profile);
     $profile['active'] = ($account['active'] ?? true) !== false;
     $profile['mustChangePassword'] = (bool)($account['mustChangePassword'] ?? false);
     return $profile;
@@ -391,12 +434,14 @@ try {
     }
 
     if ($path === '/api/state' && $method === 'PUT') {
+        require_session($sessionsFile);
         $body = read_json();
         save_snapshot($stateFile, $body['snapshot'] ?? []);
         send_json(200, ['ok' => true, 'savedAt' => gmdate(DATE_ATOM)]);
     }
 
     if ($path === '/api/reset' && $method === 'POST') {
+        require_session($sessionsFile, true);
         $snapshot = default_snapshot($defaultProfiles);
         save_snapshot($stateFile, $snapshot);
         send_json(200, ['ok' => true, 'snapshot' => $snapshot]);
@@ -440,9 +485,9 @@ try {
     }
 
     if ($path === '/api/users' && $method === 'GET') {
-        require_session($sessionsFile, true);
+        $session = require_session($sessionsFile, true);
         $snapshot = load_snapshot($stateFile, $defaultProfiles);
-        $profiles = $snapshot['userProfiles'] ?? $defaultProfiles;
+        $profiles = scoped_profiles($snapshot['userProfiles'] ?? $defaultProfiles, $session);
         $accounts = load_accounts($accountsFile, $profiles, $defaultPasswords);
         $users = array_map(function ($profile) use ($accounts) {
             $account = null;
@@ -453,28 +498,51 @@ try {
     }
 
     if ($path === '/api/users' && $method === 'POST') {
-        require_session($sessionsFile, true);
+        $session = require_session($sessionsFile, true);
         $body = read_json();
         $snapshot = load_snapshot($stateFile, $defaultProfiles);
         $id = strtolower(preg_replace('/[^a-z0-9-]+/i', '-', (string)($body['id'] ?? strtolower((string)($body['role'] ?? 'user')) . '-' . time())));
         foreach ($snapshot['userProfiles'] as $profile) if (($profile['id'] ?? '') === $id) send_json(409, ['ok' => false, 'error' => 'User already exists']);
         $role = (string)($body['role'] ?? 'Student');
         $permissions = is_array($body['permissions'] ?? null) ? $body['permissions'] : ($role === 'Admin' ? ['manage-tenants', 'approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance'] : ($role === 'Teacher' ? ['lms', 'teacher-tools', 'message', 'submit-post'] : ($role === 'Parent' ? ['message', 'submit-post'] : ['student-missions'])));
-        $profile = ['id' => $id, 'label' => $body['label'] ?? 'New User', 'role' => $role, 'landing' => $body['landing'] ?? ($role === 'Admin' ? 'school-admin' : strtolower($role)), 'permissions' => $permissions];
+        $profile = normalize_profile_scope([
+            'id' => $id,
+            'label' => $body['label'] ?? 'New User',
+            'role' => $role,
+            'landing' => $body['landing'] ?? ($role === 'Admin' ? 'school-admin' : strtolower($role)),
+            'scope' => $body['scope'] ?? scope_for_role($role),
+            'stateId' => $body['stateId'] ?? ($session['user']['stateId'] ?? 'ny'),
+            'districtId' => $body['districtId'] ?? ($session['user']['districtId'] ?? 'nyc-doe'),
+            'schoolId' => $body['schoolId'] ?? ($session['user']['schoolId'] ?? 'ps-118'),
+            'studentId' => $body['studentId'] ?? null,
+            'studentIds' => $body['studentIds'] ?? null,
+            'permissions' => $permissions,
+        ], $session['user'] ?? []);
+        if (!can_access_scope($session['user'] ?? [], $profile)) {
+            $profile['stateId'] = $session['user']['stateId'] ?? 'ny';
+            $profile['districtId'] = $session['user']['districtId'] ?? 'nyc-doe';
+            $profile['schoolId'] = $session['user']['schoolId'] ?? 'ps-118';
+        }
         $snapshot['userProfiles'][] = $profile;
         save_snapshot($stateFile, $snapshot);
         $accounts = load_accounts($accountsFile, $snapshot['userProfiles'], $defaultPasswords);
         ensure_strong_password((string)($body['password'] ?? 'changeme123'));
         $accounts[] = ['profileId' => $id, 'passwordHash' => password_hash_for((string)($body['password'] ?? 'changeme123')), 'active' => true, 'mustChangePassword' => true, 'updatedAt' => gmdate(DATE_ATOM)];
         write_file_json($accountsFile, $accounts);
-        audit_event('user.created', require_session($sessionsFile, true)['user']['id'] ?? 'admin', ['profileId' => $id, 'role' => $role]);
+        audit_event('user.created', $session['user']['id'] ?? 'admin', ['profileId' => $id, 'role' => $role]);
         send_json(201, ['ok' => true, 'user' => public_user($profile, end($accounts)), 'temporaryPassword' => isset($body['password']) ? null : 'changeme123']);
     }
 
     if (preg_match('#^/api/users/([^/]+)$#', $path, $matches) && $method === 'PATCH') {
-        require_session($sessionsFile, true);
+        $session = require_session($sessionsFile, true);
         $body = read_json();
         $accounts = load_accounts($accountsFile, $defaultProfiles, $defaultPasswords);
+        $snapshot = load_snapshot($stateFile, $defaultProfiles);
+        $targetProfile = null;
+        foreach ($snapshot['userProfiles'] ?? [] as $profile) if (($profile['id'] ?? '') === $matches[1]) $targetProfile = normalize_profile_scope($profile);
+        if (!$targetProfile || !can_access_scope($session['user'] ?? [], $targetProfile)) {
+            send_json(403, ['ok' => false, 'error' => 'User is outside your tenant scope']);
+        }
         foreach ($accounts as &$account) {
             if (($account['profileId'] ?? '') === $matches[1]) {
                 if (array_key_exists('active', $body)) $account['active'] = (bool)$body['active'];
@@ -485,7 +553,7 @@ try {
                 }
                 $account['updatedAt'] = gmdate(DATE_ATOM);
                 write_file_json($accountsFile, $accounts);
-                audit_event('user.updated', require_session($sessionsFile, true)['user']['id'] ?? 'admin', ['profileId' => $account['profileId'], 'active' => $account['active']]);
+                audit_event('user.updated', $session['user']['id'] ?? 'admin', ['profileId' => $account['profileId'], 'active' => $account['active']]);
                 send_json(200, ['ok' => true, 'account' => ['profileId' => $account['profileId'], 'active' => $account['active'], 'mustChangePassword' => $account['mustChangePassword']]]);
             }
         }
@@ -493,11 +561,13 @@ try {
     }
 
     if ($path === '/api/files' && $method === 'GET') {
+        $session = require_session($sessionsFile);
         $snapshot = load_snapshot($stateFile, $defaultProfiles);
-        send_json(200, ['ok' => true, 'files' => $snapshot['fileUploads'] ?? []]);
+        send_json(200, ['ok' => true, 'files' => scoped_files($snapshot['fileUploads'] ?? [], $session)]);
     }
 
     if ($path === '/api/files' && $method === 'POST') {
+        $session = require_session($sessionsFile);
         $body = read_json();
         $snapshot = load_snapshot($stateFile, $defaultProfiles);
         $id = 'upload-' . time() . '-' . bin2hex(random_bytes(4));
@@ -515,18 +585,47 @@ try {
             $storedPath = "{$uploadDir}/{$id}-{$safeName}";
             file_put_contents($storedPath, $decodedUpload, LOCK_EX);
         }
-        $file = ['id' => $id, 'name' => $body['name'] ?? 'Uploaded file', 'area' => $body['area'] ?? 'LMS', 'size' => $body['size'] ?? 'Unknown', 'status' => $storedPath ? 'Stored on dedicated API' : 'Metadata stored on dedicated API', 'type' => $body['type'] ?? 'application/octet-stream', 'storedPath' => $storedPath ? str_replace($dataDir, 'data', $storedPath) : ''];
+        $file = [
+            'id' => $id,
+            'name' => $body['name'] ?? 'Uploaded file',
+            'area' => $body['area'] ?? 'LMS',
+            'size' => $body['size'] ?? 'Unknown',
+            'status' => $storedPath ? 'Stored on dedicated API' : 'Metadata stored on dedicated API',
+            'type' => $body['type'] ?? 'application/octet-stream',
+            'scope' => ['stateId' => $body['stateId'] ?? ($session['user']['stateId'] ?? 'ny'), 'districtId' => $body['districtId'] ?? ($session['user']['districtId'] ?? 'nyc-doe'), 'schoolId' => $body['schoolId'] ?? ($session['user']['schoolId'] ?? 'ps-118')],
+            'ownerId' => $session['user']['id'] ?? 'api',
+            'storedPath' => $storedPath ? str_replace($dataDir, 'data', $storedPath) : '',
+        ];
         $snapshot['fileUploads'] = array_merge([$file], $snapshot['fileUploads'] ?? []);
         save_snapshot($stateFile, $snapshot);
         audit_event('file.uploaded', 'api', ['fileId' => $id, 'name' => $file['name']]);
         send_json(201, ['ok' => true, 'file' => $file]);
     }
 
+    if (preg_match('#^/api/files/([^/]+)/download$#', $path, $matches) && $method === 'GET') {
+        $session = require_session($sessionsFile);
+        $snapshot = load_snapshot($stateFile, $defaultProfiles);
+        $file = null;
+        foreach ($snapshot['fileUploads'] ?? [] as $item) if (($item['id'] ?? '') === $matches[1]) $file = $item;
+        if (!$file || empty($file['storedPath'])) send_json(404, ['ok' => false, 'error' => 'Stored file not found']);
+        if (!can_access_scope($session['user'] ?? [], $file['scope'] ?? $file)) send_json(403, ['ok' => false, 'error' => 'File is outside your tenant scope']);
+        $relativePath = preg_replace('#^data[\\\\/]#', '', (string)$file['storedPath']);
+        $filePath = realpath($dataDir . DIRECTORY_SEPARATOR . $relativePath);
+        $rootPath = realpath($dataDir);
+        if (!$filePath || !$rootPath || strpos($filePath, $rootPath) !== 0 || !is_file($filePath)) send_json(404, ['ok' => false, 'error' => 'Stored file not found']);
+        header('Content-Type: ' . ($file['type'] ?? 'application/octet-stream'));
+        header('Content-Disposition: attachment; filename="' . str_replace('"', '', (string)($file['name'] ?? 'download.bin')) . '"');
+        header('X-Content-Type-Options: nosniff');
+        readfile($filePath);
+        exit;
+    }
+
     if ($path === '/api/notifications/test' && $method === 'POST') {
+        $session = require_session($sessionsFile, true);
         $body = read_json();
         $snapshot = load_snapshot($stateFile, $defaultProfiles);
         $channels = is_array($body['channels'] ?? null) ? $body['channels'] : ['Email', 'SMS', 'Push'];
-        $records = array_map(fn($channel) => ['id' => 'delivery-' . time() . '-' . $channel, 'channel' => $channel, 'audience' => $body['audience'] ?? 'Launch test group', 'status' => 'Delivered', 'detail' => "{$channel} test generated by dedicated EduConnect API"], $channels);
+        $records = array_map(fn($channel) => ['id' => 'delivery-' . time() . '-' . $channel, 'channel' => $channel, 'audience' => $body['audience'] ?? 'Launch test group', 'status' => 'Delivered', 'detail' => "{$channel} test generated by dedicated EduConnect API", 'scope' => ['stateId' => $session['user']['stateId'] ?? 'ny', 'districtId' => $session['user']['districtId'] ?? 'nyc-doe', 'schoolId' => $session['user']['schoolId'] ?? 'ps-118']], $channels);
         $snapshot['notificationDeliveryLog'] = array_merge($records, $snapshot['notificationDeliveryLog'] ?? []);
         $snapshot['lmsNotifications'] = array_merge([['id' => 'notice-' . time(), 'level' => 'FYI', 'title' => 'Notification delivery test completed', 'target' => $body['audience'] ?? 'Launch Control', 'channel' => 'Dedicated API', 'read' => false]], $snapshot['lmsNotifications'] ?? []);
         save_snapshot($stateFile, $snapshot);

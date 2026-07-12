@@ -19,6 +19,8 @@ An operational multi-tenant educational web application foundation. It includes 
 - Search, notifications, settings, compact mode, high-contrast mode, and demo state export
 - Demo authentication for State Admin, District Admin, School Admin, Teacher, Parent, and Student
 - Role-aware permissions for tenant management, LMS controls, emergency override, and post approval
+- Tenant-scoped account visibility for state, district, school, guardian, and student users
+- Authenticated live API writes, file uploads/downloads, notification tests, backups, and user management
 - Guided onboarding walkthrough for the main workflows
 - JSON import/export for portable demo state
 - Mock API mode backed by a local service abstraction
@@ -98,7 +100,7 @@ In **Server database** mode, use the login dropdown with these starter credentia
 - Parent / Sarah Jenkins: `parent123`
 - Student / Hero: `student123`
 
-Admin accounts can create users, disable accounts, reset passwords, configure notification providers, and create backups through the API. Starter passwords are for launch only and should be changed before real users or school data are added.
+Admin accounts can create users, disable accounts, reset passwords, configure notification providers, and create backups through the API. State admins see state-scoped accounts, district admins see district-scoped accounts, and school admins see only their school tenant. Starter passwords are for launch only and should be changed before real users or school data are added.
 
 ## Demo State
 

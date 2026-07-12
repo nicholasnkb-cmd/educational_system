@@ -29,6 +29,40 @@ Upload `deploy/educonnect-hostinger.zip` to the subdomain web root in Hostinger 
 
 Important: extract the contents into `public_html`, not into a nested `dist` folder.
 
+## One-Command SFTP Deployment
+
+Create a local `.env` from `.env.example` and fill in the Hostinger SFTP password:
+
+```powershell
+Copy-Item .env.example .env
+notepad .env
+```
+
+Then deploy:
+
+```powershell
+npm run deploy:hostinger
+```
+
+The deploy script builds with `npm run build:hostinger` and uploads the contents of `dist/` to:
+
+```text
+/home/u209468809/domains/educationalsystem.fieldserviceit.com/public_html
+```
+
+Do not commit `.env`; it is ignored by Git.
+
+## Live Smoke Test
+
+After uploading, run:
+
+```powershell
+$env:LIVE_BASE_URL="https://educationalsystem.fieldserviceit.com"
+npm run test:live
+```
+
+This checks the live home, messages, and community routes.
+
 ## Hostinger hPanel Steps
 
 1. Open Hostinger hPanel.
@@ -43,5 +77,7 @@ Important: extract the contents into `public_html`, not into a nested `dist` fol
 ## Notes
 
 - The app uses hash routes like `/#messages`, so no server rewrite rules are required.
+- `public/.htaccess` is included so direct paths fall back to `index.html` on Apache.
+- `public/404.html` and `public/maintenance.html` are included as deploy safety pages.
 - If you create a different subdomain later, build with `npm run build:hostinger` again and upload the new `dist` contents to that subdomain's `public_html`.
 - Keep the Hostinger API token out of Git. `.env` and `.env.*` are ignored.

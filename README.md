@@ -103,6 +103,19 @@ Compress-Archive -Path .\dist\* -DestinationPath .\deploy\educonnect-hostinger.z
 
 See `HOSTINGER_DEPLOY.md` for the detected Hostinger target and upload steps.
 
+Automated SFTP deploy is also available after creating a local `.env` file:
+
+```powershell
+npm run deploy:hostinger
+```
+
+Live smoke test:
+
+```powershell
+$env:LIVE_BASE_URL="https://educationalsystem.fieldserviceit.com"
+npm run test:live
+```
+
 ## Data Boundary
 
 Mock records live behind `src/dataSource.js`. The current implementation re-exports local demo data, so future API work can replace that boundary without rewriting the UI renderers.

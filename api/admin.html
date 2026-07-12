@@ -31,14 +31,16 @@
         <div class="grid">
           <label>Role
             <select id="profile">
+              <option value="state-admin">State Admin - NYS State Admin</option>
               <option value="district-admin">Admin - District Admin</option>
+              <option value="school-admin">School Admin - School Admin</option>
               <option value="teacher">Teacher - Prof. Miller</option>
               <option value="parent">Parent - Sarah Jenkins</option>
               <option value="student">Student - Hero</option>
             </select>
           </label>
           <label>Password
-            <input id="password" type="password" value="admin123" />
+            <input id="password" type="password" value="state123" />
           </label>
         </div>
         <div class="actions">
@@ -63,6 +65,14 @@
     <script>
       let token = "";
       const output = document.querySelector("#output");
+      const starterPasswords = {
+        "state-admin": "state123",
+        "district-admin": "admin123",
+        "school-admin": "school123",
+        teacher: "teacher123",
+        parent: "parent123",
+        student: "student123",
+      };
       const show = (value) => { output.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2); };
       async function request(path, options = {}) {
         const response = await fetch(path, {
@@ -77,6 +87,9 @@
         if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
         return payload;
       }
+      document.querySelector("#profile").onchange = (event) => {
+        document.querySelector("#password").value = starterPasswords[event.target.value] || "";
+      };
       document.querySelector("#health").onclick = async () => show(await request("/api/health"));
       document.querySelector("#login").onclick = async () => {
         const payload = await request("/api/login", {

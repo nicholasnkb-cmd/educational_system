@@ -61,7 +61,7 @@ test("switches demo identities and enforces role permissions", async ({ page }) 
   await page.goto("/");
   await page.getByLabel("Login role").selectOption("parent");
   await expect(page.getByText("Signed in as Sarah Jenkins.")).toBeVisible();
-  await page.getByRole("link", { name: /Platform/i }).first().click();
+  await page.getByRole("link", { name: /State Admin/i }).first().click();
   await expect(page.getByRole("button", { name: /Add School Tenant/i })).toBeDisabled();
 
   await page.getByRole("link", { name: /Messages/i }).first().click();
@@ -103,7 +103,7 @@ test("manages permissions, roster, gradebook, and audit trail", async ({ page })
   await page.getByRole("button", { name: /Save Comment/i }).click();
   await expect(page.getByText("Gradebook comment saved.")).toBeVisible();
 
-  await page.getByRole("link", { name: /Platform/i }).first().click();
+  await page.getByRole("link", { name: /State Admin/i }).first().click();
   await expect(page.getByText("Saved gradebook comment for Maya Rodriguez")).toBeVisible();
 });
 

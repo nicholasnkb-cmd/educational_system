@@ -39,7 +39,9 @@ const port = Number(process.env.PORT || 8080);
 const sessions = new Map();
 
 const defaultPasswords = {
+  "state-admin": "state123",
   "district-admin": "admin123",
+  "school-admin": "school123",
   teacher: "teacher123",
   parent: "parent123",
   student: "student123",
@@ -103,11 +105,20 @@ async function ensureAccountsFile() {
     await stat(accountsFile);
   } catch {
     await saveAccounts(defaultAccounts());
+    return;
   }
+  const existingAccounts = await loadAccountsRaw();
+  const accountIds = new Set(existingAccounts.map((account) => account.profileId));
+  const missingAccounts = defaultAccounts().filter((account) => !accountIds.has(account.profileId));
+  if (missingAccounts.length) await saveAccounts([...existingAccounts, ...missingAccounts]);
 }
 
 async function loadAccounts() {
   await ensureAccountsFile();
+  return JSON.parse(await readFile(accountsFile, "utf8"));
+}
+
+async function loadAccountsRaw() {
   return JSON.parse(await readFile(accountsFile, "utf8"));
 }
 
@@ -165,7 +176,28 @@ async function ensureDataFile() {
 
 async function loadSnapshot() {
   await ensureDataFile();
-  return JSON.parse(await readFile(dataFile, "utf8"));
+  const snapshot = JSON.parse(await readFile(dataFile, "utf8"));
+  let changed = false;
+
+  if (snapshot.state?.role === "platform") {
+    snapshot.state.role = "state-admin";
+    changed = true;
+  }
+
+  const profileIds = new Set((snapshot.userProfiles || []).map((profile) => profile.id));
+  const missingProfiles = userProfiles.filter((profile) => !profileIds.has(profile.id));
+  if (missingProfiles.length) {
+    snapshot.userProfiles = [...(snapshot.userProfiles || []), ...missingProfiles];
+    changed = true;
+  }
+
+  if (snapshot.state?.currentUser === "district-admin" && !profileIds.has("state-admin")) {
+    snapshot.state.currentUser = "state-admin";
+    changed = true;
+  }
+
+  if (changed) await saveSnapshot(snapshot);
+  return snapshot;
 }
 
 async function saveSnapshot(snapshot) {
@@ -270,7 +302,7 @@ async function handleApi(req, res, pathname) {
       id,
       label: body.label || "New User",
       role,
-      landing: body.landing || (role === "Admin" ? "platform" : role.toLowerCase()),
+      landing: body.landing || (role === "Admin" ? "school-admin" : role.toLowerCase()),
       permissions: Array.isArray(body.permissions) ? body.permissions : role === "Admin" ? ["manage-tenants", "approve-posts", "emergency", "lms", "teacher-tools", "message", "manage-users", "view-compliance"] : role === "Teacher" ? ["lms", "teacher-tools", "message", "submit-post"] : role === "Parent" ? ["message", "submit-post"] : ["student-missions"],
     };
     snapshot.userProfiles.push(profile);

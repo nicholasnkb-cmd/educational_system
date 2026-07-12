@@ -58,14 +58,18 @@ $managedJsonKeys = [
 ];
 
 $defaultProfiles = [
-    ['id' => 'district-admin', 'label' => 'District Admin', 'role' => 'Admin', 'landing' => 'platform', 'permissions' => ['manage-tenants', 'approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance']],
+    ['id' => 'state-admin', 'label' => 'NYS State Admin', 'role' => 'State Admin', 'landing' => 'state-admin', 'permissions' => ['manage-tenants', 'approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance']],
+    ['id' => 'district-admin', 'label' => 'District Admin', 'role' => 'District Admin', 'landing' => 'district-admin', 'permissions' => ['manage-tenants', 'approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance']],
+    ['id' => 'school-admin', 'label' => 'School Admin', 'role' => 'School Admin', 'landing' => 'school-admin', 'permissions' => ['approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance']],
     ['id' => 'teacher', 'label' => 'Prof. Miller', 'role' => 'Teacher', 'landing' => 'teacher', 'permissions' => ['lms', 'teacher-tools', 'message', 'submit-post']],
-    ['id' => 'parent', 'label' => 'Sarah Jenkins', 'role' => 'Parent', 'landing' => 'parent', 'permissions' => ['message', 'submit-post']],
     ['id' => 'student', 'label' => 'Hero', 'role' => 'Student', 'landing' => 'student', 'permissions' => ['student-missions']],
+    ['id' => 'parent', 'label' => 'Sarah Jenkins', 'role' => 'Parent', 'landing' => 'parent', 'permissions' => ['message', 'submit-post']],
 ];
 
 $defaultPasswords = [
+    'state-admin' => 'state123',
     'district-admin' => 'admin123',
+    'school-admin' => 'school123',
     'teacher' => 'teacher123',
     'parent' => 'parent123',
     'student' => 'student123',
@@ -180,11 +184,11 @@ function audit_event(string $action, string $actor = 'System', array $detail = [
 function default_snapshot(array $profiles): array {
     return [
         'state' => [
-            'role' => 'platform',
+            'role' => 'state-admin',
             'selectedState' => 'ny',
             'selectedDistrict' => 'nyc-doe',
             'selectedSchool' => 'ps-118',
-            'currentUser' => 'district-admin',
+            'currentUser' => 'state-admin',
             'apiMode' => 'live-api',
             'liveUpdates' => true,
             'realtimeTick' => 0,
@@ -244,13 +248,40 @@ function load_accounts(string $accountsFile, array $profiles, array $defaultPass
         ];
     }
     if (!is_file($accountsFile)) write_file_json($accountsFile, $fallback);
-    return read_file_json($accountsFile, $fallback);
+    $accounts = read_file_json($accountsFile, $fallback);
+    foreach ($fallback as $defaultAccount) {
+        $exists = false;
+        foreach ($accounts as $account) {
+            if (($account['profileId'] ?? '') === $defaultAccount['profileId']) {
+                $exists = true;
+                break;
+            }
+        }
+        if (!$exists) $accounts[] = $defaultAccount;
+    }
+    write_file_json($accountsFile, $accounts);
+    return $accounts;
 }
 
 function load_snapshot(string $stateFile, array $profiles): array {
     if (!is_file($stateFile)) write_file_json($stateFile, default_snapshot($profiles));
     $snapshot = read_file_json($stateFile, default_snapshot($profiles));
     $snapshot['state']['apiMode'] = 'live-api';
+    if (($snapshot['state']['role'] ?? '') === 'platform') $snapshot['state']['role'] = 'state-admin';
+    if (($snapshot['state']['currentUser'] ?? '') === 'district-admin' && !in_array('state-admin', array_column($snapshot['userProfiles'] ?? [], 'id'), true)) {
+        $snapshot['state']['currentUser'] = 'state-admin';
+    }
+    foreach ($profiles as $defaultProfile) {
+        $exists = false;
+        foreach ($snapshot['userProfiles'] ?? [] as $profile) {
+            if (($profile['id'] ?? '') === $defaultProfile['id']) {
+                $exists = true;
+                break;
+            }
+        }
+        if (!$exists) $snapshot['userProfiles'][] = $defaultProfile;
+    }
+    write_file_json($stateFile, $snapshot);
     return $snapshot;
 }
 
@@ -429,7 +460,7 @@ try {
         foreach ($snapshot['userProfiles'] as $profile) if (($profile['id'] ?? '') === $id) send_json(409, ['ok' => false, 'error' => 'User already exists']);
         $role = (string)($body['role'] ?? 'Student');
         $permissions = is_array($body['permissions'] ?? null) ? $body['permissions'] : ($role === 'Admin' ? ['manage-tenants', 'approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance'] : ($role === 'Teacher' ? ['lms', 'teacher-tools', 'message', 'submit-post'] : ($role === 'Parent' ? ['message', 'submit-post'] : ['student-missions'])));
-        $profile = ['id' => $id, 'label' => $body['label'] ?? 'New User', 'role' => $role, 'landing' => $body['landing'] ?? ($role === 'Admin' ? 'platform' : strtolower($role)), 'permissions' => $permissions];
+        $profile = ['id' => $id, 'label' => $body['label'] ?? 'New User', 'role' => $role, 'landing' => $body['landing'] ?? ($role === 'Admin' ? 'school-admin' : strtolower($role)), 'permissions' => $permissions];
         $snapshot['userProfiles'][] = $profile;
         save_snapshot($stateFile, $snapshot);
         $accounts = load_accounts($accountsFile, $snapshot['userProfiles'], $defaultPasswords);

@@ -1,5 +1,7 @@
 export const roles = [
-  { id: "platform", label: "Platform", icon: "building-2", image: "/stitch_educonnect_interactive_portal/teacher_dashboard/screen.png" },
+  { id: "state-admin", label: "State Admin", icon: "map", image: "/stitch_educonnect_interactive_portal/teacher_dashboard/screen.png" },
+  { id: "district-admin", label: "District Admin", icon: "building-2", image: "/stitch_educonnect_interactive_portal/teacher_dashboard/screen.png" },
+  { id: "school-admin", label: "School Admin", icon: "shield-check", image: "/stitch_educonnect_interactive_portal/teacher_dashboard/screen.png" },
   { id: "lms", label: "LMS", icon: "layers", image: "/stitch_educonnect_interactive_portal/teacher_dashboard/screen.png" },
   { id: "student", label: "Student", icon: "sparkles", image: "/stitch_educonnect_interactive_portal/student_portal_1/screen.png" },
   { id: "teacher", label: "Teacher", icon: "graduation-cap", image: "/stitch_educonnect_interactive_portal/teacher_dashboard/screen.png" },
@@ -9,7 +11,7 @@ export const roles = [
 ];
 
 export const state = {
-  role: "platform",
+  role: "state-admin",
   selectedState: "ny",
   selectedDistrict: "nyc-doe",
   selectedSchool: "ps-118",
@@ -32,7 +34,7 @@ export const state = {
   offlinePackReady: false,
   workHoursOpen: true,
   emergencyOverride: false,
-  currentUser: "district-admin",
+  currentUser: "state-admin",
   apiMode: "local",
   tourOpen: false,
   tourStep: 0,
@@ -50,10 +52,12 @@ export const state = {
 };
 
 export const userProfiles = [
-  { id: "district-admin", label: "District Admin", role: "Admin", landing: "platform", permissions: ["manage-tenants", "approve-posts", "emergency", "lms", "teacher-tools", "message", "manage-users", "view-compliance"] },
+  { id: "state-admin", label: "NYS State Admin", role: "State Admin", landing: "state-admin", permissions: ["manage-tenants", "approve-posts", "emergency", "lms", "teacher-tools", "message", "manage-users", "view-compliance"] },
+  { id: "district-admin", label: "District Admin", role: "District Admin", landing: "district-admin", permissions: ["manage-tenants", "approve-posts", "emergency", "lms", "teacher-tools", "message", "manage-users", "view-compliance"] },
+  { id: "school-admin", label: "School Admin", role: "School Admin", landing: "school-admin", permissions: ["approve-posts", "emergency", "lms", "teacher-tools", "message", "manage-users", "view-compliance"] },
   { id: "teacher", label: "Prof. Miller", role: "Teacher", landing: "teacher", permissions: ["lms", "teacher-tools", "message", "submit-post"] },
-  { id: "parent", label: "Sarah Jenkins", role: "Parent", landing: "parent", permissions: ["message", "submit-post"] },
   { id: "student", label: "Hero", role: "Student", landing: "student", permissions: ["student-missions"] },
+  { id: "parent", label: "Sarah Jenkins", role: "Parent", landing: "parent", permissions: ["message", "submit-post"] },
 ];
 
 export const permissionCatalog = [

@@ -4,11 +4,12 @@
 ![Tests](https://img.shields.io/badge/tests-Playwright-2ea44f)
 ![Deployment](https://img.shields.io/badge/deploy-GitHub%20Pages-blue)
 
-An operational multi-tenant educational web application foundation. It includes platform governance, LMS tools, student missions, teacher workflows, parent views, messaging, community board approvals, local persistence, and an optional Node API server for shared backend state.
+An operational multi-tenant educational web application foundation. It includes state, district, and school administration views, LMS tools, student missions, teacher workflows, parent views, messaging, community board approvals, local persistence, and an optional Node API server for shared backend state.
 
 ## Features
 
-- Platform tenant selector with state, district, and school hierarchy
+- Separate State Admin, District Admin, School Admin, Teacher, Parent, and Student workspaces
+- State, district, and school hierarchy with tenant selectors and compliance oversight
 - LMS dashboard with assignments, offline packs, guardrails, notifications, and account switching
 - Student mission completion with points and awards
 - Teacher class filtering, assignment creation, activity refresh, and reply flows
@@ -16,7 +17,7 @@ An operational multi-tenant educational web application foundation. It includes 
 - Communication hub with work-hour restrictions and emergency override
 - Community board submission, approver assignment, approval, rejection, and publishing
 - Search, notifications, settings, compact mode, high-contrast mode, and demo state export
-- Demo authentication for Admin, Teacher, Parent, and Student
+- Demo authentication for State Admin, District Admin, School Admin, Teacher, Parent, and Student
 - Role-aware permissions for tenant management, LMS controls, emergency override, and post approval
 - Guided onboarding walkthrough for the main workflows
 - JSON import/export for portable demo state
@@ -79,7 +80,9 @@ Operational accounts are stored in `data/educonnect-accounts.json`, uploaded fil
 
 Use the **Signed in as** panel to switch between:
 
-- District Admin: full tenant, LMS, messaging, emergency, and approval access
+- State Admin: statewide governance, compliance, tenant oversight, emergency, and approval access
+- District Admin: district operations, school tenants, LMS, messaging, emergency, and approval access
+- School Admin: campus operations, school users, LMS, messaging, and approval access
 - Teacher: LMS, assignment, messaging, and post submission access
 - Parent: messaging and community submission access
 - Student: student mission access
@@ -88,7 +91,9 @@ Restricted actions remain visible but disabled with an explanatory permission no
 
 In **Server database** mode, use the login dropdown with these starter credentials:
 
-- Admin / District Admin: `admin123`
+- State Admin / NYS State Admin: `state123`
+- District Admin / District Admin: `admin123`
+- School Admin / School Admin: `school123`
 - Teacher / Prof. Miller: `teacher123`
 - Parent / Sarah Jenkins: `parent123`
 - Student / Hero: `student123`

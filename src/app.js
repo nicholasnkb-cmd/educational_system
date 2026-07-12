@@ -94,7 +94,7 @@ import { loginServerProfile, mockApiStatus, sendServerNotificationTest, uploadSe
 const app = document.querySelector("#app");
 
 const tourSteps = [
-  { title: "Choose a role", body: "Use the demo login panel to switch between admin, teacher, parent, and student access.", role: "platform" },
+  { title: "Choose a role", body: "Use the demo login panel to switch between state, district, school, teacher, parent, and student access.", role: "state-admin" },
   { title: "Create learning work", body: "Teachers and admins can create assignments and build offline packs in the LMS.", role: "lms" },
   { title: "Communicate safely", body: "Messaging respects school work hours, with emergency override reserved for admins.", role: "messages" },
   { title: "Approve community posts", body: "Admins can approve posts before they publish to the school community board.", role: "community" },
@@ -268,10 +268,12 @@ function validateDemoSnapshot(snapshot) {
 
 function hashRole() {
   const requested = window.location.hash.replace("#", "");
+  if (requested === "platform") return "state-admin";
   return roles.some((role) => role.id === requested) ? requested : "";
 }
 
 function setActiveRole(roleId, pushRoute = true) {
+  if (roleId === "platform") roleId = "state-admin";
   if (!roles.some((role) => role.id === roleId)) return;
   state.role = roleId;
   state.notificationsOpen = false;
@@ -320,7 +322,7 @@ function searchableItems() {
     ...deadlines.map((item) => ({ label: item.title, detail: item.meta, role: "parent" })),
     ...conversations.map((item) => ({ label: item.name, detail: item.preview, role: "messages" })),
     ...selectedCommunityBoard().published.map((post) => ({ label: post.title, detail: `${post.type} post`, role: "community" })),
-    { label: school.name, detail: `${school.category} school tenant`, role: "platform" },
+    { label: school.name, detail: `${school.category} school tenant`, role: "school-admin" },
   ];
 }
 
@@ -452,7 +454,9 @@ function render() {
         ${renderDemoLauncher()}
         ${renderTour()}
         ${renderSearchResults()}
-        ${state.role === "platform" ? renderPlatform() : ""}
+        ${state.role === "state-admin" ? renderStateAdmin() : ""}
+        ${state.role === "district-admin" ? renderDistrictAdmin() : ""}
+        ${state.role === "school-admin" ? renderSchoolAdmin() : ""}
         ${state.role === "lms" ? renderAdvancedLms() : ""}
         ${state.role === "student" ? renderStudent() : ""}
         ${state.role === "teacher" ? renderTeacher() : ""}
@@ -588,7 +592,7 @@ function renderMobileNav() {
 }
 
 function renderTopbar(role) {
-  const title = role.id === "messages" ? "Communication Hub" : role.id === "platform" ? "Tenant Governance" : `${role.label} Dashboard`;
+  const title = role.id === "messages" ? "Communication Hub" : role.id === "state-admin" ? "State Governance" : role.id === "district-admin" ? "District Operations" : role.id === "school-admin" ? "School Administration" : `${role.label} Dashboard`;
   return `
     <header class="topbar">
       <div><p class="eyebrow">${role.label} workspace</p><h2>${title}</h2></div>
@@ -599,6 +603,160 @@ function renderTopbar(role) {
         <button class="icon-button" aria-label="Settings" data-toggle-settings>${icon("settings")}</button>
       </div>
     </header>
+  `;
+}
+
+function renderStateAdmin() {
+  const stateRecord = selectedStateRecord();
+  const allDistricts = stateRecord.districts;
+  const allSchools = allDistricts.flatMap((item) => item.schools);
+  const activeSchools = allSchools.filter((school) => school.status === "Active").length;
+  return `
+    <section class="dashboard-grid platform-grid">
+      <div class="welcome-strip platform-welcome">
+        <div>
+          <p class="eyebrow">State admin workspace</p>
+          <h2>Tenant Governance</h2>
+          <p>State administrators supervise districts, compliance, tenant standards, statewide calendars, and cross-district readiness.</p>
+        </div>
+        <div class="inline-actions">
+          <button class="secondary-action" data-open-role="district-admin">${icon("building-2")} Review Districts</button>
+          <button class="primary-action" data-add-school ${permissionAttrs("manage-tenants", "Only state and district admins can add school tenants.")}>${icon("plus")} Add School Tenant</button>
+        </div>
+      </div>
+      ${permissionNotice("manage-tenants", "Tenant creation and district configuration are admin-only in this demo.")}
+      ${statCard("Districts", allDistricts.length, "building-2", "blue")}
+      ${statCard("Schools", allSchools.length, "graduation-cap", "teal")}
+      ${statCard("Active tenants", activeSchools, "shield-check", "gold")}
+      ${renderUnifiedOperatingSystem()}
+      ${renderUsersRolesPanel()}
+      ${renderRealtimePanel()}
+      <section class="panel state-management-panel">
+        <div class="section-heading"><h3>District Oversight</h3><span>${stateRecord.name}</span></div>
+        <div class="management-list">
+          ${allDistricts.map((districtItem) => `
+            <button class="management-row ${districtItem.id === selectedDistrictRecord().id ? "active" : ""}" data-manage-district="${districtItem.id}">
+              <div class="management-icon">${icon("building-2")}</div>
+              <div><strong>${districtItem.name}</strong><small>${districtItem.region} • Superintendent: ${districtItem.superintendent}</small></div>
+              <span>${districtItem.schools.length} schools</span>
+            </button>
+          `).join("")}
+        </div>
+      </section>
+      ${renderCompliancePanel()}
+      <section class="panel audit-panel">
+        <div class="section-heading"><h3>Audit Trail</h3><span>Cross-tenant accountability</span></div>
+        <div class="audit-list">
+          ${auditLogs.map((log) => `
+            <article class="audit-row">
+              ${icon("clipboard-check")}
+              <div><strong>${log.event}</strong><small>${log.actor} • ${log.scope}</small></div>
+              <time>${log.time}</time>
+            </article>
+          `).join("")}
+        </div>
+      </section>
+      <section class="panel calendar-panel">
+        <div class="section-heading"><h3>Statewide Calendar</h3><span>Policy, reporting, and public events</span></div>
+        <div class="calendar-list">
+          ${calendarEvents.map((event) => `<article class="calendar-row"><div class="calendar-date">${event.date}</div><div><strong>${event.title}</strong><small>${event.audience} • ${event.type}</small></div></article>`).join("")}
+        </div>
+      </section>
+      <section class="panel hierarchy-panel">
+        <div class="section-heading"><h3>Governance Chain</h3><span>State to classroom</span></div>
+        <div class="hierarchy-list">
+          ${governanceLevels.map(([level, roleList], index) => `<article class="hierarchy-level"><div class="level-number">${index + 1}</div><div><h4>${level}</h4><p>${roleList.join(" • ")}</p></div></article>`).join("")}
+        </div>
+      </section>
+      ${renderProductionReadiness()}
+    </section>
+  `;
+}
+
+function renderDistrictAdmin() {
+  const stateRecord = selectedStateRecord();
+  const district = selectedDistrictRecord();
+  const schools = district.schools;
+  const totalStudents = schools.reduce((sum, school) => sum + school.students, 0);
+  const totalStaff = schools.reduce((sum, school) => sum + school.staff, 0);
+  return `
+    <section class="dashboard-grid platform-grid">
+      <div class="welcome-strip platform-welcome">
+        <div>
+          <p class="eyebrow">District admin workspace</p>
+          <h2>${district.name}</h2>
+          <p>District administrators manage school tenants, staffing, rollout readiness, district messages, and cross-school performance.</p>
+        </div>
+        <button class="primary-action" data-add-school ${permissionAttrs("manage-tenants", "Only district and state admins can add school tenants.")}>${icon("plus")} Add School Tenant</button>
+      </div>
+      ${statCard("Schools", schools.length, "graduation-cap", "blue")}
+      ${statCard("Students", totalStudents.toLocaleString(), "users", "teal")}
+      ${statCard("Staff", totalStaff.toLocaleString(), "shield-check", "gold")}
+      <section class="panel tenant-controls">
+        <div class="section-heading"><h3>District Scope</h3><span>${stateRecord.name}</span></div>
+        <div class="tenant-selectors">
+          <label><span>State</span><select id="state-filter">${tenantStates.map((item) => `<option value="${item.id}" ${state.selectedState === item.id ? "selected" : ""}>${item.name}</option>`).join("")}</select></label>
+          <label><span>District</span><select id="district-filter">${stateRecord.districts.map((item) => `<option value="${item.id}" ${district.id === item.id ? "selected" : ""}>${item.name}</option>`).join("")}</select></label>
+        </div>
+      </section>
+      <section class="panel district-management-panel">
+        <div class="section-heading"><h3>Schools In This District</h3><span>${district.region}</span></div>
+        <div class="management-list">
+          ${schools.map((schoolItem) => `<button class="management-row ${schoolItem.id === selectedSchoolRecord().id ? "active" : ""}" data-manage-school="${schoolItem.id}"><div class="management-icon">${icon("graduation-cap")}</div><div><strong>${schoolItem.name}</strong><small>${schoolItem.category} • ${schoolItem.subdomain}.educonnect.local</small></div><span>${schoolItem.status}</span></button>`).join("")}
+        </div>
+      </section>
+      ${renderUnifiedOperatingSystem()}
+      ${renderUsersRolesPanel()}
+      ${renderRealtimePanel()}
+      <section class="panel audit-panel">
+        <div class="section-heading"><h3>District Audit Trail</h3><span>School and staff actions</span></div>
+        <div class="audit-list">${auditLogs.map((log) => `<article class="audit-row">${icon("clipboard-check")}<div><strong>${log.event}</strong><small>${log.actor} • ${log.scope}</small></div><time>${log.time}</time></article>`).join("")}</div>
+      </section>
+    </section>
+  `;
+}
+
+function renderSchoolAdmin() {
+  const school = selectedSchoolRecord();
+  const board = selectedCommunityBoard();
+  const watchCount = rosterRecords.filter((record) => record.status === "Watch").length;
+  const pendingSubmissions = gradebookSubmissions.filter((submission) => submission.status !== "Reviewed").length;
+  return `
+    <section class="dashboard-grid platform-grid">
+      <div class="welcome-strip platform-welcome">
+        <div>
+          <p class="eyebrow">School admin workspace</p>
+          <h2>${school.name}</h2>
+          <p>School administrators run campus operations: users, safety messaging, approvals, LMS visibility, roster health, and family communication windows.</p>
+        </div>
+        <button class="primary-action" data-open-role="community">${icon("megaphone")} Review Community Posts</button>
+      </div>
+      ${statCard("Students", school.students.toLocaleString(), "users", "blue")}
+      ${statCard("Staff", school.staff.toLocaleString(), "shield-check", "teal")}
+      ${statCard("Pending approvals", board.pending.length, "clipboard-check", "gold")}
+      <section class="panel instance-panel">
+        <div class="section-heading"><h3>Campus Tenant</h3><span>${school.status}</span></div>
+        <div class="instance-card">
+          <div><span>Instance URL</span><strong>${school.subdomain}.educonnect.local</strong></div>
+          <div><span>Plan</span><strong>${school.plan}</strong></div>
+          <div><span>Work hours</span><strong>${school.workHours}</strong></div>
+          <div><span>Messages</span><strong>${school.messages}</strong></div>
+          <div><span>Roster watch</span><strong>${watchCount}</strong></div>
+          <div><span>Submissions</span><strong>${pendingSubmissions} pending</strong></div>
+        </div>
+      </section>
+      ${renderUsersRolesPanel()}
+      <section class="panel permissions-panel">
+        <div class="section-heading"><h3>School Operations</h3><span>LMS, messages, approvals</span></div>
+        <div class="permission-table">
+          <button class="permission-row" data-open-role="lms"><strong>LMS</strong><span>Assignments and gradebook</span><small>${lmsAssignments.length} assignments</small></button>
+          <button class="permission-row" data-open-role="messages"><strong>Messages</strong><span>Family and staff communication</span><small>${conversations.reduce((sum, item) => sum + (item.unread || 0), 0)} unread</small></button>
+          <button class="permission-row" data-open-role="community"><strong>Community</strong><span>Approval queue and published posts</span><small>${board.pending.length} pending</small></button>
+        </div>
+      </section>
+      ${renderCompliancePanel()}
+      ${renderRealtimePanel()}
+    </section>
   `;
 }
 
@@ -1546,7 +1704,7 @@ function bindEvents() {
 
   document.querySelector("[data-reset-demo]")?.addEventListener("click", () => {
     resetDemoState();
-    if (window.location.hash !== "#platform") history.pushState(null, "", "#platform");
+    if (window.location.hash !== "#state-admin") history.pushState(null, "", "#state-admin");
     render();
   });
 
@@ -1731,7 +1889,7 @@ function bindEvents() {
     const name = document.querySelector("#onboarding-user-name").value.trim();
     const role = document.querySelector("#onboarding-user-role").value;
     if (!name) return;
-    const landing = role === "Admin" ? "platform" : role.toLowerCase();
+    const landing = role === "Admin" ? "school-admin" : role.toLowerCase();
     userProfiles.push({
       id: `${role.toLowerCase()}-${Date.now()}`,
       label: name,

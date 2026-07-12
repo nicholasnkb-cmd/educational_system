@@ -171,3 +171,30 @@ test("integrates every workspace into the platform operating system", async ({ p
   await modules.getByRole("button", { name: /Messages/i }).click();
   await expect(page.getByRole("heading", { name: "Communication Hub" })).toBeVisible();
 });
+
+test("runs production launch controls with backend-ready filler data", async ({ page }) => {
+  await page.goto("/#platform");
+  const launch = page.locator(".production-panel");
+  await expect(launch.getByRole("heading", { name: "Launch Control" })).toBeVisible();
+
+  await launch.locator("#backend-provider").selectOption("Firebase");
+  await expect(page.getByText("Firebase selected as backend provider.")).toBeVisible();
+
+  await launch.getByRole("button", { name: /Backend Ready/i }).click();
+  await expect(page.getByText("Backend-ready mode enabled.")).toBeVisible();
+
+  await launch.getByRole("button", { name: /Provision mock schema/i }).click();
+  await expect(page.getByText("Database blueprint marked ready.")).toBeVisible();
+
+  await launch.getByPlaceholder("Invite user name").fill("Launch Teacher");
+  await launch.locator("#onboarding-user-role").selectOption("Teacher");
+  await launch.getByRole("button", { name: /Invite/i }).click();
+  await expect(page.getByText("Launch Teacher invited as Teacher.")).toBeVisible();
+
+  await launch.getByRole("button", { name: /Send test batch/i }).click();
+  await expect(page.getByText("Notification delivery test completed.")).toBeVisible();
+
+  await expect(launch.getByText("File Uploads")).toBeVisible();
+  await expect(launch.getByText("Privacy & Security")).toBeVisible();
+  await expect(launch.getByText("Deployment Pipeline")).toBeVisible();
+});

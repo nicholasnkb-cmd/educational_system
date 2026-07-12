@@ -10,6 +10,12 @@ import {
   lmsFiles,
   lmsNotifications,
   realtimeEvents,
+  databaseTables,
+  onboardingTasks,
+  fileUploads,
+  notificationDeliveryLog,
+  securityChecklist,
+  deployPipeline,
   offlineSyncQueue,
   activityFeed,
   conversations,
@@ -31,6 +37,12 @@ const initialSnapshot = structuredClone({
   lmsFiles,
   lmsNotifications,
   realtimeEvents,
+  databaseTables,
+  onboardingTasks,
+  fileUploads,
+  notificationDeliveryLog,
+  securityChecklist,
+  deployPipeline,
   offlineSyncQueue,
   activityFeed,
   conversations,
@@ -68,6 +80,12 @@ export function getDemoSnapshot() {
     lmsFiles,
     lmsNotifications,
     realtimeEvents,
+    databaseTables,
+    onboardingTasks,
+    fileUploads,
+    notificationDeliveryLog,
+    securityChecklist,
+    deployPipeline,
     offlineSyncQueue,
     activityFeed,
     conversations,
@@ -88,6 +106,12 @@ export function applyDemoSnapshot(snapshot) {
   if (snapshot.lmsFiles) replaceArray(lmsFiles, snapshot.lmsFiles);
   if (snapshot.lmsNotifications) replaceArray(lmsNotifications, snapshot.lmsNotifications);
   if (snapshot.realtimeEvents) replaceArray(realtimeEvents, snapshot.realtimeEvents);
+  if (snapshot.databaseTables) replaceArray(databaseTables, snapshot.databaseTables);
+  if (snapshot.onboardingTasks) replaceArray(onboardingTasks, snapshot.onboardingTasks);
+  if (snapshot.fileUploads) replaceArray(fileUploads, snapshot.fileUploads);
+  if (snapshot.notificationDeliveryLog) replaceArray(notificationDeliveryLog, snapshot.notificationDeliveryLog);
+  if (snapshot.securityChecklist) replaceArray(securityChecklist, snapshot.securityChecklist);
+  if (snapshot.deployPipeline) replaceArray(deployPipeline, snapshot.deployPipeline);
   if (snapshot.offlineSyncQueue) replaceArray(offlineSyncQueue, snapshot.offlineSyncQueue);
   if (snapshot.activityFeed) replaceArray(activityFeed, snapshot.activityFeed);
   if (snapshot.conversations) replaceArray(conversations, snapshot.conversations);
@@ -118,6 +142,12 @@ export function resetDemoState() {
   replaceArray(lmsFiles, initialSnapshot.lmsFiles);
   replaceArray(lmsNotifications, initialSnapshot.lmsNotifications);
   replaceArray(realtimeEvents, initialSnapshot.realtimeEvents);
+  replaceArray(databaseTables, initialSnapshot.databaseTables);
+  replaceArray(onboardingTasks, initialSnapshot.onboardingTasks);
+  replaceArray(fileUploads, initialSnapshot.fileUploads);
+  replaceArray(notificationDeliveryLog, initialSnapshot.notificationDeliveryLog);
+  replaceArray(securityChecklist, initialSnapshot.securityChecklist);
+  replaceArray(deployPipeline, initialSnapshot.deployPipeline);
   replaceArray(offlineSyncQueue, initialSnapshot.offlineSyncQueue);
   replaceArray(activityFeed, initialSnapshot.activityFeed);
   replaceArray(conversations, initialSnapshot.conversations);

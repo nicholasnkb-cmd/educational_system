@@ -59,6 +59,12 @@ import {
   lmsAccounts,
   lmsNotifications,
   realtimeEvents,
+  databaseTables,
+  onboardingTasks,
+  fileUploads,
+  notificationDeliveryLog,
+  securityChecklist,
+  deployPipeline,
   workspaceIntegrations,
   classroomStrengths,
   tenantSettings,
@@ -614,6 +620,8 @@ function renderPlatform() {
 
       ${renderUnifiedOperatingSystem()}
 
+      ${renderProductionReadiness()}
+
       ${renderRealtimePanel()}
 
       <section class="panel state-management-panel">
@@ -906,6 +914,74 @@ function renderUnifiedOperatingSystem() {
             <span><strong>${auditLogs.length}</strong><small>Audit entries</small></span>
           </div>
           ${realtimeEvents.slice(0, 2).map((event) => `<div class="snapshot-row"><strong>${event.type}</strong><span>${event.title}</span><em>${event.time}</em></div>`).join("")}
+        </article>
+      </div>
+    </section>
+  `;
+}
+
+function renderProductionReadiness() {
+  const doneTasks = onboardingTasks.filter((task) => task.done).length;
+  const secured = securityChecklist.filter((item) => item.done).length;
+  return `
+    <section class="panel production-panel">
+      <div class="section-heading">
+        <div><p class="eyebrow">Production operations</p><h3>Launch Control</h3></div>
+        <span>${state.gatewayMode === "demo" ? "Demo mode" : "Backend-ready mode"}</span>
+      </div>
+      <div class="production-grid">
+        <article class="production-card gateway-card">
+          <div class="section-heading"><h4>Public Login Gateway</h4><span>${state.authProvider}</span></div>
+          <label><span>Auth mode</span><select id="auth-provider"><option ${state.authProvider === "Role-based demo auth" ? "selected" : ""}>Role-based demo auth</option><option ${state.authProvider === "Supabase Auth" ? "selected" : ""}>Supabase Auth</option><option ${state.authProvider === "Firebase Auth" ? "selected" : ""}>Firebase Auth</option></select></label>
+          <label><span>Backend provider</span><select id="backend-provider"><option ${state.backendProvider === "Supabase" ? "selected" : ""}>Supabase</option><option ${state.backendProvider === "Firebase" ? "selected" : ""}>Firebase</option><option ${state.backendProvider === "Custom API" ? "selected" : ""}>Custom API</option></select></label>
+          <div class="gateway-actions">
+            <button class="secondary-action" data-set-gateway="demo">${icon("play")} Demo Mode</button>
+            <button class="primary-action" data-set-gateway="backend">${icon("database")} Backend Ready</button>
+          </div>
+        </article>
+
+        <article class="production-card">
+          <div class="section-heading"><h4>Database Blueprint</h4><button class="text-button" data-provision-schema>Provision mock schema</button></div>
+          <div class="schema-list">
+            ${databaseTables.map((table) => `<div class="schema-row"><strong>${table.name}</strong><span>${table.records} records</span><em>${table.status}</em><small>${table.detail}</small></div>`).join("")}
+          </div>
+        </article>
+
+        <article class="production-card">
+          <div class="section-heading"><h4>Admin Onboarding</h4><span>${doneTasks}/${onboardingTasks.length} complete</span></div>
+          <div class="checklist-list">
+            ${onboardingTasks.map((task) => `<label class="checklist-row"><input type="checkbox" data-onboarding-task="${task.id}" ${task.done ? "checked" : ""} /><span class="custom-check">${task.done ? icon("check") : ""}</span><span><strong>${task.label}</strong><small>${task.owner}</small></span></label>`).join("")}
+          </div>
+          <form id="onboarding-user-form" class="mini-form">
+            <input id="onboarding-user-name" placeholder="Invite user name" />
+            <select id="onboarding-user-role"><option>Teacher</option><option>Parent</option><option>Student</option><option>Admin</option></select>
+            <button class="secondary-action" type="submit">${icon("plus")} Invite</button>
+          </form>
+        </article>
+
+        <article class="production-card">
+          <div class="section-heading"><h4>File Uploads</h4><span>${fileUploads.length} files</span></div>
+          <label class="upload-drop">${icon("paperclip")} Add assignment, PDF, image, or community file<input type="file" id="production-file-upload" multiple /></label>
+          <div class="upload-list">
+            ${fileUploads.map((file) => `<div class="upload-row"><strong>${file.name}</strong><span>${file.area} • ${file.size}</span><em>${file.status}</em></div>`).join("")}
+          </div>
+        </article>
+
+        <article class="production-card">
+          <div class="section-heading"><h4>Notification Delivery</h4><button class="text-button" data-send-delivery-test>Send test batch</button></div>
+          ${notificationDeliveryLog.map((item) => `<div class="delivery-row"><strong>${item.channel}</strong><span>${item.audience}</span><em>${item.status}</em><small>${item.detail}</small></div>`).join("")}
+        </article>
+
+        <article class="production-card">
+          <div class="section-heading"><h4>Privacy & Security</h4><span>${secured}/${securityChecklist.length} ready</span></div>
+          <div class="checklist-list">
+            ${securityChecklist.map((item) => `<label class="checklist-row"><input type="checkbox" data-security-check="${item.id}" ${item.done ? "checked" : ""} /><span class="custom-check">${item.done ? icon("check") : ""}</span><span><strong>${item.label}</strong><small>${item.status}</small></span></label>`).join("")}
+          </div>
+        </article>
+
+        <article class="production-card deploy-card">
+          <div class="section-heading"><h4>Deployment Pipeline</h4><span>Hostinger live</span></div>
+          ${deployPipeline.map((item) => `<div class="pipeline-row"><strong>${item.step}</strong><span>${item.detail}</span><em class="${item.status.toLowerCase()}">${item.status}</em></div>`).join("")}
         </article>
       </div>
     </section>
@@ -1580,6 +1656,104 @@ function bindEvents() {
   document.querySelector("[data-toggle-live]")?.addEventListener("change", (event) => {
     state.liveUpdates = event.target.checked;
     announce(state.liveUpdates ? "Realtime updates enabled." : "Realtime updates paused.");
+  });
+
+  document.querySelector("#auth-provider")?.addEventListener("change", (event) => {
+    state.authProvider = event.target.value;
+    addAudit(`Updated auth provider to ${state.authProvider}`);
+    announce(`${state.authProvider} selected.`);
+  });
+
+  document.querySelector("#backend-provider")?.addEventListener("change", (event) => {
+    state.backendProvider = event.target.value;
+    addAudit(`Updated backend provider to ${state.backendProvider}`);
+    announce(`${state.backendProvider} selected as backend provider.`);
+  });
+
+  document.querySelectorAll("[data-set-gateway]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.gatewayMode = button.dataset.setGateway;
+      pushRealtimeEvent("Production", "Gateway mode updated", `Launch gateway is now ${state.gatewayMode}.`);
+      announce(state.gatewayMode === "backend" ? "Backend-ready mode enabled." : "Demo mode enabled.");
+    });
+  });
+
+  document.querySelector("[data-provision-schema]")?.addEventListener("click", () => {
+    databaseTables.forEach((table) => {
+      table.status = "Ready";
+    });
+    pushRealtimeEvent("Database", "Mock schema provisioned", `${databaseTables.length} production tables marked ready.`);
+    addAudit("Provisioned mock production schema");
+    announce("Database blueprint marked ready.");
+  });
+
+  document.querySelectorAll("[data-onboarding-task]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const task = onboardingTasks.find((item) => item.id === input.dataset.onboardingTask);
+      if (!task) return;
+      task.done = input.checked;
+      addAudit(`${task.done ? "Completed" : "Reopened"} onboarding task: ${task.label}`);
+      announce("Onboarding checklist updated.");
+    });
+  });
+
+  document.querySelector("#onboarding-user-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const name = document.querySelector("#onboarding-user-name").value.trim();
+    const role = document.querySelector("#onboarding-user-role").value;
+    if (!name) return;
+    const landing = role === "Admin" ? "platform" : role.toLowerCase();
+    userProfiles.push({
+      id: `${role.toLowerCase()}-${Date.now()}`,
+      label: name,
+      role,
+      landing,
+      permissions: role === "Admin" ? ["manage-tenants", "approve-posts", "emergency", "lms", "teacher-tools", "message", "manage-users", "view-compliance"] : role === "Teacher" ? ["lms", "teacher-tools", "message", "submit-post"] : role === "Parent" ? ["message", "submit-post"] : ["student-missions"],
+    });
+    pushNotification("Action", `${name} invited`, selectedSchoolRecord().name, "Onboarding");
+    addAudit(`Invited ${role}: ${name}`);
+    announce(`${name} invited as ${role}.`);
+  });
+
+  document.querySelector("#production-file-upload")?.addEventListener("change", (event) => {
+    Array.from(event.target.files || []).forEach((file) => {
+      fileUploads.unshift({
+        id: `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        name: file.name,
+        area: state.role === "community" ? "Community" : "LMS",
+        size: `${Math.max(1, Math.round(file.size / 1024))} KB`,
+        status: "Stored in demo metadata; ready for cloud storage",
+      });
+    });
+    pushRealtimeEvent("Files", "Upload metadata captured", `${event.target.files?.length || 0} file(s) added to production upload queue.`);
+    addAudit("Added production upload metadata");
+    announce("File upload metadata added.");
+  });
+
+  document.querySelector("[data-send-delivery-test]")?.addEventListener("click", () => {
+    ["Email", "SMS", "Push"].forEach((channel) => {
+      notificationDeliveryLog.unshift({
+        id: `delivery-${Date.now()}-${channel}`,
+        channel,
+        audience: "Launch test group",
+        status: "Delivered",
+        detail: `${channel} test generated from Launch Control`,
+      });
+    });
+    pushNotification("FYI", "Notification delivery test completed", selectedSchoolRecord().name, "Launch Control");
+    addAudit("Sent notification delivery test batch");
+    announce("Notification delivery test completed.");
+  });
+
+  document.querySelectorAll("[data-security-check]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const item = securityChecklist.find((check) => check.id === input.dataset.securityCheck);
+      if (!item) return;
+      item.done = input.checked;
+      item.status = item.done ? "Configured" : "Needs review";
+      addAudit(`Updated security checklist: ${item.label}`);
+      announce("Security checklist updated.");
+    });
   });
 
   document.querySelectorAll("[data-toggle-setting]").forEach((input) => {

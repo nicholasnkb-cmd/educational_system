@@ -26,6 +26,9 @@ export const state = {
   liveUpdates: true,
   realtimeTick: 0,
   activeCallName: "",
+  gatewayMode: "demo",
+  backendProvider: "Supabase",
+  authProvider: "Role-based demo auth",
   offlinePackReady: false,
   workHoursOpen: true,
   emergencyOverride: false,
@@ -339,3 +342,51 @@ export const communityBoards = {
     ],
   },
 };
+
+export const databaseTables = [
+  { name: "users", records: userProfiles.length, status: "Mapped", detail: "Role, permission, school, guardian/student links" },
+  { name: "schools", records: 5, status: "Mapped", detail: "State, district, tenant URL, modules, branding" },
+  { name: "classes", records: teacherClasses.length, status: "Mapped", detail: "Teacher, room, attendance, pending work" },
+  { name: "students", records: rosterRecords.length, status: "Mapped", detail: "Guardian, accommodations, grades, attendance" },
+  { name: "assignments", records: lmsAssignments.length, status: "Mapped", detail: "Type, rubric, lock date, exceptions" },
+  { name: "submissions", records: gradebookSubmissions.length, status: "Mapped", detail: "Rubric scores, comments, review status" },
+  { name: "messages", records: conversations.length, status: "Mapped", detail: "Parent and group threads with work-hour controls" },
+  { name: "community_posts", records: communityBoards["ps-118"].published.length + communityBoards["ps-118"].pending.length, status: "Mapped", detail: "Approvals, media, audience, publishing state" },
+  { name: "audit_logs", records: auditLogs.length, status: "Mapped", detail: "Admin actions, exports, compliance events" },
+];
+
+export const onboardingTasks = [
+  { id: "district", label: "Create district and school tenants", owner: "Admin", done: true },
+  { id: "staff", label: "Invite staff accounts", owner: "Admin", done: true },
+  { id: "roster", label: "Import student roster", owner: "Registrar", done: true },
+  { id: "guardians", label: "Connect parent and guardian accounts", owner: "School office", done: false },
+  { id: "classes", label: "Assign teachers to classes", owner: "Principal", done: true },
+  { id: "launch", label: "Send launch notification", owner: "Communications", done: false },
+];
+
+export const fileUploads = [
+  { id: "upload-1", name: "Moon Lab Packet.pdf", area: "LMS", size: "1.2 MB", status: "Ready for class distribution" },
+  { id: "upload-2", name: "Science Night Flyer.pdf", area: "Community", size: "420 KB", status: "Waiting for approval" },
+];
+
+export const notificationDeliveryLog = [
+  { id: "delivery-1", channel: "Email", audience: "Grade 4 families", status: "Queued", detail: "Science Night reminder" },
+  { id: "delivery-2", channel: "SMS", audience: "Emergency contacts", status: "Ready", detail: "Emergency override test" },
+  { id: "delivery-3", channel: "Push", audience: "Teachers", status: "Delivered", detail: "Rubric queue refresh" },
+];
+
+export const securityChecklist = [
+  { id: "auth", label: "Role-based authentication rules", status: "Configured", done: true },
+  { id: "ferpa", label: "FERPA tenant data isolation", status: "Configured", done: true },
+  { id: "audit", label: "Audit log export policy", status: "Configured", done: true },
+  { id: "backups", label: "Nightly database backups", status: "Needs backend provider", done: false },
+  { id: "encryption", label: "Encrypted file storage", status: "Needs storage provider", done: false },
+  { id: "retention", label: "Data retention schedule", status: "Drafted", done: false },
+];
+
+export const deployPipeline = [
+  { step: "Build", status: "Passing", detail: "Vite production build generates static assets" },
+  { step: "Tests", status: "Passing", detail: "Playwright local and live smoke tests available" },
+  { step: "FTP deploy", status: "Live", detail: "educationalsystem.fieldserviceit.com is serving the app" },
+  { step: "GitHub sync", status: "Blocked", detail: "Local Git credentials still return 403" },
+];

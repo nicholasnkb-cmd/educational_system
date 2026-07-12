@@ -59,8 +59,21 @@ Open `http://127.0.0.1:8080/`, then switch **Data mode** to **Server database**.
 - `POST /api/reset`
 - `POST /api/login`
 - `GET /api/session`
+- `GET /api/users`
+- `POST /api/users`
+- `PATCH /api/users/:id`
+- `POST /api/password/change`
+- `POST /api/password/reset`
+- `GET /api/files`
+- `POST /api/files`
+- `GET /api/files/:id/download`
+- `GET /api/notification-provider`
+- `PUT /api/notification-provider`
+- `GET /api/backups`
+- `POST /api/backups`
 
 Server data is stored in `data/educonnect-state.json`, which is ignored by git. Set `PORT`, `DATA_DIR`, or `PUBLIC_DIR` in the environment to change runtime paths.
+Operational accounts are stored in `data/educonnect-accounts.json`, uploaded files in `data/uploads/`, and backups in `data/backups/`.
 
 ## Demo Logins
 
@@ -79,6 +92,8 @@ In **Server database** mode, use the login dropdown with these starter credentia
 - Teacher / Prof. Miller: `teacher123`
 - Parent / Sarah Jenkins: `parent123`
 - Student / Hero: `student123`
+
+Admin accounts can create users, disable accounts, reset passwords, configure notification providers, and create backups through the API. Starter passwords are for launch only and should be changed before real users or school data are added.
 
 ## Demo State
 
@@ -147,6 +162,8 @@ npm run test:live
 ```
 
 The FTP deployment is static only. To run the fully operational server-backed version on Hostinger, use a Hostinger VPS or Node.js-capable hosting plan, then run `npm run build` and `npm start` with `PORT` configured by the host. If only shared FTP hosting is available, keep using the static build and connect the frontend to an external hosted API/database.
+
+For production, put the Node app behind HTTPS, back up the `data/` directory nightly, and set environment-specific storage paths with `DATA_DIR`.
 
 ## Data Boundary
 

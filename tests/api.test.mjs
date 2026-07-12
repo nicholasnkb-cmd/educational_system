@@ -7,6 +7,7 @@ import { join } from "node:path";
 let server;
 let baseUrl;
 let dataDir;
+let adminToken;
 
 describe("operational API server", () => {
   before(async () => {
@@ -69,6 +70,63 @@ describe("operational API server", () => {
     assert.equal(sessionPayload.user.id, "teacher");
   });
 
+  it("supports admin user management and password lifecycle", async () => {
+    const adminLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId: "district-admin", password: "admin123" }),
+    });
+    const adminPayload = await adminLogin.json();
+    adminToken = adminPayload.token;
+    assert.equal(adminLogin.status, 200);
+
+    const create = await fetch(`${baseUrl}/api/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ id: "api-teacher", label: "API Teacher", role: "Teacher", password: "initial123" }),
+    });
+    const createPayload = await create.json();
+    assert.equal(create.status, 201);
+    assert.equal(createPayload.user.id, "api-teacher");
+    assert.equal(createPayload.user.mustChangePassword, true);
+
+    const reset = await fetch(`${baseUrl}/api/password/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ profileId: "api-teacher", newPassword: "resetpass123" }),
+    });
+    assert.equal(reset.status, 200);
+
+    const login = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId: "api-teacher", password: "resetpass123" }),
+    });
+    const loginPayload = await login.json();
+    assert.equal(login.status, 200);
+
+    const change = await fetch(`${baseUrl}/api/password/change`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${loginPayload.token}` },
+      body: JSON.stringify({ currentPassword: "resetpass123", newPassword: "finalpass123" }),
+    });
+    assert.equal(change.status, 200);
+
+    const disable = await fetch(`${baseUrl}/api/users/api-teacher`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ active: false }),
+    });
+    assert.equal(disable.status, 200);
+
+    const disabledLogin = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId: "api-teacher", password: "finalpass123" }),
+    });
+    assert.equal(disabledLogin.status, 401);
+  });
+
   it("rejects invalid login credentials", async () => {
     const login = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
@@ -106,5 +164,34 @@ describe("operational API server", () => {
     const state = await (await fetch(`${baseUrl}/api/state`)).json();
     assert.equal(state.snapshot.fileUploads[0].name, "lesson-plan.txt");
     assert.equal(state.snapshot.notificationDeliveryLog[0].audience, "API test group");
+
+    const files = await (await fetch(`${baseUrl}/api/files`)).json();
+    assert.equal(files.files[0].name, "lesson-plan.txt");
+
+    const download = await fetch(`${baseUrl}/api/files/${uploadPayload.file.id}/download`);
+    assert.equal(download.status, 200);
+    assert.equal(await download.text(), "Operational upload");
+  });
+
+  it("stores notification provider settings and creates backups", async () => {
+    const provider = await fetch(`${baseUrl}/api/notification-provider`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ mode: "smtp", from: "noreply@example.edu", smtpHost: "smtp.example.edu", apiKey: "secret-key" }),
+    });
+    const providerPayload = await provider.json();
+    assert.equal(provider.status, 200);
+    assert.equal(providerPayload.provider.apiKey, "configured");
+
+    const backup = await fetch(`${baseUrl}/api/backups`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    const backupPayload = await backup.json();
+    assert.equal(backup.status, 201);
+    assert.match(backupPayload.backup, /^educonnect-backup-/);
+
+    const list = await (await fetch(`${baseUrl}/api/backups`)).json();
+    assert.ok(list.backups.includes(backupPayload.backup));
   });
 });

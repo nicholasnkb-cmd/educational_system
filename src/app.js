@@ -353,14 +353,12 @@ function renderAuthPanel() {
         <h3>${user.label}</h3>
         <span>${user.role} permissions</span>
       </div>
-      <div class="profile-grid">
-        ${userProfiles.map((profile) => `
-          <button class="profile-button ${profile.id === user.id ? "active" : ""}" data-login-profile="${profile.id}">
-            ${icon(profile.id === "student" ? "sparkles" : profile.id === "parent" ? "users" : profile.id === "teacher" ? "graduation-cap" : "shield-check")}
-            <span>${profile.role}</span>
-          </button>
-        `).join("")}
-      </div>
+      <label class="login-select">
+        <span>Login role</span>
+        <select id="login-profile">
+          ${userProfiles.map((profile) => `<option value="${profile.id}" ${profile.id === user.id ? "selected" : ""}>${profile.role} - ${profile.label}</option>`).join("")}
+        </select>
+      </label>
       <label class="api-mode-toggle">
         <span>Data mode</span>
         <select id="api-mode">
@@ -1562,15 +1560,13 @@ function bindEvents() {
     });
   });
 
-  document.querySelectorAll("[data-login-profile]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const profile = userProfiles.find((item) => item.id === button.dataset.loginProfile);
-      if (!profile) return;
-      state.currentUser = profile.id;
-      addAudit(`Switched demo login to ${profile.role}`, selectedSchoolRecord().name, profile.label);
-      state.toast = `Signed in as ${profile.label}.`;
-      setActiveRole(profile.landing);
-    });
+  document.querySelector("#login-profile")?.addEventListener("change", (event) => {
+    const profile = userProfiles.find((item) => item.id === event.target.value);
+    if (!profile) return;
+    state.currentUser = profile.id;
+    addAudit(`Switched demo login to ${profile.role}`, selectedSchoolRecord().name, profile.label);
+    state.toast = `Signed in as ${profile.label}.`;
+    setActiveRole(profile.landing);
   });
 
   document.querySelector("#api-mode")?.addEventListener("change", async (event) => {

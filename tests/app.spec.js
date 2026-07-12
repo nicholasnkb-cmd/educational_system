@@ -59,7 +59,7 @@ test("supports the mobile bottom navigation", async ({ page }) => {
 
 test("switches demo identities and enforces role permissions", async ({ page }) => {
   await page.goto("/");
-  await page.getByLabel("Demo login and API mode").getByRole("button", { name: "Parent" }).click();
+  await page.getByLabel("Login role").selectOption("parent");
   await expect(page.getByText("Signed in as Sarah Jenkins.")).toBeVisible();
   await page.getByRole("link", { name: /Platform/i }).first().click();
   await expect(page.getByRole("button", { name: /Add School Tenant/i })).toBeDisabled();
@@ -67,7 +67,7 @@ test("switches demo identities and enforces role permissions", async ({ page }) 
   await page.getByRole("link", { name: /Messages/i }).first().click();
   await expect(page.getByRole("button", { name: /Enable/i })).toBeDisabled();
 
-  await page.getByLabel("Demo login and API mode").getByRole("button", { name: "Admin" }).click();
+  await page.getByLabel("Login role").selectOption("district-admin");
   await page.getByRole("link", { name: /Messages/i }).first().click();
   await expect(page.getByRole("button", { name: /Enable/i })).toBeEnabled();
 });

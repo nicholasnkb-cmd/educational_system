@@ -92,6 +92,17 @@ Setup steps:
 6. Run or wait for the `Deploy to GitHub Pages` workflow.
 7. Open the deployment URL shown in the workflow summary.
 
+## Hostinger Deployment
+
+This app can also be deployed to a Hostinger subdomain as a static site.
+
+```powershell
+npm run build:hostinger
+Compress-Archive -Path .\dist\* -DestinationPath .\deploy\educonnect-hostinger.zip -Force
+```
+
+See `HOSTINGER_DEPLOY.md` for the detected Hostinger target and upload steps.
+
 ## Data Boundary
 
 Mock records live behind `src/dataSource.js`. The current implementation re-exports local demo data, so future API work can replace that boundary without rewriting the UI renderers.

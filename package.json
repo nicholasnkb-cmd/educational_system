@@ -5,11 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "start": "node server.mjs",
+    "serve:operational": "npm run build && node server.mjs",
     "build": "vite build",
     "build:hostinger": "vite build --base=/",
     "deploy:hostinger": "npm run build:hostinger && node scripts/deploy-hostinger.js",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "playwright test",
+    "test": "npm run test:ui && npm run test:api",
+    "test:ui": "playwright test",
+    "test:api": "node --test tests/api.test.mjs",
     "test:live": "playwright test -c playwright.live.config.js"
   },
   "dependencies": {

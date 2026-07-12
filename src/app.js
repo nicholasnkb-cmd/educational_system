@@ -366,8 +366,9 @@ function renderAuthPanel() {
         <select id="api-mode">
           <option value="local" ${state.apiMode === "local" ? "selected" : ""}>Local demo state</option>
           <option value="mock-api" ${state.apiMode === "mock-api" ? "selected" : ""}>Mock API service</option>
+          <option value="live-api" ${state.apiMode === "live-api" ? "selected" : ""}>Server database</option>
         </select>
-        <small>${state.apiMode === "mock-api" ? `${api.endpoint} • ${api.requestCount} requests` : "localStorage persistence"}</small>
+        <small>${state.apiMode === "live-api" ? `${api.status} • ${api.endpoint} • ${api.requestCount} requests` : state.apiMode === "mock-api" ? `${api.endpoint} • ${api.requestCount} requests` : "localStorage persistence"}</small>
       </label>
     </section>
   `;
@@ -1574,9 +1575,14 @@ function bindEvents() {
 
   document.querySelector("#api-mode")?.addEventListener("change", async (event) => {
     state.apiMode = event.target.value;
-    if (state.apiMode === "mock-api") {
-      await hydrateMockApiState();
-      announce("Mock API mode enabled.");
+    if (state.apiMode === "mock-api" || state.apiMode === "live-api") {
+      try {
+        await hydrateMockApiState(state.apiMode);
+        announce(state.apiMode === "live-api" ? "Server database mode enabled." : "Mock API mode enabled.");
+      } catch {
+        state.apiMode = "local";
+        announce("Server API unavailable. Local demo state mode enabled.");
+      }
       return;
     }
     announce("Local demo state mode enabled.");
@@ -2110,17 +2116,27 @@ function bindEvents() {
   });
 }
 
-hydrateDemoState();
-if (hashRole()) state.role = hashRole();
-window.addEventListener("hashchange", () => {
-  const nextRole = hashRole();
-  if (nextRole && nextRole !== state.role) setActiveRole(nextRole, false);
-});
-window.addEventListener("load", enhanceIcons);
+async function boot() {
+  hydrateDemoState();
+  if (state.apiMode === "mock-api" || state.apiMode === "live-api") {
+    try {
+      await hydrateMockApiState(state.apiMode);
+    } catch {
+      state.apiMode = "local";
+      state.toast = "Server API unavailable. Local demo state mode enabled.";
+    }
+  }
+  if (hashRole()) state.role = hashRole();
+  window.addEventListener("hashchange", () => {
+    const nextRole = hashRole();
+    if (nextRole && nextRole !== state.role) setActiveRole(nextRole, false);
+  });
+  window.addEventListener("load", enhanceIcons);
+  render();
+  window.setInterval(() => {
+    if (!state.liveUpdates || document.hidden) return;
+    simulateLiveUpdate("automatic");
+  }, 15000);
+}
 
-render();
-
-window.setInterval(() => {
-  if (!state.liveUpdates || document.hidden) return;
-  simulateLiveUpdate("automatic");
-}, 15000);
+boot();

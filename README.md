@@ -4,7 +4,7 @@
 ![Tests](https://img.shields.io/badge/tests-Playwright-2ea44f)
 ![Deployment](https://img.shields.io/badge/deploy-GitHub%20Pages-blue)
 
-An interactive front-end prototype for a multi-tenant educational system. It includes platform governance, LMS tools, student missions, teacher workflows, parent views, messaging, community board approvals, local persistence, and demo reset behavior.
+An operational multi-tenant educational web application foundation. It includes platform governance, LMS tools, student missions, teacher workflows, parent views, messaging, community board approvals, local persistence, and an optional Node API server for shared backend state.
 
 ## Features
 
@@ -21,7 +21,8 @@ An interactive front-end prototype for a multi-tenant educational system. It inc
 - Guided onboarding walkthrough for the main workflows
 - JSON import/export for portable demo state
 - Mock API mode backed by a local service abstraction
-- Local persistence through `localStorage`
+- Server database mode backed by `server.mjs` and persistent JSON storage
+- Local persistence through `localStorage` for offline/demo fallback
 
 ## Screenshots
 
@@ -40,6 +41,27 @@ npm run dev
 
 Open the local URL Vite prints, usually `http://127.0.0.1:5173/`.
 
+## Fully Operational Local App
+
+Run the real web application with a backend API and shared server-side persistence:
+
+```powershell
+npm install
+npm run build
+npm start
+```
+
+Open `http://127.0.0.1:8080/`, then switch **Data mode** to **Server database**. The app will use these API endpoints:
+
+- `GET /api/health`
+- `GET /api/state`
+- `PUT /api/state`
+- `POST /api/reset`
+- `POST /api/login`
+- `GET /api/session`
+
+Server data is stored in `data/educonnect-state.json`, which is ignored by git. Set `PORT`, `DATA_DIR`, or `PUBLIC_DIR` in the environment to change runtime paths.
+
 ## Demo Logins
 
 Use the **Signed in as** panel to switch between:
@@ -57,10 +79,11 @@ Open Settings in the top bar to:
 
 - Export demo state as `educonnect-demo-state.json`
 - Import a previously exported state file
-- Switch between local demo persistence and mock API mode
+- Switch between local demo persistence, mock API mode, and server database mode
 - Toggle compact density and high-contrast panels
 
 Mock API mode uses `src/mockApi.js`, which simulates async reads/writes while keeping the app fully local.
+Server database mode uses `server.mjs`, which persists shared state through HTTP API routes.
 
 ## Build
 
@@ -76,7 +99,7 @@ The production build is written to `dist/`.
 npm test
 ```
 
-The Playwright tests cover the main demo flows: navigation, LMS actions, messaging, community approvals, search, settings, and reset.
+The test suite runs Playwright UI coverage plus Node API tests. It covers navigation, LMS actions, messaging, community approvals, search, settings, reset, backend health, state persistence, and basic role sessions.
 
 ## GitHub Pages
 
@@ -115,6 +138,8 @@ Live smoke test:
 $env:LIVE_BASE_URL="https://educationalsystem.fieldserviceit.com"
 npm run test:live
 ```
+
+The FTP deployment is static only. To run the fully operational server-backed version on Hostinger, use a Hostinger VPS or Node.js-capable hosting plan, then run `npm run build` and `npm start` with `PORT` configured by the host. If only shared FTP hosting is available, keep using the static build and connect the frontend to an external hosted API/database.
 
 ## Data Boundary
 

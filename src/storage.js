@@ -121,11 +121,11 @@ export function applyDemoSnapshot(snapshot) {
 export function persistDemoState() {
   const snapshot = getDemoSnapshot();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-  if (state.apiMode === "mock-api") saveMockApiState(snapshot).catch(() => {});
+  if (state.apiMode === "mock-api" || state.apiMode === "live-api") saveMockApiState(snapshot, state.apiMode).catch(() => {});
 }
 
-export async function hydrateMockApiState() {
-  const snapshot = await loadMockApiState();
+export async function hydrateMockApiState(mode = state.apiMode) {
+  const snapshot = await loadMockApiState(mode);
   if (snapshot) applyDemoSnapshot(snapshot);
 }
 

@@ -758,7 +758,7 @@ select {
 .subject-panel { display: grid; gap: 18px; }
 .subject-row { display: grid; grid-template-columns: 88px 1fr 48px; }
 
-.tenant-controls, .hierarchy-panel, .state-management-panel, .tenant-settings-panel, .permissions-panel, .audit-panel, .design-studio-panel, .users-roles-panel, .compliance-panel, .gradebook-detail-suite, .roster-panel, .realtime-panel, .assignment-composer-panel { grid-column: span 8; }
+.tenant-controls, .hierarchy-panel, .state-management-panel, .tenant-settings-panel, .permissions-panel, .audit-panel, .design-studio-panel, .users-roles-panel, .compliance-panel, .gradebook-detail-suite, .roster-panel, .realtime-panel, .assignment-composer-panel, .unified-os-panel { grid-column: span 8; }
 .category-panel, .district-panel, .instance-panel, .privacy-panel, .calendar-panel { grid-column: span 4; }
 .district-management-panel { grid-column: span 4; }
 
@@ -959,6 +959,141 @@ select {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
+}
+
+.unified-os-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.unified-os-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.module-hub-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 104px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  background: #fff;
+  text-align: left;
+}
+
+.module-hub-card:hover {
+  border-color: var(--primary);
+  background: #f6f9ff;
+}
+
+.module-hub-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  color: var(--primary);
+  background: #dae1ff;
+}
+
+.module-hub-card strong,
+.module-hub-card small,
+.module-hub-card em {
+  display: block;
+}
+
+.module-hub-card small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.module-hub-card em {
+  grid-column: 1 / -1;
+  color: var(--teal);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.system-snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.system-snapshot-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-low);
+}
+
+.system-snapshot-card h4 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.snapshot-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.snapshot-metrics span,
+.snapshot-row {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.snapshot-metrics strong,
+.snapshot-metrics small,
+.snapshot-row strong,
+.snapshot-row span,
+.snapshot-row em {
+  display: block;
+}
+
+.snapshot-metrics small,
+.snapshot-row span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.snapshot-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.7fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.snapshot-row span {
+  margin-top: 0;
+}
+
+.snapshot-row em {
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: var(--primary);
+  background: #dae1ff;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .category-panel {
@@ -2322,7 +2457,7 @@ select {
   .auth-panel, .demo-launcher, .tour-card { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
   .profile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .demo-role-grid { grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); }
-  .hero-card, .missions-panel, .awards-panel, .class-panel, .activity-panel, .grading-card, .teacher-note, .deadline-panel, .subject-panel, .mobile-parent-panel, .tenant-controls, .hierarchy-panel, .state-management-panel, .district-management-panel, .category-panel, .district-panel, .instance-panel, .tenant-settings-panel, .design-studio-panel, .permissions-panel, .privacy-panel, .audit-panel, .calendar-panel, .users-roles-panel, .compliance-panel, .gradebook-detail-suite, .roster-panel, .realtime-panel, .assignment-composer-panel, .board-composer, .published-board, .approval-queue, .approver-panel, .board-policy, .workflow-rules-panel, .grading-suite, .notification-suite, .workspace-suite, .workflow-suite, .sync-suite, .deadline-suite, .file-suite, .account-suite, .offline-suite, .simplicity-suite, .free-suite, .guardrail-suite, .privacy-suite, .stat-card { grid-column: span 12; }
+  .hero-card, .missions-panel, .awards-panel, .class-panel, .activity-panel, .grading-card, .teacher-note, .deadline-panel, .subject-panel, .mobile-parent-panel, .tenant-controls, .hierarchy-panel, .state-management-panel, .district-management-panel, .category-panel, .district-panel, .instance-panel, .tenant-settings-panel, .design-studio-panel, .permissions-panel, .privacy-panel, .audit-panel, .calendar-panel, .users-roles-panel, .compliance-panel, .gradebook-detail-suite, .roster-panel, .realtime-panel, .assignment-composer-panel, .unified-os-panel, .board-composer, .published-board, .approval-queue, .approver-panel, .board-policy, .workflow-rules-panel, .grading-suite, .notification-suite, .workspace-suite, .workflow-suite, .sync-suite, .deadline-suite, .file-suite, .account-suite, .offline-suite, .simplicity-suite, .free-suite, .guardrail-suite, .privacy-suite, .stat-card { grid-column: span 12; }
   .hero-card { grid-template-columns: 1fr; }
   .tenant-selectors { grid-template-columns: 1fr; }
   .messages-shell { height: auto; grid-template-columns: 1fr; }
@@ -2336,7 +2471,7 @@ select {
   .complete-button, .primary-action, .secondary-action { width: 100%; }
   .award-grid { grid-template-columns: 1fr; }
   .school-profile, .category-row, .management-row, .permission-row, .mobile-parent-panel, .design-studio { grid-template-columns: 1fr; }
-  .gradebook-layout, .compliance-grid, .assignment-form, .editable-roster-row, .realtime-row { grid-template-columns: 1fr; }
+  .gradebook-layout, .compliance-grid, .assignment-form, .editable-roster-row, .realtime-row, .unified-os-grid, .system-snapshot-grid, .snapshot-metrics, .snapshot-row { grid-template-columns: 1fr; }
   .assignment-row { grid-template-columns: 1fr; }
   .integration-grid, .workflow-steps, .settings-grid, .design-form { grid-template-columns: 1fr; }
   .design-form .span-2 { grid-column: span 1; }

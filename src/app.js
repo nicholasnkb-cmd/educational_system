@@ -612,6 +612,8 @@ function renderPlatform() {
       ${statCard("Districts", stateRecord.districts.length, "building-2", "teal")}
       ${statCard("Schools", allSchools.length, "graduation-cap", "gold")}
 
+      ${renderUnifiedOperatingSystem()}
+
       ${renderRealtimePanel()}
 
       <section class="panel state-management-panel">
@@ -843,6 +845,68 @@ function renderRealtimePanel() {
             <time>${event.time}</time>
           </article>
         `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderUnifiedOperatingSystem() {
+  const school = selectedSchoolRecord();
+  const board = selectedCommunityBoard();
+  const averageRosterGrade = Math.round(rosterRecords.reduce((sum, record) => sum + record.grade, 0) / rosterRecords.length);
+  const watchCount = rosterRecords.filter((record) => record.status === "Watch").length;
+  const pendingSubmissions = gradebookSubmissions.filter((submission) => submission.status !== "Reviewed").length;
+  const unreadMessages = conversations.reduce((sum, conversation) => sum + (conversation.unread || 0), 0);
+  const modules = [
+    { role: "lms", label: "LMS", iconName: "layers", metric: `${lmsAssignments.length} assignments`, detail: `${pendingSubmissions} gradebook items need review` },
+    { role: "student", label: "Students", iconName: "sparkles", metric: `${rosterRecords.length} learners`, detail: `${watchCount} students on watch status` },
+    { role: "teacher", label: "Teachers", iconName: "graduation-cap", metric: `${teacherClasses.length} classes`, detail: `${activityFeed.length} activity events in the feed` },
+    { role: "parent", label: "Parents", iconName: "users", metric: `${deadlines.length} deadlines`, detail: `${state.checkedDeadlines.length} family tasks checked` },
+    { role: "messages", label: "Messages", iconName: "message-circle", metric: `${unreadMessages} unread`, detail: `${conversations.length} parent and group threads` },
+    { role: "community", label: "Community", iconName: "megaphone", metric: `${board.pending.length} pending`, detail: `${board.published.length} approved posts live` },
+  ];
+  return `
+    <section class="panel unified-os-panel">
+      <div class="section-heading">
+        <div><p class="eyebrow">One integrated system</p><h3>Unified School Operating System</h3></div>
+        <span>${school.name}</span>
+      </div>
+      <div class="unified-os-grid">
+        ${modules.map((module) => `
+          <button class="module-hub-card" data-open-role="${module.role}">
+            <span class="module-hub-icon">${icon(module.iconName)}</span>
+            <span><strong>${module.label}</strong><small>${module.detail}</small></span>
+            <em>${module.metric}</em>
+          </button>
+        `).join("")}
+      </div>
+      <div class="system-snapshot-grid">
+        <article class="system-snapshot-card">
+          <div class="section-heading"><h4>Students + LMS</h4><button class="text-button" data-open-role="lms">Open LMS ${icon("chevron-right")}</button></div>
+          <div class="snapshot-metrics">
+            <span><strong>${averageRosterGrade}%</strong><small>Average roster grade</small></span>
+            <span><strong>${pendingSubmissions}</strong><small>Submissions in queue</small></span>
+            <span><strong>${state.offlinePackReady ? "Ready" : "Build"}</strong><small>Offline learning pack</small></span>
+          </div>
+          ${gradebookSubmissions.slice(0, 3).map((submission) => `<div class="snapshot-row"><strong>${submission.student}</strong><span>${submission.assignment}</span><em>${submission.status}</em></div>`).join("")}
+        </article>
+        <article class="system-snapshot-card">
+          <div class="section-heading"><h4>Teachers + Classes</h4><button class="text-button" data-open-role="teacher">Open Teacher ${icon("chevron-right")}</button></div>
+          ${teacherClasses.map((item) => `<div class="snapshot-row"><strong>${item.name}</strong><span>${item.room}</span><em>${item.pending} pending</em></div>`).join("")}
+        </article>
+        <article class="system-snapshot-card">
+          <div class="section-heading"><h4>Parents + Messages</h4><button class="text-button" data-open-role="messages">Open Messages ${icon("chevron-right")}</button></div>
+          ${conversations.slice(0, 3).map((conversation) => `<div class="snapshot-row"><strong>${conversation.name}</strong><span>${conversation.preview}</span><em>${conversation.unread || 0} unread</em></div>`).join("")}
+        </article>
+        <article class="system-snapshot-card">
+          <div class="section-heading"><h4>Admin + Community</h4><button class="text-button" data-open-role="community">Open Community ${icon("chevron-right")}</button></div>
+          <div class="snapshot-metrics">
+            <span><strong>${board.pending.length}</strong><small>Approval queue</small></span>
+            <span><strong>${unreadNotifications()}</strong><small>Unread alerts</small></span>
+            <span><strong>${auditLogs.length}</strong><small>Audit entries</small></span>
+          </div>
+          ${realtimeEvents.slice(0, 2).map((event) => `<div class="snapshot-row"><strong>${event.type}</strong><span>${event.title}</span><em>${event.time}</em></div>`).join("")}
+        </article>
       </div>
     </section>
   `;

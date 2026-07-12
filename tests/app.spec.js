@@ -151,3 +151,23 @@ test("runs realtime app workflows with editable filler data", async ({ page }) =
   await page.getByRole("button", { name: "End call" }).click();
   await expect(page.getByText("Video call ended.")).toBeVisible();
 });
+
+test("integrates every workspace into the platform operating system", async ({ page }) => {
+  await page.goto("/#platform");
+  await expect(page.getByRole("heading", { name: "Unified School Operating System" })).toBeVisible();
+  const hub = page.locator(".unified-os-panel");
+  const modules = hub.locator(".unified-os-grid");
+  await expect(modules.getByRole("button", { name: /LMS/i })).toBeVisible();
+  await expect(modules.getByRole("button", { name: /Students/i })).toBeVisible();
+  await expect(modules.getByRole("button", { name: /Teachers/i })).toBeVisible();
+  await expect(modules.getByRole("button", { name: /Parents/i })).toBeVisible();
+  await expect(modules.getByRole("button", { name: /Messages/i })).toBeVisible();
+  await expect(modules.getByRole("button", { name: /Community/i })).toBeVisible();
+  await expect(hub.getByText("Students + LMS")).toBeVisible();
+  await expect(hub.getByText("Teachers + Classes")).toBeVisible();
+  await expect(hub.getByText("Parents + Messages")).toBeVisible();
+  await expect(hub.getByText("Admin + Community")).toBeVisible();
+
+  await modules.getByRole("button", { name: /Messages/i }).click();
+  await expect(page.getByRole("heading", { name: "Communication Hub" })).toBeVisible();
+});

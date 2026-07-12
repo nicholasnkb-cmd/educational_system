@@ -1,5 +1,9 @@
 # EduConnect Interactive Portal
 
+![Build](https://github.com/nicholasnkb-cmd/educational_system/actions/workflows/pages.yml/badge.svg)
+![Tests](https://img.shields.io/badge/tests-Playwright-2ea44f)
+![Deployment](https://img.shields.io/badge/deploy-GitHub%20Pages-blue)
+
 An interactive front-end prototype for a multi-tenant educational system. It includes platform governance, LMS tools, student missions, teacher workflows, parent views, messaging, community board approvals, local persistence, and demo reset behavior.
 
 ## Features
@@ -12,6 +16,11 @@ An interactive front-end prototype for a multi-tenant educational system. It inc
 - Communication hub with work-hour restrictions and emergency override
 - Community board submission, approver assignment, approval, rejection, and publishing
 - Search, notifications, settings, compact mode, high-contrast mode, and demo state export
+- Demo authentication for Admin, Teacher, Parent, and Student
+- Role-aware permissions for tenant management, LMS controls, emergency override, and post approval
+- Guided onboarding walkthrough for the main workflows
+- JSON import/export for portable demo state
+- Mock API mode backed by a local service abstraction
 - Local persistence through `localStorage`
 
 ## Screenshots
@@ -30,6 +39,28 @@ npm run dev
 ```
 
 Open the local URL Vite prints, usually `http://127.0.0.1:5173/`.
+
+## Demo Logins
+
+Use the **Signed in as** panel to switch between:
+
+- District Admin: full tenant, LMS, messaging, emergency, and approval access
+- Teacher: LMS, assignment, messaging, and post submission access
+- Parent: messaging and community submission access
+- Student: student mission access
+
+Restricted actions remain visible but disabled with an explanatory permission note.
+
+## Demo State
+
+Open Settings in the top bar to:
+
+- Export demo state as `educonnect-demo-state.json`
+- Import a previously exported state file
+- Switch between local demo persistence and mock API mode
+- Toggle compact density and high-contrast panels
+
+Mock API mode uses `src/mockApi.js`, which simulates async reads/writes while keeping the app fully local.
 
 ## Build
 
@@ -50,6 +81,16 @@ The Playwright tests cover the main demo flows: navigation, LMS actions, messagi
 ## GitHub Pages
 
 This repository includes `.github/workflows/pages.yml`. After pushing to `main`, enable GitHub Pages with **Source: GitHub Actions** in the repository settings. The workflow builds the Vite app and deploys `dist/`.
+
+Setup steps:
+
+1. Push `main` to GitHub.
+2. Open the repository on GitHub.
+3. Go to **Settings**.
+4. Open **Pages**.
+5. Set **Source** to **GitHub Actions**.
+6. Run or wait for the `Deploy to GitHub Pages` workflow.
+7. Open the deployment URL shown in the workflow summary.
 
 ## Data Boundary
 

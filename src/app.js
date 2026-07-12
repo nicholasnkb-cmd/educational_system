@@ -68,9 +68,31 @@ import {
   conversations,
   communityBoards,
 } from "./dataSource.js";
-import { hydrateDemoState, persistDemoState, resetDemoState } from "./storage.js";
+import {
+  applyDemoSnapshot,
+  getDemoSnapshot,
+  hydrateDemoState,
+  hydrateMockApiState,
+  persistDemoState,
+  resetDemoState,
+} from "./storage.js";
+import { mockApiStatus } from "./mockApi.js";
 
 const app = document.querySelector("#app");
+
+const userProfiles = [
+  { id: "district-admin", label: "District Admin", role: "Admin", landing: "platform", permissions: ["manage-tenants", "approve-posts", "emergency", "lms", "teacher-tools", "message"] },
+  { id: "teacher", label: "Prof. Miller", role: "Teacher", landing: "teacher", permissions: ["lms", "teacher-tools", "message", "submit-post"] },
+  { id: "parent", label: "Sarah Jenkins", role: "Parent", landing: "parent", permissions: ["message", "submit-post"] },
+  { id: "student", label: "Hero", role: "Student", landing: "student", permissions: ["student-missions"] },
+];
+
+const tourSteps = [
+  { title: "Choose a role", body: "Use the demo login panel to switch between admin, teacher, parent, and student access.", role: "platform" },
+  { title: "Create learning work", body: "Teachers and admins can create assignments and build offline packs in the LMS.", role: "lms" },
+  { title: "Communicate safely", body: "Messaging respects school work hours, with emergency override reserved for admins.", role: "messages" },
+  { title: "Approve community posts", body: "Admins can approve posts before they publish to the school community board.", role: "community" },
+];
 
 const lucideIcons = {
   AlertTriangle,
@@ -149,6 +171,22 @@ function announce(message) {
   render();
 }
 
+function activeUser() {
+  return userProfiles.find((profile) => profile.id === state.currentUser) || userProfiles[0];
+}
+
+function can(permission) {
+  return activeUser().permissions.includes(permission);
+}
+
+function permissionAttrs(permission, label = "This role cannot use that action") {
+  return can(permission) ? "" : `disabled aria-disabled="true" title="${label}"`;
+}
+
+function permissionNotice(permission, body) {
+  return can(permission) ? "" : `<div class="permission-note">${icon("lock")} ${body}</div>`;
+}
+
 function hashRole() {
   const requested = window.location.hash.replace("#", "");
   return roles.some((role) => role.id === requested) ? requested : "";
@@ -224,6 +262,36 @@ function renderSearchResults() {
   `;
 }
 
+function renderAuthPanel() {
+  const user = activeUser();
+  const api = mockApiStatus();
+  return `
+    <section class="auth-panel" aria-label="Demo login and API mode">
+      <div>
+        <p class="eyebrow">Signed in as</p>
+        <h3>${user.label}</h3>
+        <span>${user.role} permissions</span>
+      </div>
+      <div class="profile-grid">
+        ${userProfiles.map((profile) => `
+          <button class="profile-button ${profile.id === user.id ? "active" : ""}" data-login-profile="${profile.id}">
+            ${icon(profile.id === "student" ? "sparkles" : profile.id === "parent" ? "users" : profile.id === "teacher" ? "graduation-cap" : "shield-check")}
+            <span>${profile.role}</span>
+          </button>
+        `).join("")}
+      </div>
+      <label class="api-mode-toggle">
+        <span>Data mode</span>
+        <select id="api-mode">
+          <option value="local" ${state.apiMode === "local" ? "selected" : ""}>Local demo state</option>
+          <option value="mock-api" ${state.apiMode === "mock-api" ? "selected" : ""}>Mock API service</option>
+        </select>
+        <small>${state.apiMode === "mock-api" ? `${api.endpoint} • ${api.requestCount} requests` : "localStorage persistence"}</small>
+      </label>
+    </section>
+  `;
+}
+
 function selectedCommunityBoard() {
   const school = selectedSchoolRecord();
   if (!communityBoards[school.id]) {
@@ -293,7 +361,9 @@ function render() {
       <main class="workspace workspace-${state.role}">
         ${renderTenantBar(school, design)}
         ${renderTopbar(role)}
+        ${renderAuthPanel()}
         ${renderDemoLauncher()}
+        ${renderTour()}
         ${renderSearchResults()}
         ${state.role === "platform" ? renderPlatform() : ""}
         ${state.role === "lms" ? renderAdvancedLms() : ""}
@@ -310,6 +380,24 @@ function render() {
   bindEvents();
   enhanceIcons();
   persistDemoState();
+}
+
+function renderTour() {
+  if (!state.tourOpen) return "";
+  const step = tourSteps[state.tourStep] || tourSteps[0];
+  return `
+    <section class="tour-card" aria-label="Guided onboarding">
+      <div>
+        <p class="eyebrow">Walkthrough ${state.tourStep + 1} of ${tourSteps.length}</p>
+        <h3>${step.title}</h3>
+        <p>${step.body}</p>
+      </div>
+      <div class="tour-actions">
+        <button class="secondary-action" data-tour-prev ${state.tourStep === 0 ? "disabled" : ""}>${icon("chevron-right")} Back</button>
+        <button class="primary-action" data-tour-next>${icon("play")} ${state.tourStep === tourSteps.length - 1 ? "Finish" : "Next"}</button>
+      </div>
+    </section>
+  `;
 }
 
 function renderDemoLauncher() {
@@ -329,6 +417,7 @@ function renderDemoLauncher() {
           </button>
         `).join("")}
       </div>
+      <button class="secondary-action" data-start-tour>${icon("play")} Start Walkthrough</button>
     </section>
   `;
 }
@@ -347,7 +436,8 @@ function renderUtilityPanels() {
         <div class="section-heading"><h3>Settings</h3><button class="icon-button" aria-label="Close settings" data-close-panel>${icon("x")}</button></div>
         <label class="toggle-row"><input type="checkbox" data-toggle-setting="compactMode" ${state.compactMode ? "checked" : ""} /><span>Compact dashboard density</span></label>
         <label class="toggle-row"><input type="checkbox" data-toggle-setting="highContrast" ${state.highContrast ? "checked" : ""} /><span>High contrast panels</span></label>
-        <button class="secondary-action" data-export-demo>${icon("download")} Export Demo State</button>
+        <button class="secondary-action" data-export-demo>${icon("download")} Export JSON File</button>
+        <label class="secondary-action import-action">${icon("file-text")} Import JSON File<input type="file" id="import-demo-state" accept="application/json" /></label>
       </aside>
     ` : ""}
   `;
@@ -430,8 +520,9 @@ function renderPlatform() {
           <h2>${stateRecord.name} education tenant map</h2>
           <p>Schools are grouped by category, nested under districts, and governed through state-level education structures.</p>
         </div>
-        <button class="primary-action" data-add-school>${icon("plus")} Add School Tenant</button>
+        <button class="primary-action" data-add-school ${permissionAttrs("manage-tenants", "Only administrators can add school tenants.")}>${icon("plus")} Add School Tenant</button>
       </div>
+      ${permissionNotice("manage-tenants", "Tenant creation and district configuration are admin-only in this demo.")}
       ${statCard("States", tenantStates.length, "map", "blue")}
       ${statCard("Districts", stateRecord.districts.length, "building-2", "teal")}
       ${statCard("Schools", allSchools.length, "graduation-cap", "gold")}
@@ -630,7 +721,7 @@ function renderAdvancedLms() {
           <h2>Learning tools beyond basic classroom workflows</h2>
           <p>Advanced grading, firm deadlines, file conversion, account context, organized alerts, and offline access are all managed inside this school instance.</p>
         </div>
-        <button class="primary-action" data-build-offline>${icon("download")} ${state.offlinePackReady ? "Rebuild Offline Pack" : "Build Offline Pack"}</button>
+        <button class="primary-action" data-build-offline ${permissionAttrs("lms", "Only teachers and administrators can build LMS offline packs.")}>${icon("download")} ${state.offlinePackReady ? "Rebuild Offline Pack" : "Build Offline Pack"}</button>
       </div>
 
       ${statCard("Auto-graded checks", "18", "clipboard-check", "blue")}
@@ -720,9 +811,10 @@ function renderAdvancedLms() {
 
       <section class="panel lms-panel guardrail-suite">
         <div class="section-heading"><h3>Automated Guardrails</h3><span>Submission and quiz controls</span></div>
-        <label class="guardrail-row"><input type="checkbox" data-guardrail="lockSubmissions" ${state.guardrails.lockSubmissions ? "checked" : ""} /><span class="custom-check">${state.guardrails.lockSubmissions ? icon("check") : ""}</span><span>Prevent edits after submission</span></label>
-        <label class="guardrail-row"><input type="checkbox" data-guardrail="hideAnswers" ${state.guardrails.hideAnswers ? "checked" : ""} /><span class="custom-check">${state.guardrails.hideAnswers ? icon("check") : ""}</span><span>Hide answers until quiz closes</span></label>
-        <label class="guardrail-row"><input type="checkbox" data-guardrail="parentSummaries" ${state.guardrails.parentSummaries ? "checked" : ""} /><span class="custom-check">${state.guardrails.parentSummaries ? icon("check") : ""}</span><span>Auto-return parent email summaries</span></label>
+        <label class="guardrail-row"><input type="checkbox" data-guardrail="lockSubmissions" ${state.guardrails.lockSubmissions ? "checked" : ""} ${can("lms") ? "" : "disabled"} /><span class="custom-check">${state.guardrails.lockSubmissions ? icon("check") : ""}</span><span>Prevent edits after submission</span></label>
+        <label class="guardrail-row"><input type="checkbox" data-guardrail="hideAnswers" ${state.guardrails.hideAnswers ? "checked" : ""} ${can("lms") ? "" : "disabled"} /><span class="custom-check">${state.guardrails.hideAnswers ? icon("check") : ""}</span><span>Hide answers until quiz closes</span></label>
+        <label class="guardrail-row"><input type="checkbox" data-guardrail="parentSummaries" ${state.guardrails.parentSummaries ? "checked" : ""} ${can("lms") ? "" : "disabled"} /><span class="custom-check">${state.guardrails.parentSummaries ? icon("check") : ""}</span><span>Auto-return parent email summaries</span></label>
+        ${permissionNotice("lms", "LMS guardrails are managed by teachers and administrators.")}
       </section>
 
       <section class="panel lms-panel offline-suite">
@@ -800,7 +892,7 @@ function renderTeacher() {
   const visible = state.selectedClass === "All" ? teacherClasses : teacherClasses.filter((item) => item.name === state.selectedClass);
   return `
     <section class="dashboard-grid teacher-grid">
-      <div class="welcome-strip"><div><p class="eyebrow">${school.name} instance</p><h2>Welcome back, Prof. Miller.</h2><p>${school.messages} need attention in this school tenant, with class data isolated from every other school.</p></div><button class="primary-action" data-create-assignment>${icon("plus")} Create Assignment</button></div>
+      <div class="welcome-strip"><div><p class="eyebrow">${school.name} instance</p><h2>Welcome back, Prof. Miller.</h2><p>${school.messages} need attention in this school tenant, with class data isolated from every other school.</p></div><button class="primary-action" data-create-assignment ${permissionAttrs("teacher-tools", "Only teachers and administrators can create assignments.")}>${icon("plus")} Create Assignment</button></div>
       ${statCard("Average grade", school.avgGrade, "trending-up", "blue")}
       ${statCard("Attendance", school.attendance, "calendar-days", "teal")}
       ${statCard("Messages", school.messages, "mail", "gold")}
@@ -816,6 +908,7 @@ function renderTeacher() {
         ${activityFeed.map(([student, action, time, course]) => `<article class="activity-row"><div class="avatar">${initials(student)}</div><div><p><strong>${student}</strong> ${action}</p><span>${time} | ${course}</span></div><button class="icon-button" aria-label="Reply to ${student}" data-reply-student="${student}">${icon("pen-line")}</button></article>`).join("")}
       </section>
       <section class="panel grading-card"><h3>Grading To-Do</h3>${progress(68)}<p>18 submissions left across 3 classes.</p><button class="secondary-action" data-open-role="lms">${icon("clipboard-check")} Open Grading Hub</button></section>
+      ${permissionNotice("teacher-tools", "Teacher tools are read-only for this signed-in role.")}
     </section>
   `;
 }
@@ -865,7 +958,7 @@ function renderMessages() {
         <div class="emergency-card ${state.emergencyOverride ? "active" : ""}">
           ${icon("alert-triangle")}
           <div><strong>Emergency Override</strong><span>${state.emergencyOverride ? "Administrator enabled for urgent safety communication." : "Available only to school administrators."}</span></div>
-          <button class="secondary-action" data-toggle-emergency>${state.emergencyOverride ? "Disable" : "Enable"}</button>
+          <button class="secondary-action" data-toggle-emergency ${permissionAttrs("emergency", "Emergency override is admin-only.")}>${state.emergencyOverride ? "Disable" : "Enable"}</button>
         </div>
       </aside>
       <section class="chat-panel">
@@ -953,6 +1046,7 @@ function renderCommunityBoard() {
           <li>Each school instance has a separate board and approval queue.</li>
           <li>Published posts are visible only inside the selected school tenant.</li>
         </ul>
+        ${permissionNotice("approve-posts", "Only administrators can approve or reject community posts.")}
       </section>
 
       <section class="panel workflow-rules-panel">
@@ -972,8 +1066,8 @@ function renderPendingPost(post) {
       <div class="post-media">${icon("paperclip")} ${post.media || "No media"}</div>
       <div class="assigned-approver">${icon("shield-check")} Assigned to ${approverName(board, post.approverId)}</div>
       <div class="approval-actions">
-        <button class="secondary-action" data-reject-post="${post.id}">${icon("x")} Reject</button>
-        <button class="primary-action" data-approve-post="${post.id}">${icon("check")} Approve</button>
+        <button class="secondary-action" data-reject-post="${post.id}" ${permissionAttrs("approve-posts", "Only administrators can reject community posts.")}>${icon("x")} Reject</button>
+        <button class="primary-action" data-approve-post="${post.id}" ${permissionAttrs("approve-posts", "Only administrators can approve community posts.")}>${icon("check")} Approve</button>
       </div>
     </article>
   `;
@@ -1092,6 +1186,48 @@ function bindEvents() {
     });
   });
 
+  document.querySelectorAll("[data-login-profile]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const profile = userProfiles.find((item) => item.id === button.dataset.loginProfile);
+      if (!profile) return;
+      state.currentUser = profile.id;
+      state.toast = `Signed in as ${profile.label}.`;
+      setActiveRole(profile.landing);
+    });
+  });
+
+  document.querySelector("#api-mode")?.addEventListener("change", async (event) => {
+    state.apiMode = event.target.value;
+    if (state.apiMode === "mock-api") {
+      await hydrateMockApiState();
+      announce("Mock API mode enabled.");
+      return;
+    }
+    announce("Local demo state mode enabled.");
+  });
+
+  document.querySelector("[data-start-tour]")?.addEventListener("click", () => {
+    state.tourOpen = true;
+    state.tourStep = 0;
+    goToRole(tourSteps[0].role, "Walkthrough started.");
+  });
+
+  document.querySelector("[data-tour-next]")?.addEventListener("click", () => {
+    if (state.tourStep >= tourSteps.length - 1) {
+      state.tourOpen = false;
+      announce("Walkthrough complete.");
+      return;
+    }
+    state.tourStep += 1;
+    goToRole(tourSteps[state.tourStep].role);
+  });
+
+  document.querySelector("[data-tour-prev]")?.addEventListener("click", () => {
+    if (state.tourStep === 0) return;
+    state.tourStep -= 1;
+    goToRole(tourSteps[state.tourStep].role);
+  });
+
   document.querySelectorAll("[data-action]").forEach((button) => {
     button.addEventListener("click", () => announce(button.dataset.action));
   });
@@ -1129,12 +1265,30 @@ function bindEvents() {
   });
 
   document.querySelector("[data-export-demo]")?.addEventListener("click", async () => {
-    const payload = JSON.stringify({ state, school: selectedSchoolRecord(), conversations, communityBoards }, null, 2);
+    const payload = JSON.stringify(getDemoSnapshot(), null, 2);
+    const blob = new Blob([payload], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "educonnect-demo-state.json";
+    link.click();
+    URL.revokeObjectURL(url);
     try {
       await navigator.clipboard.writeText(payload);
-      announce("Demo state copied to clipboard.");
+      announce("Demo state exported and copied to clipboard.");
     } catch {
-      announce("Demo state is ready, but clipboard permission was blocked.");
+      announce("Demo state exported as a JSON file.");
+    }
+  });
+
+  document.querySelector("#import-demo-state")?.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      applyDemoSnapshot(JSON.parse(await file.text()));
+      announce("Demo state imported.");
+    } catch {
+      announce("That JSON file could not be imported.");
     }
   });
 

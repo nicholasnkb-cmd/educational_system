@@ -11,6 +11,7 @@ import {
   conversations,
   communityBoards,
 } from "./dataSource.js";
+import { loadMockApiState, saveMockApiState } from "./mockApi.js";
 
 const STORAGE_KEY = "educonnect-demo-state-v1";
 
@@ -57,8 +58,8 @@ export function hydrateDemoState() {
   }
 }
 
-export function persistDemoState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+export function getDemoSnapshot() {
+  return structuredClone({
     state,
     tenantStates,
     schoolDesigns,
@@ -70,7 +71,33 @@ export function persistDemoState() {
     activityFeed,
     conversations,
     communityBoards,
-  }));
+  });
+}
+
+export function applyDemoSnapshot(snapshot) {
+  if (!snapshot) return;
+  if (snapshot.state) Object.assign(state, snapshot.state);
+  if (snapshot.tenantStates) replaceArray(tenantStates, snapshot.tenantStates);
+  if (snapshot.schoolDesigns) replaceObject(schoolDesigns, snapshot.schoolDesigns);
+  if (snapshot.auditLogs) replaceArray(auditLogs, snapshot.auditLogs);
+  if (snapshot.lmsAssignments) replaceArray(lmsAssignments, snapshot.lmsAssignments);
+  if (snapshot.lmsFiles) replaceArray(lmsFiles, snapshot.lmsFiles);
+  if (snapshot.lmsNotifications) replaceArray(lmsNotifications, snapshot.lmsNotifications);
+  if (snapshot.offlineSyncQueue) replaceArray(offlineSyncQueue, snapshot.offlineSyncQueue);
+  if (snapshot.activityFeed) replaceArray(activityFeed, snapshot.activityFeed);
+  if (snapshot.conversations) replaceArray(conversations, snapshot.conversations);
+  if (snapshot.communityBoards) replaceObject(communityBoards, snapshot.communityBoards);
+}
+
+export function persistDemoState() {
+  const snapshot = getDemoSnapshot();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  if (state.apiMode === "mock-api") saveMockApiState(snapshot);
+}
+
+export async function hydrateMockApiState() {
+  const snapshot = await loadMockApiState();
+  if (snapshot) applyDemoSnapshot(snapshot);
 }
 
 export function resetDemoState() {

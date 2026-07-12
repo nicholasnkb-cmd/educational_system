@@ -302,6 +302,7 @@ a { color: inherit; text-decoration: none; }
   white-space: nowrap;
 }
 
+.auth-panel,
 .demo-launcher {
   display: grid;
   grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.3fr);
@@ -315,17 +316,37 @@ a { color: inherit; text-decoration: none; }
   box-shadow: 0 10px 24px rgba(0, 80, 203, 0.06);
 }
 
+.auth-panel {
+  grid-template-columns: minmax(180px, 0.6fr) minmax(0, 1fr) minmax(190px, 0.65fr);
+}
+
+.auth-panel h3,
 .demo-launcher h3 {
   margin: 4px 0 0;
   font-size: 22px;
 }
 
+.auth-panel span,
+.api-mode-toggle small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.profile-grid,
 .demo-role-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
 }
 
+.profile-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.profile-button,
 .demo-role {
   display: grid;
   justify-items: center;
@@ -340,11 +361,74 @@ a { color: inherit; text-decoration: none; }
   font-weight: 900;
 }
 
+.profile-button.active,
+.profile-button:hover,
 .demo-role.active,
 .demo-role:hover {
   color: var(--primary);
   border-color: var(--primary);
   background: #dae1ff;
+}
+
+.api-mode-toggle {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.tour-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--primary) 36%, var(--line));
+  border-radius: 8px;
+  background: #f6f9ff;
+  box-shadow: var(--shadow);
+}
+
+.tour-card h3,
+.tour-card p {
+  margin: 0;
+}
+
+.tour-card p:not(.eyebrow) {
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.tour-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.permission-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--gold);
+  background: var(--gold-soft);
+  font-weight: 900;
+}
+
+.import-action {
+  position: relative;
+  cursor: pointer;
+}
+
+.import-action input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .search-results {
@@ -1916,7 +2000,8 @@ select {
   .tenant-path { justify-content: flex-start; }
   .topbar { align-items: flex-start; }
   .topbar-actions { display: none; }
-  .demo-launcher { grid-template-columns: 1fr; }
+  .auth-panel, .demo-launcher, .tour-card { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
+  .profile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .demo-role-grid { grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); }
   .hero-card, .missions-panel, .awards-panel, .class-panel, .activity-panel, .grading-card, .teacher-note, .deadline-panel, .subject-panel, .mobile-parent-panel, .tenant-controls, .hierarchy-panel, .state-management-panel, .district-management-panel, .category-panel, .district-panel, .instance-panel, .tenant-settings-panel, .design-studio-panel, .permissions-panel, .privacy-panel, .audit-panel, .calendar-panel, .board-composer, .published-board, .approval-queue, .approver-panel, .board-policy, .workflow-rules-panel, .grading-suite, .notification-suite, .workspace-suite, .workflow-suite, .sync-suite, .deadline-suite, .file-suite, .account-suite, .offline-suite, .simplicity-suite, .free-suite, .guardrail-suite, .privacy-suite, .stat-card { grid-column: span 12; }
   .hero-card { grid-template-columns: 1fr; }

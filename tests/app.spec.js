@@ -56,3 +56,31 @@ test("supports the mobile bottom navigation", async ({ page }) => {
   await page.getByRole("button", { name: /Continue Adventure/i }).click();
   await expect(page.getByText(/marked complete/i)).toBeVisible();
 });
+
+test("switches demo identities and enforces role permissions", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Demo login and API mode").getByRole("button", { name: "Parent" }).click();
+  await expect(page.getByText("Signed in as Sarah Jenkins.")).toBeVisible();
+  await page.getByRole("link", { name: /Platform/i }).first().click();
+  await expect(page.getByRole("button", { name: /Add School Tenant/i })).toBeDisabled();
+
+  await page.getByRole("link", { name: /Messages/i }).first().click();
+  await expect(page.getByRole("button", { name: /Enable/i })).toBeDisabled();
+
+  await page.getByLabel("Demo login and API mode").getByRole("button", { name: "Admin" }).click();
+  await page.getByRole("link", { name: /Messages/i }).first().click();
+  await expect(page.getByRole("button", { name: /Enable/i })).toBeEnabled();
+});
+
+test("runs walkthrough and opens mock API mode", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /Start Walkthrough/i }).click();
+  await expect(page.getByText("Walkthrough started.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Choose a role" })).toBeVisible();
+  await page.getByRole("button", { name: /Next/i }).click();
+  await expect(page.getByRole("heading", { name: "Create learning work" })).toBeVisible();
+
+  await page.getByLabel("Settings").click();
+  await page.getByLabel("Data mode").selectOption("mock-api");
+  await expect(page.getByText("Mock API mode enabled.")).toBeVisible();
+});

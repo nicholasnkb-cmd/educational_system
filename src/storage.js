@@ -10,7 +10,7 @@ import {
   activityFeed,
   conversations,
   communityBoards,
-} from "./data.js";
+} from "./dataSource.js";
 
 const STORAGE_KEY = "educonnect-demo-state-v1";
 

@@ -1,3 +1,4 @@
+import { createIcons, icons } from "lucide";
 import {
   roles,
   state,
@@ -25,13 +26,17 @@ import {
   designPresets,
   conversations,
   communityBoards,
-} from "./data.js";
+} from "./dataSource.js";
 import { hydrateDemoState, persistDemoState, resetDemoState } from "./storage.js";
 
 const app = document.querySelector("#app");
 
 function icon(name) {
   return `<i class="app-icon" data-lucide="${name}" data-icon="${name}" aria-hidden="true"></i>`;
+}
+
+function asset(path) {
+  return `${import.meta.env.BASE_URL}${path.replace(/^\/+/, "")}`;
 }
 
 function initials(name) {
@@ -81,8 +86,8 @@ function goToRole(roleId, message = "") {
 }
 
 function enhanceIcons() {
-  if (!window.lucide) return;
-  window.lucide.createIcons({
+  createIcons({
+    icons,
     attrs: {
       "stroke-width": 2.25,
     },
@@ -275,7 +280,7 @@ function renderSidebar(activeRole, design) {
         ${roles.map((role) => `<a class="nav-item ${state.role === role.id ? "active" : ""}" href="#${role.id}" data-role="${role.id}" ${state.role === role.id ? "aria-current=\"page\"" : ""}>${icon(role.icon)}<span>${role.label}</span></a>`).join("")}
       </nav>
       <div class="reference-card">
-        <img src="${activeRole.image}" alt="" />
+        <img src="${asset(activeRole.image)}" alt="" />
         <div><strong>Stitch reference</strong><span>Visual source</span></div>
       </div>
     </aside>

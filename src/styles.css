@@ -1550,6 +1550,95 @@ select {
   gap: 12px;
 }
 
+.role-control-center {
+  grid-column: span 12;
+  scroll-margin-top: 24px;
+}
+
+.role-control-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.role-control-heading .eyebrow {
+  margin: 0;
+}
+
+.role-control-intro {
+  max-width: 760px;
+  margin: -4px 0 18px;
+  color: var(--muted);
+  font-weight: 750;
+  line-height: 1.6;
+}
+
+.role-control-launcher {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.role-control-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px 12px;
+  min-height: 142px;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  background: linear-gradient(145deg, #fff, var(--surface-low));
+  text-align: left;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.role-control-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.role-control-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  color: var(--primary);
+  background: #dae1ff;
+}
+
+.role-control-card strong,
+.role-control-card small {
+  display: block;
+}
+
+.role-control-card small {
+  margin-top: 5px;
+  color: var(--muted);
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.role-control-card em {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--primary);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.account-access-heading {
+  margin-top: 24px;
+}
+
+.role-control-center .users-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
 .user-role-card {
   display: grid;
   gap: 10px;
@@ -2853,6 +2942,8 @@ select {
   .demo-role-grid { grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); }
   .hero-card, .missions-panel, .awards-panel, .class-panel, .activity-panel, .grading-card, .teacher-note, .deadline-panel, .subject-panel, .mobile-parent-panel, .tenant-controls, .hierarchy-panel, .state-management-panel, .district-management-panel, .category-panel, .district-panel, .instance-panel, .tenant-settings-panel, .design-studio-panel, .permissions-panel, .privacy-panel, .audit-panel, .calendar-panel, .users-roles-panel, .compliance-panel, .gradebook-detail-suite, .roster-panel, .realtime-panel, .assignment-composer-panel, .unified-os-panel, .production-panel, .board-composer, .published-board, .approval-queue, .approver-panel, .board-policy, .workflow-rules-panel, .grading-suite, .notification-suite, .workspace-suite, .workflow-suite, .sync-suite, .background-services, .deadline-suite, .file-suite, .account-suite, .offline-suite, .simplicity-suite, .free-suite, .guardrail-suite, .privacy-suite, .stat-card { grid-column: span 12; }
   .background-service-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .role-control-launcher { grid-template-columns: 1fr; }
+  .role-control-center .users-grid { grid-template-columns: 1fr; }
   .hero-card { grid-template-columns: 1fr; }
   .tenant-selectors { grid-template-columns: 1fr; }
   .messages-shell { height: auto; grid-template-columns: 1fr; }

@@ -68,7 +68,6 @@ import {
   workspaceIntegrations,
   classroomStrengths,
   tenantSettings,
-  permissionMatrix,
   auditLogs,
   privacyControls,
   complianceMetrics,
@@ -654,6 +653,7 @@ function renderTopbar(role) {
       <div><p class="eyebrow">${role.label} workspace</p><h2>${title}</h2></div>
       <div class="topbar-actions">
         <label class="searchbox">${icon("search")}<input id="global-search" value="${escapeHtml(state.searchTerm)}" placeholder="Search resources..." /></label>
+        ${can("manage-users") && allowedRoleIds().includes("state-admin") ? `<button class="secondary-action role-controls-action" data-role-controls type="button">${icon("users")} Role controls</button>` : ""}
         <div class="account-chip"><span>${initials(activeUser().label)}</span><div><strong>${activeUser().label}</strong><small>${activeUser().role}</small></div></div>
         ${isProductionHost() ? "" : `<button class="secondary-action reset-action" data-reset-demo type="button">${icon("rotate-ccw")} Reset Demo</button>`}
         <button class="icon-button" aria-label="Notifications" data-toggle-notifications>${icon("bell")}${unreadNotifications() ? `<span class="status-dot">${unreadNotifications()}</span>` : ""}</button>
@@ -686,8 +686,8 @@ function renderStateAdmin() {
       ${statCard("Districts", allDistricts.length, "building-2", "blue")}
       ${statCard("Schools", allSchools.length, "graduation-cap", "teal")}
       ${statCard("Active tenants", activeSchools, "shield-check", "gold")}
+      ${renderRoleControlCenter()}
       ${renderUnifiedOperatingSystem()}
-      ${renderUsersRolesPanel()}
       ${renderRealtimePanel()}
       <section class="panel state-management-panel">
         <div class="section-heading"><h3>District Oversight</h3><span>${stateRecord.name}</span></div>
@@ -764,7 +764,6 @@ function renderDistrictAdmin() {
         </div>
       </section>
       ${renderUnifiedOperatingSystem()}
-      ${renderUsersRolesPanel()}
       ${renderRealtimePanel()}
       <section class="panel audit-panel">
         <div class="section-heading"><h3>District Audit Trail</h3><span>School and staff actions</span></div>
@@ -803,7 +802,6 @@ function renderSchoolAdmin() {
           <div><span>Submissions</span><strong>${pendingSubmissions} pending</strong></div>
         </div>
       </section>
-      ${renderUsersRolesPanel()}
       <section class="panel permissions-panel">
         <div class="section-heading"><h3>School Operations</h3><span>LMS, messages, approvals</span></div>
         <div class="permission-table">
@@ -949,21 +947,6 @@ function renderPlatform() {
         </div>
       </section>
 
-      <section class="panel permissions-panel">
-        <div class="section-heading"><h3>Permission Matrix</h3><span>Scope-aware roles</span></div>
-        <div class="permission-table">
-          ${permissionMatrix.map((item) => `
-            <article class="permission-row">
-              <strong>${item.role}</strong>
-              <span>${item.scope}</span>
-              <small>${item.canManage}</small>
-            </article>
-          `).join("")}
-        </div>
-      </section>
-
-      ${renderUsersRolesPanel()}
-
       <section class="panel privacy-panel">
         <div class="section-heading"><h3>FERPA & Privacy Controls</h3>${icon("lock")}</div>
         ${privacyControls.map((item) => `
@@ -1033,10 +1016,36 @@ function renderPlatform() {
   `;
 }
 
-function renderUsersRolesPanel() {
+function renderRoleControlCenter() {
+  const scopeDescriptions = {
+    "state-admin": "Statewide governance, district oversight, compliance, and policy",
+    "district-admin": "School tenants, shared calendars, roster health, and district analytics",
+    "school-admin": "Campus users, family access, safety, approvals, and operations",
+    lms: "Assignments, gradebook, learning files, and classroom integrations",
+    student: "Personal learning missions, progress, and approved resources",
+    teacher: "Classes, assignments, grading, messages, and community submissions",
+    parent: "Linked learner progress, deadlines, approved posts, and messages",
+    messages: "Authorized family, staff, and school conversations",
+    community: "School announcements, submissions, approvals, and published updates",
+  };
+  const availableRoles = visibleRoles();
   return `
-    <section class="panel users-roles-panel">
-      <div class="section-heading"><h3>Users & Roles</h3><span>${can("manage-users") ? "Editable" : "Read-only"}</span></div>
+    <section class="panel users-roles-panel role-control-center" id="role-control-center" aria-labelledby="role-control-title">
+      <div class="section-heading role-control-heading">
+        <div><p class="eyebrow">Global administration</p><h3 id="role-control-title">Role Control Center</h3></div>
+        <span>${can("manage-users") ? "Permissions editable" : "Read-only"}</span>
+      </div>
+      <p class="role-control-intro">Open role-based workspaces, review their access boundaries, and manage account permissions from one place.</p>
+      <div class="role-control-launcher" aria-label="Role workspaces">
+        ${availableRoles.map((role) => `
+          <button class="role-control-card" type="button" data-open-role="${role.id}">
+            <span class="role-control-icon">${icon(role.icon)}</span>
+            <span><strong>${role.label}</strong><small>${scopeDescriptions[role.id]}</small></span>
+            <em>Open workspace ${icon("chevron-right")}</em>
+          </button>
+        `).join("")}
+      </div>
+      <div class="section-heading account-access-heading"><h4>Account access</h4><span>${userProfiles.length} profiles</span></div>
       <div class="users-grid">
         ${userProfiles.map((profile) => `
           <article class="user-role-card">
@@ -1052,7 +1061,7 @@ function renderUsersRolesPanel() {
           </article>
         `).join("")}
       </div>
-      ${permissionNotice("manage-users", "Only administrators can change demo role permissions.")}
+      ${permissionNotice("manage-users", "Only administrators can change role permissions.")}
     </section>
   `;
 }
@@ -1817,6 +1826,11 @@ function bindEvents() {
       state.searchTerm = "";
       goToRole(button.dataset.openRole, `${roles.find((role) => role.id === button.dataset.openRole)?.label || "Workspace"} opened.`);
     });
+  });
+
+  document.querySelector("[data-role-controls]")?.addEventListener("click", () => {
+    goToRole("state-admin", "Role Control Center opened.");
+    requestAnimationFrame(() => document.querySelector("#role-control-center")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   });
 
   document.querySelector("[data-start-tour]")?.addEventListener("click", () => {

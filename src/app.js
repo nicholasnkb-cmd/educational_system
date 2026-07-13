@@ -89,12 +89,15 @@ import {
   persistDemoState,
   resetDemoState,
 } from "./storage.js";
-import { loginServerProfile, mockApiStatus, sendServerNotificationTest, uploadServerFile } from "./mockApi.js";
+import { getServerSession, loginServerProfile, sendServerNotificationTest, uploadServerFile } from "./mockApi.js";
 import { initializeErrorReporting } from "./errorReporting.js";
 
 initializeErrorReporting();
 
 const app = document.querySelector("#app");
+let authenticatedProfile = null;
+let landingError = "";
+let landingBusy = false;
 
 const tourSteps = [
   { title: "Choose a role", body: "Use the demo login panel to switch between state, district, school, teacher, parent, and student access.", role: "state-admin" },
@@ -244,7 +247,57 @@ function simulateLiveUpdate(source = "manual") {
 }
 
 function activeUser() {
-  return userProfiles.find((profile) => profile.id === state.currentUser) || userProfiles[0];
+  return authenticatedProfile || userProfiles.find((profile) => profile.id === state.currentUser) || userProfiles[0];
+}
+
+function isProductionHost() {
+  return !["localhost", "127.0.0.1", "0.0.0.0"].includes(window.location.hostname);
+}
+
+function allowedRoleIds(profile = activeUser()) {
+  if (!profile) return [];
+  const allowed = new Set([profile.landing]);
+  const permissions = new Set(profile.permissions || []);
+  if (profile.scope === "state") allowed.add("state-admin");
+  if (["state", "district"].includes(profile.scope)) allowed.add("district-admin");
+  if (["state", "district", "school"].includes(profile.scope) && /Admin$/i.test(profile.role || "")) allowed.add("school-admin");
+  if (permissions.has("lms")) allowed.add("lms");
+  if (permissions.has("teacher-tools")) allowed.add("teacher");
+  if (permissions.has("message")) allowed.add("messages");
+  if (permissions.has("approve-posts") || permissions.has("submit-post")) allowed.add("community");
+  if (permissions.has("student-missions")) allowed.add("student");
+  return roles.map((role) => role.id).filter((id) => allowed.has(id));
+}
+
+function visibleRoles() {
+  const allowed = new Set(allowedRoleIds());
+  return roles.filter((role) => allowed.has(role.id));
+}
+
+function signInProfile(profile, messagePrefix = "Signed in as") {
+  if (!profile) return;
+  const localProfile = userProfiles.find((item) => item.id === profile.id);
+  authenticatedProfile = { ...localProfile, ...profile };
+  state.currentUser = authenticatedProfile.id;
+  state.toast = `${messagePrefix} ${authenticatedProfile.label}.`;
+  addAudit("Signed in", selectedSchoolRecord().name, authenticatedProfile.label);
+  const landing = allowedRoleIds(authenticatedProfile).includes(authenticatedProfile.landing)
+    ? authenticatedProfile.landing
+    : allowedRoleIds(authenticatedProfile)[0];
+  setActiveRole(landing || "student");
+}
+
+function signOut() {
+  const label = activeUser().label;
+  localStorage.removeItem("educonnect-session-token");
+  authenticatedProfile = null;
+  state.toast = "";
+  state.searchTerm = "";
+  landingError = "";
+  history.replaceState(null, "", window.location.pathname);
+  render();
+  requestAnimationFrame(() => document.querySelector("#landing-profile")?.focus());
+  console.info(`${label} signed out`);
 }
 
 function can(permission) {
@@ -277,7 +330,10 @@ function hashRole() {
 
 function setActiveRole(roleId, pushRoute = true) {
   if (roleId === "platform") roleId = "state-admin";
-  if (!roles.some((role) => role.id === roleId)) return;
+  if (!roles.some((role) => role.id === roleId) || !allowedRoleIds().includes(roleId)) {
+    if (authenticatedProfile) state.toast = "That workspace is not available for your role.";
+    return;
+  }
   state.role = roleId;
   state.notificationsOpen = false;
   state.settingsOpen = false;
@@ -317,8 +373,9 @@ function selectedSchoolRecord() {
 
 function searchableItems() {
   const school = selectedSchoolRecord();
+  const allowed = new Set(allowedRoleIds());
   return [
-    ...roles.map((role) => ({ label: role.label, detail: "Workspace", role: role.id })),
+    ...visibleRoles().map((role) => ({ label: role.label, detail: "Workspace", role: role.id })),
     ...missions.map((mission) => ({ label: mission.title, detail: `${mission.subject} mission`, role: "student" })),
     ...teacherClasses.map((item) => ({ label: item.name, detail: item.room, role: "teacher" })),
     ...lmsAssignments.map((item) => ({ label: item.title, detail: `${item.type} in LMS`, role: "lms" })),
@@ -326,7 +383,7 @@ function searchableItems() {
     ...conversations.map((item) => ({ label: item.name, detail: item.preview, role: "messages" })),
     ...selectedCommunityBoard().published.map((post) => ({ label: post.title, detail: `${post.type} post`, role: "community" })),
     { label: school.name, detail: `${school.category} school tenant`, role: "school-admin" },
-  ];
+  ].filter((item) => allowed.has(item.role));
 }
 
 function renderSearchResults() {
@@ -348,39 +405,53 @@ function renderSearchResults() {
   `;
 }
 
-function renderAuthPanel() {
-  const user = activeUser();
-  const api = mockApiStatus();
+function renderLandingPage() {
+  const production = isProductionHost();
+  const selected = userProfiles.find((profile) => profile.id === state.currentUser) || userProfiles[0];
+  const audiences = [
+    ["Administrators", "District and school oversight, access governance, compliance, and tenant operations.", "shield-check", "school-admin"],
+    ["Teachers", "Classrooms, assignments, gradebooks, family communication, and learning resources.", "graduation-cap", "teacher"],
+    ["Families", "A focused view of learner progress, deadlines, messages, and school updates.", "users", "parent"],
+    ["Students", "Missions, progress, classroom activities, and age-appropriate learning tools.", "sparkles", "student"],
+  ];
   return `
-    <section class="auth-panel" aria-label="Demo login and API mode">
-      <div>
-        <p class="eyebrow">Signed in as</p>
-        <h3>${user.label}</h3>
-        <span>${user.role} permissions</span>
-      </div>
-      <form id="login-form" class="login-form">
-        <label class="login-select">
-          <span>Login role</span>
-          <select id="login-profile">
-            ${userProfiles.map((profile) => `<option value="${profile.id}" ${profile.id === user.id ? "selected" : ""}>${profile.role} - ${profile.label}</option>`).join("")}
-          </select>
-        </label>
-        <label class="login-password">
-          <span>Password</span>
-          <input id="login-password" type="password" placeholder="Password" autocomplete="current-password" />
-        </label>
-        <button class="secondary-action" type="submit">${icon("lock")} Sign in</button>
-      </form>
-      <label class="api-mode-toggle">
-        <span>Data mode</span>
-        <select id="api-mode">
-          <option value="local" ${state.apiMode === "local" ? "selected" : ""}>Local demo state</option>
-          <option value="mock-api" ${state.apiMode === "mock-api" ? "selected" : ""}>Mock API service</option>
-          <option value="live-api" ${state.apiMode === "live-api" ? "selected" : ""}>Server database</option>
-        </select>
-        <small>${state.apiMode === "live-api" ? `${api.status} • ${api.endpoint} • ${api.requestCount} requests` : state.apiMode === "mock-api" ? `${api.endpoint} • ${api.requestCount} requests` : "localStorage persistence"}</small>
-      </label>
-    </section>
+    <div class="landing-shell">
+      <header class="landing-header">
+        <a class="landing-brand" href="#top" aria-label="EduConnect home"><span>EC</span><strong>EduConnect</strong></a>
+        <nav aria-label="Public navigation"><a href="#solutions">Solutions</a><a href="#trust">Privacy</a><a href="#signin">Sign in</a></nav>
+        <a class="primary-action landing-header-cta" href="#signin">Open your portal</a>
+      </header>
+      <main id="top">
+        <section class="landing-hero">
+          <div class="landing-hero-copy">
+            <p class="eyebrow">One connected school community</p>
+            <h1>The right school view for every person.</h1>
+            <p class="landing-lede">EduConnect gives administrators, teachers, families, and students a secure workspace shaped around what they are responsible for—nothing more, nothing less.</p>
+            <div class="landing-actions"><a class="primary-action" href="#signin">Sign in to your workspace ${icon("chevron-right")}</a><a class="secondary-action" href="#solutions">See role-based views</a></div>
+            <div class="landing-proof"><span>${icon("shield-check")} Role-scoped access</span><span>${icon("lock")} Private tenant data</span><span>${icon("smartphone")} Ready on any device</span></div>
+          </div>
+          <div class="landing-login-card" id="signin">
+            <div class="landing-login-heading"><span class="landing-lock">${icon("lock")}</span><div><p class="eyebrow">Secure portal</p><h2>Welcome back</h2><p>Select your account and enter your password.</p></div></div>
+            ${landingError ? `<div class="landing-error" role="alert">${icon("alert-triangle")} ${escapeHtml(landingError)}</div>` : ""}
+            <form id="landing-login-form">
+              <label><span>Account</span><select id="landing-profile" aria-label="Login account">${userProfiles.map((profile) => `<option value="${profile.id}" ${profile.id === selected.id ? "selected" : ""}>${profile.role} — ${profile.label}</option>`).join("")}</select></label>
+              <label><span>Password</span><input id="landing-password" type="password" autocomplete="current-password" placeholder="Enter your password" ${production ? "required" : ""} /></label>
+              <button class="primary-action landing-submit" type="submit" ${landingBusy ? "disabled" : ""}>${landingBusy ? "Signing in…" : `${icon("lock")} Sign in securely`}</button>
+            </form>
+            <p class="landing-login-note">${production ? "Your assigned role determines the workspaces and records you can access." : "Local preview: choose any synthetic account; no password is required."}</p>
+          </div>
+        </section>
+        <section class="landing-role-section" id="solutions">
+          <div class="landing-section-heading"><p class="eyebrow">Purpose-built access</p><h2>Everyone starts where their work begins.</h2><p>Each person enters a distinct dashboard with navigation and actions matched to their responsibilities.</p></div>
+          <div class="landing-role-grid">${audiences.map(([title, body, iconName, profileId]) => `<button class="landing-role-card" data-landing-profile="${profileId}">${icon(iconName)}<strong>${title}</strong><span>${body}</span><em>View this sign-in ${icon("chevron-right")}</em></button>`).join("")}</div>
+        </section>
+        <section class="landing-trust" id="trust">
+          <div><p class="eyebrow">Privacy by design</p><h2>Student information stays in the right hands.</h2><p>Tenant boundaries, role permissions, encrypted connections, audit trails, and scoped family access work together throughout the platform.</p></div>
+          <div class="landing-trust-grid"><article>${icon("shield-check")}<strong>Scoped by role</strong><span>People only see workspaces their assigned role permits.</span></article><article>${icon("building-2")}<strong>Scoped by school</strong><span>District and school records stay inside their tenant boundaries.</span></article><article>${icon("clipboard-check")}<strong>Accountable actions</strong><span>Administrative changes and sensitive workflows are auditable.</span></article></div>
+        </section>
+      </main>
+      <footer class="landing-footer"><a class="landing-brand" href="#top"><span>EC</span><strong>EduConnect</strong></a><p>Connected learning. Appropriate access. One school community.</p><small>All demonstration people and records are synthetic.</small></footer>
+    </div>
   `;
 }
 
@@ -444,6 +515,12 @@ function applyDesignFromForm() {
 }
 
 function render() {
+  if (!authenticatedProfile) {
+    app.innerHTML = renderLandingPage();
+    bindLandingEvents();
+    enhanceIcons();
+    return;
+  }
   const role = roles.find((item) => item.id === state.role);
   const school = selectedSchoolRecord();
   const design = selectedSchoolDesign();
@@ -453,8 +530,6 @@ function render() {
       <main class="workspace workspace-${state.role}">
         ${renderTenantBar(school, design)}
         ${renderTopbar(role)}
-        ${renderAuthPanel()}
-        ${renderDemoLauncher()}
         ${renderTour()}
         ${renderSearchResults()}
         ${state.role === "state-admin" ? renderStateAdmin() : ""}
@@ -490,29 +565,6 @@ function renderTour() {
         <button class="secondary-action" data-tour-prev ${state.tourStep === 0 ? "disabled" : ""}>${icon("chevron-right")} Back</button>
         <button class="primary-action" data-tour-next>${icon("play")} ${state.tourStep === tourSteps.length - 1 ? "Finish" : "Next"}</button>
       </div>
-    </section>
-  `;
-}
-
-function renderDemoLauncher() {
-  const school = selectedSchoolRecord();
-  const activeRole = roles.find((role) => role.id === state.role);
-  return `
-    <section class="demo-launcher" aria-label="Demo role launcher">
-      <div>
-        <p class="eyebrow">Demo login</p>
-        <h3>${activeRole.label} view at ${school.name}</h3>
-        <small>All people and records shown here are synthetic.</small>
-      </div>
-      <div class="demo-role-grid">
-        ${roles.map((role) => `
-          <button class="demo-role ${state.role === role.id ? "active" : ""}" data-open-role="${role.id}">
-            ${icon(role.icon)}
-            <span>${role.label}</span>
-          </button>
-        `).join("")}
-      </div>
-      <button class="secondary-action" data-start-tour>${icon("play")} Start Walkthrough</button>
     </section>
   `;
 }
@@ -577,7 +629,7 @@ function renderSidebar(activeRole, design) {
         <div><h1>${design.crest}</h1><p>${design.voice}</p></div>
       </div>
       <nav class="role-nav" aria-label="Portal views">
-        ${roles.map((role) => `<a class="nav-item ${state.role === role.id ? "active" : ""}" href="#${role.id}" data-role="${role.id}" ${state.role === role.id ? "aria-current=\"page\"" : ""}>${icon(role.icon)}<span>${role.label}</span></a>`).join("")}
+        ${visibleRoles().map((role) => `<a class="nav-item ${state.role === role.id ? "active" : ""}" href="#${role.id}" data-role="${role.id}" ${state.role === role.id ? "aria-current=\"page\"" : ""}>${icon(role.icon)}<span>${role.label}</span></a>`).join("")}
       </nav>
       <div class="reference-card">
         <img src="${asset(activeRole.image)}" alt="" />
@@ -590,7 +642,7 @@ function renderSidebar(activeRole, design) {
 function renderMobileNav() {
   return `
     <nav class="mobile-role-nav" aria-label="Mobile portal views">
-      ${roles.map((role) => `<a class="mobile-nav-item ${state.role === role.id ? "active" : ""}" href="#${role.id}" data-role="${role.id}" ${state.role === role.id ? "aria-current=\"page\"" : ""}>${icon(role.icon)}<span>${role.label}</span></a>`).join("")}
+      ${visibleRoles().map((role) => `<a class="mobile-nav-item ${state.role === role.id ? "active" : ""}" href="#${role.id}" data-role="${role.id}" ${state.role === role.id ? "aria-current=\"page\"" : ""}>${icon(role.icon)}<span>${role.label}</span></a>`).join("")}
     </nav>
   `;
 }
@@ -602,9 +654,11 @@ function renderTopbar(role) {
       <div><p class="eyebrow">${role.label} workspace</p><h2>${title}</h2></div>
       <div class="topbar-actions">
         <label class="searchbox">${icon("search")}<input id="global-search" value="${escapeHtml(state.searchTerm)}" placeholder="Search resources..." /></label>
-        <button class="secondary-action reset-action" data-reset-demo type="button">${icon("rotate-ccw")} Reset Demo</button>
+        <div class="account-chip"><span>${initials(activeUser().label)}</span><div><strong>${activeUser().label}</strong><small>${activeUser().role}</small></div></div>
+        ${isProductionHost() ? "" : `<button class="secondary-action reset-action" data-reset-demo type="button">${icon("rotate-ccw")} Reset Demo</button>`}
         <button class="icon-button" aria-label="Notifications" data-toggle-notifications>${icon("bell")}${unreadNotifications() ? `<span class="status-dot">${unreadNotifications()}</span>` : ""}</button>
         <button class="icon-button" aria-label="Settings" data-toggle-settings>${icon("settings")}</button>
+        <button class="icon-button" aria-label="Sign out" data-sign-out>${icon("x")}</button>
       </div>
     </header>
   `;
@@ -1698,6 +1752,48 @@ function replyToStudent(student) {
   goToRole("messages", `Reply draft started for ${student}.`);
 }
 
+function bindLandingEvents() {
+  document.querySelectorAll("[data-landing-profile]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const select = document.querySelector("#landing-profile");
+      if (select) select.value = button.dataset.landingProfile;
+      document.querySelector("#signin")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      document.querySelector("#landing-password")?.focus({ preventScroll: true });
+    });
+  });
+
+  document.querySelector("#landing-profile")?.addEventListener("change", (event) => {
+    state.currentUser = event.target.value;
+  });
+
+  document.querySelector("#landing-login-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const profileId = document.querySelector("#landing-profile").value;
+    const password = document.querySelector("#landing-password").value;
+    const localProfile = userProfiles.find((item) => item.id === profileId);
+    landingError = "";
+    if (!isProductionHost()) {
+      signInProfile(localProfile);
+      return;
+    }
+    landingBusy = true;
+    render();
+    try {
+      const payload = await loginServerProfile(profileId, password);
+      localStorage.setItem("educonnect-session-token", payload.token);
+      state.apiMode = "live-api";
+      await hydrateMockApiState("live-api").catch(() => undefined);
+      landingBusy = false;
+      signInProfile(payload.user, "Securely signed in as");
+    } catch (error) {
+      localStorage.removeItem("educonnect-session-token");
+      landingBusy = false;
+      landingError = error.message || "Invalid credentials.";
+      render();
+    }
+  });
+}
+
 function bindEvents() {
   document.querySelectorAll("[data-role]").forEach((button) => {
     button.addEventListener("click", (event) => {
@@ -1708,9 +1804,11 @@ function bindEvents() {
 
   document.querySelector("[data-reset-demo]")?.addEventListener("click", () => {
     resetDemoState();
-    if (window.location.hash !== "#state-admin") history.pushState(null, "", "#state-admin");
-    render();
+    state.currentUser = authenticatedProfile.id;
+    setActiveRole(authenticatedProfile.landing);
   });
+
+  document.querySelector("[data-sign-out]")?.addEventListener("click", signOut);
 
   document.querySelector("#global-search")?.addEventListener("input", (event) => {
     state.searchTerm = event.target.value;
@@ -1727,51 +1825,6 @@ function bindEvents() {
       state.searchTerm = "";
       goToRole(button.dataset.openRole, `${roles.find((role) => role.id === button.dataset.openRole)?.label || "Workspace"} opened.`);
     });
-  });
-
-  function signInProfile(profile, messagePrefix = "Signed in as") {
-    if (!profile) return;
-    state.currentUser = profile.id;
-    addAudit(`Switched demo login to ${profile.role}`, selectedSchoolRecord().name, profile.label);
-    state.toast = `${messagePrefix} ${profile.label}.`;
-    setActiveRole(profile.landing);
-  }
-
-  document.querySelector("#login-profile")?.addEventListener("change", (event) => {
-    if (state.apiMode === "live-api") return;
-    signInProfile(userProfiles.find((item) => item.id === event.target.value));
-  });
-
-  document.querySelector("#login-form")?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const profileId = document.querySelector("#login-profile").value;
-    const profile = userProfiles.find((item) => item.id === profileId);
-    if (state.apiMode !== "live-api") {
-      signInProfile(profile);
-      return;
-    }
-    try {
-      const payload = await loginServerProfile(profileId, document.querySelector("#login-password").value);
-      localStorage.setItem("educonnect-session-token", payload.token);
-      signInProfile(payload.user, "Securely signed in as");
-    } catch (error) {
-      announce(error.message || "Invalid credentials.");
-    }
-  });
-
-  document.querySelector("#api-mode")?.addEventListener("change", async (event) => {
-    state.apiMode = event.target.value;
-    if (state.apiMode === "mock-api" || state.apiMode === "live-api") {
-      try {
-        await hydrateMockApiState(state.apiMode);
-        announce(state.apiMode === "live-api" ? "Server database mode enabled." : "Mock API mode enabled.");
-      } catch {
-        state.apiMode = "local";
-        announce("Server API unavailable. Local demo state mode enabled.");
-      }
-      return;
-    }
-    announce("Local demo state mode enabled.");
   });
 
   document.querySelector("[data-start-tour]")?.addEventListener("click", () => {
@@ -2337,23 +2390,42 @@ function bindEvents() {
 
 async function boot() {
   hydrateDemoState();
-  if (state.apiMode === "mock-api" || state.apiMode === "live-api") {
+  if (isProductionHost()) {
+    state.apiMode = "live-api";
+    if (localStorage.getItem("educonnect-session-token")) {
+      try {
+        const session = await getServerSession();
+        const localProfile = userProfiles.find((item) => item.id === session.user.id);
+        authenticatedProfile = { ...localProfile, ...session.user };
+        state.currentUser = authenticatedProfile.id;
+      } catch {
+        localStorage.removeItem("educonnect-session-token");
+      }
+    }
+  }
+  if (authenticatedProfile && (state.apiMode === "mock-api" || state.apiMode === "live-api")) {
     try {
       await hydrateMockApiState(state.apiMode);
     } catch {
-      state.apiMode = "local";
-      state.toast = "Server API unavailable. Local demo state mode enabled.";
+      if (!isProductionHost()) {
+        state.apiMode = "local";
+        state.toast = "Server API unavailable. Local demo state mode enabled.";
+      }
     }
   }
-  if (hashRole()) state.role = hashRole();
+  if (authenticatedProfile) {
+    const requested = hashRole();
+    state.role = requested && allowedRoleIds().includes(requested) ? requested : authenticatedProfile.landing;
+  }
   window.addEventListener("hashchange", () => {
+    if (!authenticatedProfile) return;
     const nextRole = hashRole();
     if (nextRole && nextRole !== state.role) setActiveRole(nextRole, false);
   });
   window.addEventListener("load", enhanceIcons);
   render();
   window.setInterval(() => {
-    if (!state.liveUpdates || document.hidden) return;
+    if (!authenticatedProfile || !state.liveUpdates || document.hidden) return;
     simulateLiveUpdate("automatic");
   }, 15000);
 }

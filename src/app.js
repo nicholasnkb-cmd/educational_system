@@ -296,7 +296,7 @@ function signOut() {
   landingError = "";
   history.replaceState(null, "", window.location.pathname);
   render();
-  requestAnimationFrame(() => document.querySelector("#landing-profile")?.focus());
+  requestAnimationFrame(() => document.querySelector("#landing-identifier")?.focus());
   console.info(`${label} signed out`);
 }
 
@@ -407,50 +407,49 @@ function renderSearchResults() {
 
 function renderLandingPage() {
   const production = isProductionHost();
-  const selected = userProfiles.find((profile) => profile.id === state.currentUser) || userProfiles[0];
   const audiences = [
-    ["Administrators", "District and school oversight, access governance, compliance, and tenant operations.", "shield-check", "school-admin"],
-    ["Teachers", "Classrooms, assignments, gradebooks, family communication, and learning resources.", "graduation-cap", "teacher"],
-    ["Families", "A focused view of learner progress, deadlines, messages, and school updates.", "users", "parent"],
-    ["Students", "Missions, progress, classroom activities, and age-appropriate learning tools.", "sparkles", "student"],
+    ["School leaders", "Bring school news, staff support, and everyday planning together in one welcoming place.", "shield-check"],
+    ["Teachers", "Plan lessons, celebrate progress, share classroom updates, and stay close to families.", "graduation-cap"],
+    ["Families", "Follow learning, remember important dates, and keep in touch with the school community.", "users"],
+    ["Students", "Discover activities, continue learning adventures, and see accomplishments grow.", "sparkles"],
   ];
   return `
     <div class="landing-shell">
       <header class="landing-header">
         <a class="landing-brand" href="#top" aria-label="EduConnect home"><span>EC</span><strong>EduConnect</strong></a>
-        <nav aria-label="Public navigation"><a href="#solutions">Solutions</a><a href="#trust">Privacy</a><a href="#signin">Sign in</a></nav>
+        <nav aria-label="Public navigation"><a href="#solutions">For everyone</a><a href="#trust">For schools</a><a href="#signin">Sign in</a></nav>
         <a class="primary-action landing-header-cta" href="#signin">Open your portal</a>
       </header>
       <main id="top">
         <section class="landing-hero">
           <div class="landing-hero-copy">
-            <p class="eyebrow">One connected school community</p>
-            <h1>The right school view for every person.</h1>
-            <p class="landing-lede">EduConnect gives administrators, teachers, families, and students a secure workspace shaped around what they are responsible for—nothing more, nothing less.</p>
-            <div class="landing-actions"><a class="primary-action" href="#signin">Sign in to your workspace ${icon("chevron-right")}</a><a class="secondary-action" href="#solutions">See role-based views</a></div>
-            <div class="landing-proof"><span>${icon("shield-check")} Role-scoped access</span><span>${icon("lock")} Private tenant data</span><span>${icon("smartphone")} Ready on any device</span></div>
+            <p class="eyebrow">A brighter school day, all in one place</p>
+            <h1>Learning, families, and schools—connected.</h1>
+            <p class="landing-lede">EduConnect makes it easier to learn, teach, share progress, and stay involved—whether you are in the classroom, at home, or on the go.</p>
+            <div class="landing-actions"><a class="primary-action" href="#signin">Sign in ${icon("chevron-right")}</a><a class="secondary-action" href="#solutions">See how EduConnect helps</a></div>
+            <div class="landing-proof"><span>${icon("book-open")} Made for learning</span><span>${icon("users")} Brings families closer</span><span>${icon("smartphone")} Works wherever you are</span></div>
           </div>
           <div class="landing-login-card" id="signin">
-            <div class="landing-login-heading"><span class="landing-lock">${icon("lock")}</span><div><p class="eyebrow">Secure portal</p><h2>Welcome back</h2><p>Select your account and enter your password.</p></div></div>
+            <div class="landing-login-heading"><span class="landing-lock">${icon("book-open")}</span><div><p class="eyebrow">Your school portal</p><h2>Welcome back</h2><p>Enter the sign-in details provided by your school.</p></div></div>
             ${landingError ? `<div class="landing-error" role="alert">${icon("alert-triangle")} ${escapeHtml(landingError)}</div>` : ""}
             <form id="landing-login-form">
-              <label><span>Account</span><select id="landing-profile" aria-label="Login account">${userProfiles.map((profile) => `<option value="${profile.id}" ${profile.id === selected.id ? "selected" : ""}>${profile.role} — ${profile.label}</option>`).join("")}</select></label>
+              <label><span>School email or username</span><input id="landing-identifier" type="text" autocomplete="username" placeholder="Enter your school username" required /></label>
               <label><span>Password</span><input id="landing-password" type="password" autocomplete="current-password" placeholder="Enter your password" ${production ? "required" : ""} /></label>
-              <button class="primary-action landing-submit" type="submit" ${landingBusy ? "disabled" : ""}>${landingBusy ? "Signing in…" : `${icon("lock")} Sign in securely`}</button>
+              <button class="primary-action landing-submit" type="submit" ${landingBusy ? "disabled" : ""}>${landingBusy ? "Signing in…" : `${icon("book-open")} Sign in`}</button>
             </form>
-            <p class="landing-login-note">${production ? "Your assigned role determines the workspaces and records you can access." : "Local preview: choose any synthetic account; no password is required."}</p>
+            <p class="landing-login-note">${production ? "Need help signing in? Contact your school office or teacher." : "Local preview: use state-admin, district-admin, school-admin, teacher, parent, or student. No password is required."}</p>
           </div>
         </section>
         <section class="landing-role-section" id="solutions">
-          <div class="landing-section-heading"><p class="eyebrow">Purpose-built access</p><h2>Everyone starts where their work begins.</h2><p>Each person enters a distinct dashboard with navigation and actions matched to their responsibilities.</p></div>
-          <div class="landing-role-grid">${audiences.map(([title, body, iconName, profileId]) => `<button class="landing-role-card" data-landing-profile="${profileId}">${icon(iconName)}<strong>${title}</strong><span>${body}</span><em>View this sign-in ${icon("chevron-right")}</em></button>`).join("")}</div>
+          <div class="landing-section-heading"><p class="eyebrow">Made for the whole school community</p><h2>Everyone has a place to learn and connect.</h2><p>Simple, welcoming experiences help each person focus on what matters most in their school day.</p></div>
+          <div class="landing-role-grid">${audiences.map(([title, body, iconName]) => `<article class="landing-role-card">${icon(iconName)}<strong>${title}</strong><span>${body}</span></article>`).join("")}</div>
         </section>
         <section class="landing-trust" id="trust">
-          <div><p class="eyebrow">Privacy by design</p><h2>Student information stays in the right hands.</h2><p>Tenant boundaries, role permissions, encrypted connections, audit trails, and scoped family access work together throughout the platform.</p></div>
-          <div class="landing-trust-grid"><article>${icon("shield-check")}<strong>Scoped by role</strong><span>People only see workspaces their assigned role permits.</span></article><article>${icon("building-2")}<strong>Scoped by school</strong><span>District and school records stay inside their tenant boundaries.</span></article><article>${icon("clipboard-check")}<strong>Accountable actions</strong><span>Administrative changes and sensitive workflows are auditable.</span></article></div>
+          <div><p class="eyebrow">Thoughtfully made for schools</p><h2>A calm, caring place to learn and connect.</h2><p>EduConnect keeps the school day organized without getting in the way, so people can spend more time teaching, learning, and encouraging one another.</p></div>
+          <div class="landing-trust-grid"><article>${icon("sparkles")}<strong>Joyful learning</strong><span>Friendly activities and clear progress help students feel proud of every step.</span></article><article>${icon("users")}<strong>Closer families</strong><span>Updates and reminders make it easier for families to take part in learning.</span></article><article>${icon("graduation-cap")}<strong>Helpful for teachers</strong><span>Everyday classroom work stays organized and easy to find.</span></article></div>
         </section>
       </main>
-      <footer class="landing-footer"><a class="landing-brand" href="#top"><span>EC</span><strong>EduConnect</strong></a><p>Connected learning. Appropriate access. One school community.</p><small>All demonstration people and records are synthetic.</small></footer>
+      <footer class="landing-footer"><a class="landing-brand" href="#top"><span>EC</span><strong>EduConnect</strong></a><p>Learning together. Growing together.</p><small>Made for students, families, teachers, and schools.</small></footer>
     </div>
   `;
 }
@@ -1753,33 +1752,25 @@ function replyToStudent(student) {
 }
 
 function bindLandingEvents() {
-  document.querySelectorAll("[data-landing-profile]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const select = document.querySelector("#landing-profile");
-      if (select) select.value = button.dataset.landingProfile;
-      document.querySelector("#signin")?.scrollIntoView({ behavior: "smooth", block: "center" });
-      document.querySelector("#landing-password")?.focus({ preventScroll: true });
-    });
-  });
-
-  document.querySelector("#landing-profile")?.addEventListener("change", (event) => {
-    state.currentUser = event.target.value;
-  });
-
   document.querySelector("#landing-login-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const profileId = document.querySelector("#landing-profile").value;
+    const identifier = document.querySelector("#landing-identifier").value.trim();
     const password = document.querySelector("#landing-password").value;
-    const localProfile = userProfiles.find((item) => item.id === profileId);
+    const normalizedIdentifier = identifier.toLowerCase();
+    const localProfile = userProfiles.find((item) => [item.id, item.email, item.username, item.label].filter(Boolean).some((value) => String(value).toLowerCase() === normalizedIdentifier));
     landingError = "";
     if (!isProductionHost()) {
-      signInProfile(localProfile);
+      if (localProfile) signInProfile(localProfile);
+      else {
+        landingError = "We could not find that school account.";
+        render();
+      }
       return;
     }
     landingBusy = true;
     render();
     try {
-      const payload = await loginServerProfile(profileId, password);
+      const payload = await loginServerProfile(identifier, password);
       localStorage.setItem("educonnect-session-token", payload.token);
       state.apiMode = "live-api";
       await hydrateMockApiState("live-api").catch(() => undefined);

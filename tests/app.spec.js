@@ -6,9 +6,9 @@ test.beforeEach(async ({ page }) => {
 
 async function loginAs(page, profileId = "state-admin", workspace = "") {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "The right school view for every person." })).toBeVisible();
-  await page.getByLabel("Login account").selectOption(profileId);
-  await page.getByRole("button", { name: /Sign in securely/i }).click();
+  await expect(page.getByRole("heading", { name: "Learning, families, and schools—connected." })).toBeVisible();
+  await page.getByLabel("School email or username").fill(profileId);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByLabel("Sign out")).toBeVisible();
   if (workspace) await page.getByRole("link", { name: new RegExp(workspace, "i") }).first().click();
 }
@@ -77,8 +77,8 @@ test("switches demo identities and enforces role permissions", async ({ page }) 
   await expect(page.getByRole("button", { name: /Enable/i })).toBeDisabled();
 
   await page.getByLabel("Sign out").click();
-  await page.getByLabel("Login account").selectOption("district-admin");
-  await page.getByRole("button", { name: /Sign in securely/i }).click();
+  await page.getByLabel("School email or username").fill("district-admin");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("link", { name: /State Admin/i })).toHaveCount(0);
   await expect(page.getByRole("link", { name: /District Admin/i }).first()).toBeVisible();
   await page.getByRole("link", { name: /Messages/i }).first().click();
@@ -88,11 +88,11 @@ test("switches demo identities and enforces role permissions", async ({ page }) 
 test("uses a public landing page before opening a role workspace", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("link", { name: /Open your portal/i })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Everyone starts where their work begins." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Everyone has a place to learn and connect." })).toBeVisible();
   await expect(page.locator(".workspace")).toHaveCount(0);
-  await page.getByRole("button", { name: /Families/i }).click();
-  await expect(page.getByLabel("Login account")).toHaveValue("parent");
-  await page.getByRole("button", { name: /Sign in securely/i }).click();
+  await expect(page.locator("#landing-profile")).toHaveCount(0);
+  await page.getByLabel("School email or username").fill("parent");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Parent Dashboard" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Student/i })).toHaveCount(0);
 });

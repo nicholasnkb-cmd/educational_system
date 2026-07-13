@@ -90,6 +90,17 @@ describe("operational API server", () => {
     assert.equal(sessionPayload.user.id, "teacher");
   });
 
+  it("accepts a school username without exposing an account list", async () => {
+    const login = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier: "student", password: testPasswords.student }),
+    });
+    const payload = await login.json();
+    assert.equal(login.status, 200);
+    assert.equal(payload.user.id, "student");
+  });
+
   it("supports admin user management and password lifecycle", async () => {
     const adminLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",

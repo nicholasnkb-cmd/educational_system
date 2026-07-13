@@ -322,7 +322,12 @@ async function handleApi(req, res, pathname) {
 
   if (pathname === "/api/login" && req.method === "POST") {
     const body = await readJson(req);
-    const account = await accountFor(body.profileId);
+    const identifier = String(body.identifier || body.profileId || "").trim().toLowerCase();
+    const snapshot = await loadSnapshot();
+    const profile = snapshot.userProfiles.find((item) => [item.id, item.email, item.username]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase() === identifier));
+    const account = profile ? await accountFor(profile.id, snapshot) : null;
     if (!account || account.active === false || account.passwordHash !== hashPassword(body.password || "")) {
       sendJson(res, 401, { ok: false, error: "Invalid credentials" });
       return true;

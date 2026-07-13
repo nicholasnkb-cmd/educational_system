@@ -98,10 +98,10 @@ export function mockApiStatus() {
   };
 }
 
-export async function loginServerProfile(profileId, password) {
+export async function loginServerProfile(identifier, password) {
   return requestServer("/api/login", {
     method: "POST",
-    body: JSON.stringify({ profileId, password }),
+    body: JSON.stringify({ identifier, password }),
   });
 }
 

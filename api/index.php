@@ -37,6 +37,7 @@ $stateFile = "{$dataDir}/educonnect-state.json";
 $accountsFile = "{$dataDir}/educonnect-accounts.json";
 $sessionsFile = "{$dataDir}/educonnect-sessions.json";
 $rateLimitFile = "{$dataDir}/educonnect-rate-limits.json";
+$errorReportFile = "{$dataDir}/educonnect-error-reports.jsonl";
 $sqliteFile = "{$dataDir}/educonnect.sqlite";
 $maxUploadBytes = 5 * 1024 * 1024;
 $allowedUploadTypes = [
@@ -66,14 +67,21 @@ $defaultProfiles = [
     ['id' => 'parent', 'label' => 'Sarah Jenkins', 'role' => 'Parent', 'landing' => 'parent', 'scope' => 'guardian', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'studentIds' => ['leo'], 'permissions' => ['message', 'submit-post']],
 ];
 
-$defaultPasswords = [
-    'state-admin' => 'state123',
-    'district-admin' => 'admin123',
-    'school-admin' => 'school123',
-    'teacher' => 'teacher123',
-    'parent' => 'parent123',
-    'student' => 'student123',
+$bootstrapPasswordVariables = [
+    'state-admin' => 'EDUCONNECT_BOOTSTRAP_STATE_ADMIN',
+    'district-admin' => 'EDUCONNECT_BOOTSTRAP_DISTRICT_ADMIN',
+    'school-admin' => 'EDUCONNECT_BOOTSTRAP_SCHOOL_ADMIN',
+    'teacher' => 'EDUCONNECT_BOOTSTRAP_TEACHER',
+    'parent' => 'EDUCONNECT_BOOTSTRAP_PARENT',
+    'student' => 'EDUCONNECT_BOOTSTRAP_STUDENT',
 ];
+$bootstrapPasswords = [];
+foreach ($bootstrapPasswordVariables as $profileId => $environmentName) {
+    $configured = getenv($environmentName);
+    $bootstrapPasswords[$profileId] = is_string($configured) && strlen($configured) >= 16
+        ? $configured
+        : bin2hex(random_bytes(24));
+}
 
 function send_json(int $statusCode, array $payload): void {
     http_response_code($statusCode);
@@ -235,15 +243,15 @@ function write_file_json(string $path, array $payload): void {
     rename($tmp, $path);
 }
 
-function load_accounts(string $accountsFile, array $profiles, array $defaultPasswords): array {
+function load_accounts(string $accountsFile, array $profiles, array $bootstrapPasswords): array {
     $fallback = [];
     foreach ($profiles as $profile) {
         $id = $profile['id'];
         $fallback[] = [
             'profileId' => $id,
-            'passwordHash' => password_hash_for($defaultPasswords[$id] ?? "{$id}123"),
+            'passwordHash' => password_hash_for($bootstrapPasswords[$id] ?? bin2hex(random_bytes(24))),
             'active' => true,
-            'mustChangePassword' => false,
+            'mustChangePassword' => true,
             'updatedAt' => gmdate(DATE_ATOM),
         ];
     }
@@ -417,6 +425,31 @@ function backup_files(string $backupDir): array {
     return $files;
 }
 
+function prune_backups(string $backupDir, int $retentionDays = 30): void {
+    $cutoff = time() - ($retentionDays * 86400);
+    foreach (backup_files($backupDir) as $file) {
+        $path = "{$backupDir}/{$file}";
+        if (is_file($path) && filemtime($path) < $cutoff) @unlink($path);
+    }
+}
+
+function write_error_report(string $errorReportFile, array $body): void {
+    ensure_dir(dirname($errorReportFile));
+    if (is_file($errorReportFile) && filesize($errorReportFile) > 2 * 1024 * 1024) {
+        @rename($errorReportFile, $errorReportFile . '.' . gmdate('YmdHis'));
+    }
+    $report = [
+        'id' => bin2hex(random_bytes(8)),
+        'time' => gmdate(DATE_ATOM),
+        'source' => substr((string)($body['source'] ?? 'frontend'), 0, 80),
+        'message' => substr((string)($body['message'] ?? 'Unknown client error'), 0, 1000),
+        'stack' => substr((string)($body['stack'] ?? ''), 0, 6000),
+        'path' => substr((string)($body['path'] ?? ''), 0, 300),
+        'release' => substr((string)($body['release'] ?? ''), 0, 120),
+    ];
+    file_put_contents($errorReportFile, json_encode($report, JSON_UNESCAPED_SLASHES) . PHP_EOL, FILE_APPEND | LOCK_EX);
+}
+
 ensure_dir($dataDir);
 
 $method = $_SERVER['REQUEST_METHOD'];
@@ -427,6 +460,12 @@ try {
 
     if ($path === '/api/health' && $method === 'GET') {
         send_json(200, ['ok' => true, 'service' => 'educonnect-dedicated-api', 'mode' => 'operational', 'storage' => storage_engine(), 'time' => gmdate(DATE_ATOM)]);
+    }
+
+    if ($path === '/api/error-reports' && $method === 'POST') {
+        rate_limit('error-report', 20, 60);
+        write_error_report($errorReportFile, read_json());
+        send_json(202, ['ok' => true, 'accepted' => true]);
     }
 
     if ($path === '/api/state' && $method === 'GET') {
@@ -452,7 +491,7 @@ try {
         $body = read_json();
         $snapshot = load_snapshot($stateFile, $defaultProfiles);
         $profiles = $snapshot['userProfiles'] ?? $defaultProfiles;
-        $accounts = load_accounts($accountsFile, $profiles, $defaultPasswords);
+        $accounts = load_accounts($accountsFile, $profiles, $bootstrapPasswords);
         $profile = null;
         foreach ($profiles as $item) if (($item['id'] ?? '') === ($body['profileId'] ?? '')) $profile = $item;
         $account = null;
@@ -488,7 +527,7 @@ try {
         $session = require_session($sessionsFile, true);
         $snapshot = load_snapshot($stateFile, $defaultProfiles);
         $profiles = scoped_profiles($snapshot['userProfiles'] ?? $defaultProfiles, $session);
-        $accounts = load_accounts($accountsFile, $profiles, $defaultPasswords);
+        $accounts = load_accounts($accountsFile, $profiles, $bootstrapPasswords);
         $users = array_map(function ($profile) use ($accounts) {
             $account = null;
             foreach ($accounts as $item) if (($item['profileId'] ?? '') === ($profile['id'] ?? '')) $account = $item;
@@ -525,18 +564,19 @@ try {
         }
         $snapshot['userProfiles'][] = $profile;
         save_snapshot($stateFile, $snapshot);
-        $accounts = load_accounts($accountsFile, $snapshot['userProfiles'], $defaultPasswords);
-        ensure_strong_password((string)($body['password'] ?? 'changeme123'));
-        $accounts[] = ['profileId' => $id, 'passwordHash' => password_hash_for((string)($body['password'] ?? 'changeme123')), 'active' => true, 'mustChangePassword' => true, 'updatedAt' => gmdate(DATE_ATOM)];
+        $accounts = load_accounts($accountsFile, $snapshot['userProfiles'], $bootstrapPasswords);
+        if (empty($body['password'])) send_json(400, ['ok' => false, 'error' => 'A strong temporary password is required']);
+        ensure_strong_password((string)$body['password']);
+        $accounts[] = ['profileId' => $id, 'passwordHash' => password_hash_for((string)$body['password']), 'active' => true, 'mustChangePassword' => true, 'updatedAt' => gmdate(DATE_ATOM)];
         write_file_json($accountsFile, $accounts);
         audit_event('user.created', $session['user']['id'] ?? 'admin', ['profileId' => $id, 'role' => $role]);
-        send_json(201, ['ok' => true, 'user' => public_user($profile, end($accounts)), 'temporaryPassword' => isset($body['password']) ? null : 'changeme123']);
+        send_json(201, ['ok' => true, 'user' => public_user($profile, end($accounts))]);
     }
 
     if (preg_match('#^/api/users/([^/]+)$#', $path, $matches) && $method === 'PATCH') {
         $session = require_session($sessionsFile, true);
         $body = read_json();
-        $accounts = load_accounts($accountsFile, $defaultProfiles, $defaultPasswords);
+        $accounts = load_accounts($accountsFile, $defaultProfiles, $bootstrapPasswords);
         $snapshot = load_snapshot($stateFile, $defaultProfiles);
         $targetProfile = null;
         foreach ($snapshot['userProfiles'] ?? [] as $profile) if (($profile['id'] ?? '') === $matches[1]) $targetProfile = normalize_profile_scope($profile);
@@ -633,6 +673,7 @@ try {
     }
 
     if ($path === '/api/backups' && $method === 'GET') {
+        require_session($sessionsFile, true);
         send_json(200, ['ok' => true, 'backups' => backup_files($backupDir)]);
     }
 
@@ -642,14 +683,29 @@ try {
         $snapshot = load_snapshot($stateFile, $defaultProfiles);
         $name = 'educonnect-backup-' . gmdate('Y-m-d-H-i-s') . '.json';
         write_file_json("{$backupDir}/{$name}", $snapshot);
+        prune_backups($backupDir, 30);
         audit_event('backup.created', require_session($sessionsFile, true)['user']['id'] ?? 'admin', ['backup' => $name]);
         send_json(201, ['ok' => true, 'backup' => $name]);
+    }
+
+    if ($path === '/api/admin/export' && $method === 'GET') {
+        $session = require_session($sessionsFile, true);
+        $snapshot = load_snapshot($stateFile, $defaultProfiles);
+        $accounts = load_accounts($accountsFile, $snapshot['userProfiles'] ?? $defaultProfiles, $bootstrapPasswords);
+        audit_event('backup.exported', $session['user']['id'] ?? 'admin');
+        send_json(200, [
+            'ok' => true,
+            'exportedAt' => gmdate(DATE_ATOM),
+            'service' => 'educonnect-dedicated-api',
+            'snapshot' => $snapshot,
+            'accounts' => $accounts,
+        ]);
     }
 
     if ($path === '/api/admin/status' && $method === 'GET') {
         require_session($sessionsFile, true);
         $snapshot = load_snapshot($stateFile, $defaultProfiles);
-        $accounts = load_accounts($accountsFile, $snapshot['userProfiles'] ?? $defaultProfiles, $defaultPasswords);
+        $accounts = load_accounts($accountsFile, $snapshot['userProfiles'] ?? $defaultProfiles, $bootstrapPasswords);
         send_json(200, [
             'ok' => true,
             'status' => [
@@ -682,5 +738,6 @@ try {
 
     send_json(404, ['ok' => false, 'error' => 'Not found']);
 } catch (Throwable $error) {
-    send_json(500, ['ok' => false, 'error' => $error->getMessage()]);
+    error_log('EduConnect API error: ' . $error->getMessage());
+    send_json(500, ['ok' => false, 'error' => 'Internal server error']);
 }

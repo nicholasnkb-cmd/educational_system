@@ -1,4 +1,5 @@
 import { resolveEducationApiBase } from "./apiConfig.js";
+import { reportClientError } from "./errorReporting.js";
 
 const MOCK_API_KEY = "educonnect-mock-api-v1";
 
@@ -38,7 +39,9 @@ async function requestServerState(method, body) {
   requestCount += 1;
   if (!response.ok) {
     lastStatus = `HTTP ${response.status}`;
-    throw new Error(`Server API request failed with ${response.status}`);
+    const error = new Error(`Server API request failed with ${response.status}`);
+    reportClientError(error, { source: "api.state" });
+    throw error;
   }
   lastStatus = "Connected";
   return unwrapApiPayload(await response.json());
@@ -55,7 +58,9 @@ async function requestServer(path, options = {}) {
   if (!response.ok) {
     lastStatus = `HTTP ${response.status}`;
     const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error || `Server API request failed with ${response.status}`);
+    const error = new Error(payload.error || `Server API request failed with ${response.status}`);
+    reportClientError(error, { source: "api.request" });
+    throw error;
   }
   lastStatus = "Connected";
   return unwrapApiPayload(await response.json());

@@ -8,11 +8,25 @@ let server;
 let baseUrl;
 let dataDir;
 let adminToken;
+const testPasswords = {
+  "state-admin": "TestStateAdmin9!",
+  "district-admin": "TestDistrictAdmin9!",
+  "school-admin": "TestSchoolAdmin9!",
+  teacher: "TestTeacher9!",
+  parent: "TestParent9!",
+  student: "TestStudent9!",
+};
 
 describe("operational API server", () => {
   before(async () => {
     dataDir = await mkdtemp(join(tmpdir(), "educonnect-api-"));
     process.env.DATA_DIR = dataDir;
+    process.env.EDUCONNECT_BOOTSTRAP_STATE_ADMIN = testPasswords["state-admin"];
+    process.env.EDUCONNECT_BOOTSTRAP_DISTRICT_ADMIN = testPasswords["district-admin"];
+    process.env.EDUCONNECT_BOOTSTRAP_SCHOOL_ADMIN = testPasswords["school-admin"];
+    process.env.EDUCONNECT_BOOTSTRAP_TEACHER = testPasswords.teacher;
+    process.env.EDUCONNECT_BOOTSTRAP_PARENT = testPasswords.parent;
+    process.env.EDUCONNECT_BOOTSTRAP_STUDENT = testPasswords.student;
     const { createEduConnectServer } = await import("../server.mjs");
     server = createEduConnectServer();
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -37,7 +51,7 @@ describe("operational API server", () => {
     const stateAdminLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profileId: "state-admin", password: "state123" }),
+      body: JSON.stringify({ profileId: "state-admin", password: testPasswords["state-admin"] }),
     });
     const stateAdmin = await stateAdminLogin.json();
     const initial = await (await fetch(`${baseUrl}/api/state`)).json();
@@ -61,7 +75,7 @@ describe("operational API server", () => {
     const login = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profileId: "teacher", password: "teacher123" }),
+      body: JSON.stringify({ profileId: "teacher", password: testPasswords.teacher }),
     });
     const payload = await login.json();
     assert.equal(login.status, 200);
@@ -80,7 +94,7 @@ describe("operational API server", () => {
     const adminLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profileId: "district-admin", password: "admin123" }),
+      body: JSON.stringify({ profileId: "district-admin", password: testPasswords["district-admin"] }),
     });
     const adminPayload = await adminLogin.json();
     adminToken = adminPayload.token;
@@ -137,7 +151,7 @@ describe("operational API server", () => {
     const schoolLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profileId: "school-admin", password: "school123" }),
+      body: JSON.stringify({ profileId: "school-admin", password: testPasswords["school-admin"] }),
     });
     const schoolPayload = await schoolLogin.json();
     assert.equal(schoolLogin.status, 200);
@@ -165,7 +179,7 @@ describe("operational API server", () => {
     const stateAdminLogin = await fetch(`${baseUrl}/api/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profileId: "state-admin", password: "state123" }),
+      body: JSON.stringify({ profileId: "state-admin", password: testPasswords["state-admin"] }),
     });
     const stateAdmin = await stateAdminLogin.json();
     const upload = await fetch(`${baseUrl}/api/files`, {

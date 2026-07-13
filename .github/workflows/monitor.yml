@@ -1,0 +1,52 @@
+name: Monitor live services
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify sites, APIs, CORS, and certificates
+        shell: bash
+        run: |
+          set -euo pipefail
+          frontend=$(curl --fail --silent --show-error --max-time 20 https://educationalsystem.fieldserviceit.com/)
+          grep -Eq '/assets/index-[^" ]+\.js' <<<"$frontend"
+          curl --fail --silent --show-error --max-time 20 https://fieldserviceit.com/ >/dev/null
+          curl --fail --silent --show-error --max-time 20 https://api.educationalsystem.fieldserviceit.com/api/health | jq -e '.ok == true and .service == "educonnect-dedicated-api"' >/dev/null
+          curl --fail --silent --show-error --max-time 20 https://api.fieldserviceit.com/v1/health | jq -e '.status == "ok" and .database.status == "ok"' >/dev/null
+          edu_cors=$(curl --silent --show-error --max-time 20 -o /dev/null -w '%{http_code} %{header_json}' -X OPTIONS \
+            -H 'Origin: https://educationalsystem.fieldserviceit.com' \
+            -H 'Access-Control-Request-Method: POST' \
+            https://api.educationalsystem.fieldserviceit.com/api/login)
+          grep -q '204' <<<"$edu_cors"
+          grep -qi 'educationalsystem.fieldserviceit.com' <<<"$edu_cors"
+          field_cors=$(curl --silent --show-error --max-time 20 -o /dev/null -w '%{http_code} %{header_json}' -X OPTIONS \
+            -H 'Origin: https://fieldserviceit.com' \
+            -H 'Access-Control-Request-Method: POST' \
+            https://api.fieldserviceit.com/v1/auth/login)
+          grep -q '204' <<<"$field_cors"
+          grep -qi 'https://fieldserviceit.com' <<<"$field_cors"
+          for host in fieldserviceit.com api.fieldserviceit.com educationalsystem.fieldserviceit.com api.educationalsystem.fieldserviceit.com; do
+            timeout 20 openssl s_client -connect "$host:443" -servername "$host" </dev/null 2>/dev/null | openssl x509 -checkend 2592000 -noout
+          done
+      - name: Open an incident issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          title="[monitor] Production health check failed"
+          existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number // empty')
+          if [ -z "$existing" ]; then
+            gh issue create --title "$title" --body "The scheduled production monitor failed. Review run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          else
+            gh issue comment "$existing" --body "The monitor failed again: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          fi

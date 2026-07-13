@@ -1,0 +1,71 @@
+name: Validate and deploy production
+
+on:
+  pull_request:
+    branches: ["codex/source"]
+  push:
+    branches: ["codex/source"]
+  workflow_dispatch:
+
+concurrency:
+  group: education-production
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:config
+      - run: npm run test:api
+      - run: php -l api/index.php
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui
+      - run: npm run build:hostinger
+      - uses: actions/upload-artifact@v4
+        with:
+          name: education-release
+          path: |
+            dist
+            api
+          if-no-files-found: error
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/codex/source'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: education-release
+          path: release
+      - name: Publish tested frontend and API to Hostinger branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git worktree add deployment origin/main
+          find deployment -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a release/dist/. deployment/
+          mkdir -p deployment/educonnect-api
+          cp -a release/api/. deployment/educonnect-api/
+          cd deployment
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Production is already current"
+            exit 0
+          fi
+          git commit -m "Deploy education production ${GITHUB_SHA::12}"
+          git push origin HEAD:main

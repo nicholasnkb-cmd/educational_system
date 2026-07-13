@@ -91,16 +91,9 @@ Use the **Signed in as** panel to switch between:
 
 Restricted actions remain visible but disabled with an explanatory permission note.
 
-In **Server database** mode, use the login dropdown with these starter credentials:
+Server-database credentials are never stored in source control. Initial account passwords must be supplied through the `EDUCONNECT_BOOTSTRAP_*` environment variables documented in `.env.example`; every account should receive a unique password and rotate it at first sign-in.
 
-- State Admin / NYS State Admin: `state123`
-- District Admin / District Admin: `admin123`
-- School Admin / School Admin: `school123`
-- Teacher / Prof. Miller: `teacher123`
-- Parent / Sarah Jenkins: `parent123`
-- Student / Hero: `student123`
-
-Admin accounts can create users, disable accounts, reset passwords, configure notification providers, and create backups through the API. State admins see state-scoped accounts, district admins see district-scoped accounts, and school admins see only their school tenant. Starter passwords are for launch only and should be changed before real users or school data are added.
+Admin accounts can create users, disable accounts, reset passwords, configure notification providers, and create backups through the API. State admins see state-scoped accounts, district admins see district-scoped accounts, and school admins see only their school tenant.
 
 ## Demo State
 

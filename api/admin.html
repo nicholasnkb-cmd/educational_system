@@ -40,7 +40,7 @@
             </select>
           </label>
           <label>Password
-            <input id="password" type="password" value="state123" />
+            <input id="password" type="password" autocomplete="current-password" />
           </label>
         </div>
         <div class="actions">
@@ -65,14 +65,6 @@
     <script>
       let token = "";
       const output = document.querySelector("#output");
-      const starterPasswords = {
-        "state-admin": "state123",
-        "district-admin": "admin123",
-        "school-admin": "school123",
-        teacher: "teacher123",
-        parent: "parent123",
-        student: "student123",
-      };
       const show = (value) => { output.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2); };
       async function request(path, options = {}) {
         const response = await fetch(path, {
@@ -87,9 +79,7 @@
         if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
         return payload;
       }
-      document.querySelector("#profile").onchange = (event) => {
-        document.querySelector("#password").value = starterPasswords[event.target.value] || "";
-      };
+      document.querySelector("#profile").onchange = () => { document.querySelector("#password").value = ""; };
       document.querySelector("#health").onclick = async () => show(await request("/api/health"));
       document.querySelector("#login").onclick = async () => {
         const payload = await request("/api/login", {

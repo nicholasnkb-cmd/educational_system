@@ -8,5 +8,7 @@ playwright-report/
 .env.*
 !.env.example
 *.log
+live-credentials*.json
+*.backup.enc
 Thumbs.db
 .DS_Store

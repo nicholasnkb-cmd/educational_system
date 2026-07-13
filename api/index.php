@@ -59,6 +59,7 @@ $managedJsonKeys = [
 ];
 
 $defaultProfiles = [
+    ['id' => 'global-admin', 'label' => 'Global Test Admin', 'role' => 'Global Admin', 'landing' => 'state-admin', 'scope' => 'state', 'stateId' => 'ny', 'permissions' => ['global-access', 'manage-tenants', 'approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance', 'submit-post', 'student-missions']],
     ['id' => 'state-admin', 'label' => 'NYS State Admin', 'role' => 'State Admin', 'landing' => 'state-admin', 'scope' => 'state', 'stateId' => 'ny', 'permissions' => ['manage-tenants', 'approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance']],
     ['id' => 'district-admin', 'label' => 'District Admin', 'role' => 'District Admin', 'landing' => 'district-admin', 'scope' => 'district', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'permissions' => ['manage-tenants', 'approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance']],
     ['id' => 'school-admin', 'label' => 'School Admin', 'role' => 'School Admin', 'landing' => 'school-admin', 'scope' => 'school', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'permissions' => ['approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance']],
@@ -68,6 +69,7 @@ $defaultProfiles = [
 ];
 
 $bootstrapPasswordVariables = [
+    'global-admin' => 'EDUCONNECT_BOOTSTRAP_GLOBAL_ADMIN',
     'state-admin' => 'EDUCONNECT_BOOTSTRAP_STATE_ADMIN',
     'district-admin' => 'EDUCONNECT_BOOTSTRAP_DISTRICT_ADMIN',
     'school-admin' => 'EDUCONNECT_BOOTSTRAP_SCHOOL_ADMIN',

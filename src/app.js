@@ -256,6 +256,7 @@ function isProductionHost() {
 
 function allowedRoleIds(profile = activeUser()) {
   if (!profile) return [];
+  if ((profile.permissions || []).includes("global-access")) return roles.map((role) => role.id);
   const allowed = new Set([profile.landing]);
   const permissions = new Set(profile.permissions || []);
   if (profile.scope === "state") allowed.add("state-admin");
@@ -437,7 +438,7 @@ function renderLandingPage() {
               <label><span>Password</span><input id="landing-password" type="password" autocomplete="current-password" placeholder="Enter your password" ${production ? "required" : ""} /></label>
               <button class="primary-action landing-submit" type="submit" ${landingBusy ? "disabled" : ""}>${landingBusy ? "Signing in…" : `${icon("book-open")} Sign in`}</button>
             </form>
-            <p class="landing-login-note">${production ? "Need help signing in? Contact your school office or teacher." : "Local preview: use state-admin, district-admin, school-admin, teacher, parent, or student. No password is required."}</p>
+            <p class="landing-login-note">${production ? "Need help signing in? Contact your school office or teacher." : "Local preview: use global-admin, state-admin, district-admin, school-admin, teacher, parent, or student. No password is required."}</p>
           </div>
         </section>
         <section class="landing-role-section" id="solutions">

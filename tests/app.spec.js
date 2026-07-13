@@ -97,6 +97,15 @@ test("uses a public landing page before opening a role workspace", async ({ page
   await expect(page.getByRole("link", { name: /Student/i })).toHaveCount(0);
 });
 
+test("gives the global test administrator every workspace", async ({ page }) => {
+  await loginAs(page, "global-admin");
+  await expect(page.locator(".role-nav").getByRole("link")).toHaveCount(9);
+  await page.getByRole("link", { name: /Parent/i }).first().click();
+  await expect(page.getByRole("heading", { name: "Parent Dashboard" })).toBeVisible();
+  await page.getByRole("link", { name: /Student/i }).first().click();
+  await expect(page.getByRole("heading", { name: "Student Dashboard" })).toBeVisible();
+});
+
 test("manages permissions, roster, gradebook, and audit trail", async ({ page }) => {
   await loginAs(page);
   await expect(page.getByRole("heading", { name: "Users & Roles" })).toBeVisible();

@@ -100,6 +100,8 @@ test("uses a public landing page before opening a role workspace", async ({ page
 test("gives the global test administrator every workspace", async ({ page }) => {
   await loginAs(page, "global-admin");
   await expect(page.locator(".role-nav").getByRole("link")).toHaveCount(9);
+  await expect(page.getByRole("heading", { name: "Role Control Center" })).toBeVisible();
+  await expect(page.locator(".role-control-launcher").getByRole("button")).toHaveCount(9);
   await page.getByRole("link", { name: /Parent/i }).first().click();
   await expect(page.getByRole("heading", { name: "Parent Dashboard" })).toBeVisible();
   await page.getByRole("link", { name: /Student/i }).first().click();
@@ -108,7 +110,7 @@ test("gives the global test administrator every workspace", async ({ page }) => 
 
 test("manages permissions, roster, gradebook, and audit trail", async ({ page }) => {
   await loginAs(page);
-  await expect(page.getByRole("heading", { name: "Users & Roles" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Role Control Center" })).toBeVisible();
   await page.locator('[data-profile-permission="teacher:submit-post"]').click();
   await expect(page.getByText("permissions updated")).toBeVisible();
 
@@ -126,6 +128,16 @@ test("manages permissions, roster, gradebook, and audit trail", async ({ page })
 
   await page.getByRole("link", { name: /State Admin/i }).first().click();
   await expect(page.getByText("Saved gradebook comment for Demo Learner 2")).toBeVisible();
+});
+
+test("keeps role controls in one centralized workspace", async ({ page }) => {
+  await loginAs(page, "global-admin");
+  await expect(page.locator("#role-control-center")).toHaveCount(1);
+  await page.getByRole("link", { name: /District Admin/i }).first().click();
+  await expect(page.locator("#role-control-center")).toHaveCount(0);
+  await page.getByRole("button", { name: /Role controls/i }).click();
+  await expect(page.locator("#role-control-center")).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Role Control Center" })).toBeVisible();
 });
 
 test("validates imported demo state JSON", async ({ page }) => {

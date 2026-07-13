@@ -60,7 +60,7 @@ test("supports the mobile bottom navigation", async ({ page }) => {
 test("switches demo identities and enforces role permissions", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel("Login role").selectOption("parent");
-  await expect(page.getByText("Signed in as Sarah Jenkins.")).toBeVisible();
+  await expect(page.getByText("Signed in as Demo Guardian.")).toBeVisible();
   await page.getByRole("link", { name: /State Admin/i }).first().click();
   await expect(page.getByRole("button", { name: /Add School Tenant/i })).toBeDisabled();
 
@@ -94,17 +94,17 @@ test("manages permissions, roster, gradebook, and audit trail", async ({ page })
   await page.getByRole("link", { name: /Teacher/i }).first().click();
   await page.getByLabel("Filter roster").selectOption("Watch");
   const rosterPanel = page.locator(".roster-panel");
-  await expect(rosterPanel.getByText("Liam Wilson")).toBeVisible();
-  await expect(rosterPanel.getByText("Leo Jenkins")).not.toBeVisible();
+  await expect(rosterPanel.getByText("Demo Learner 3")).toBeVisible();
+  await expect(rosterPanel.getByText("Demo Learner 1")).not.toBeVisible();
 
   await page.getByRole("link", { name: /LMS/i }).first().click();
-  await page.getByRole("button", { name: /Maya Rodriguez/i }).click();
+  await page.getByRole("button", { name: /Demo Learner 2/i }).click();
   await page.getByRole("textbox", { name: "Teacher comment" }).fill("Updated rubric feedback.");
   await page.getByRole("button", { name: /Save Comment/i }).click();
   await expect(page.getByText("Gradebook comment saved.")).toBeVisible();
 
   await page.getByRole("link", { name: /State Admin/i }).first().click();
-  await expect(page.getByText("Saved gradebook comment for Maya Rodriguez")).toBeVisible();
+  await expect(page.getByText("Saved gradebook comment for Demo Learner 2")).toBeVisible();
 });
 
 test("validates imported demo state JSON", async ({ page }) => {
@@ -134,9 +134,9 @@ test("runs realtime app workflows with editable filler data", async ({ page }) =
   await assignmentForm.getByRole("button", { name: /Add Assignment/i }).click();
   await expect(page.getByText("Realtime Reading Draft added to Creative Writing.")).toBeVisible();
 
-  const rosterRow = page.locator(".editable-roster-row").filter({ hasText: "Maya Rodriguez" });
+  const rosterRow = page.locator(".editable-roster-row").filter({ hasText: "Demo Learner 2" });
   await rosterRow.locator("[data-roster-status]").selectOption("Watch");
-  await expect(page.getByText("Maya Rodriguez's roster record updated.")).toBeVisible();
+  await expect(page.getByText("Demo Learner 2's roster record updated.")).toBeVisible();
 
   await page.getByRole("link", { name: /LMS/i }).first().click();
   await expect(page.locator(".assignment-list").getByText("Realtime Reading Draft")).toBeVisible();

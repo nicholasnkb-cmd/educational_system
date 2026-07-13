@@ -6,6 +6,8 @@
 
 An operational multi-tenant educational web application foundation. It includes state, district, and school administration views, LMS tools, student missions, teacher workflows, parent views, messaging, community board approvals, local persistence, and an optional Node API server for shared backend state.
 
+All bundled people and records are synthetic demo data. Do not commit real student records; complete the [privacy and FERPA production checklist](docs/PRIVACY-FERPA.md) before onboarding a school.
+
 ## Features
 
 - Separate State Admin, District Admin, School Admin, Teacher, Parent, and Student workspaces

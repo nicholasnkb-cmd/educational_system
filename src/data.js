@@ -55,9 +55,9 @@ export const userProfiles = [
   { id: "state-admin", label: "NYS State Admin", role: "State Admin", landing: "state-admin", scope: "state", stateId: "ny", permissions: ["manage-tenants", "approve-posts", "emergency", "lms", "teacher-tools", "message", "manage-users", "view-compliance"] },
   { id: "district-admin", label: "District Admin", role: "District Admin", landing: "district-admin", scope: "district", stateId: "ny", districtId: "nyc-doe", permissions: ["manage-tenants", "approve-posts", "emergency", "lms", "teacher-tools", "message", "manage-users", "view-compliance"] },
   { id: "school-admin", label: "School Admin", role: "School Admin", landing: "school-admin", scope: "school", stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118", permissions: ["approve-posts", "emergency", "lms", "teacher-tools", "message", "manage-users", "view-compliance"] },
-  { id: "teacher", label: "Prof. Miller", role: "Teacher", landing: "teacher", scope: "school", stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118", permissions: ["lms", "teacher-tools", "message", "submit-post"] },
-  { id: "student", label: "Hero", role: "Student", landing: "student", scope: "student", stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118", studentId: "leo", permissions: ["student-missions"] },
-  { id: "parent", label: "Sarah Jenkins", role: "Parent", landing: "parent", scope: "guardian", stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118", studentIds: ["leo"], permissions: ["message", "submit-post"] },
+  { id: "teacher", label: "Demo Teacher", role: "Teacher", landing: "teacher", scope: "school", stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118", permissions: ["lms", "teacher-tools", "message", "submit-post"] },
+  { id: "student", label: "Demo Learner", role: "Student", landing: "student", scope: "student", stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118", studentId: "learner-1", permissions: ["student-missions"] },
+  { id: "parent", label: "Demo Guardian", role: "Parent", landing: "parent", scope: "guardian", stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118", studentIds: ["learner-1"], permissions: ["message", "submit-post"] },
 ];
 
 export const permissionCatalog = [
@@ -91,7 +91,7 @@ export const tenantStates = [
         region: "New York City",
         superintendent: "NYC Chancellor",
         schools: [
-          { id: "ps-118", name: "P.S. 118 Discovery Academy", category: "Public", students: 684, staff: 78, status: "Active", subdomain: "ps118", plan: "District Core", modules: ["SIS", "LMS", "Messaging", "Family Portal"], storage: 64, uptime: "99.98%", theme: "Discovery Blue", isolation: "Dedicated tenant database", avgGrade: "88.4%", attendance: "94.2%", messages: "3 pending", studentPoints: 1240, studentName: "Hero", guardianName: "Sarah", learnerName: "Leo", workHours: "Mon-Fri, 8:00 AM-4:30 PM", afterHours: "Messages are held until the next work day" },
+          { id: "ps-118", name: "P.S. 118 Discovery Academy", category: "Public", students: 684, staff: 78, status: "Active", subdomain: "ps118", plan: "District Core", modules: ["SIS", "LMS", "Messaging", "Family Portal"], storage: 64, uptime: "99.98%", theme: "Discovery Blue", isolation: "Dedicated tenant database", avgGrade: "88.4%", attendance: "94.2%", messages: "3 pending", studentPoints: 1240, studentName: "Demo Learner", guardianName: "Demo Guardian", learnerName: "Demo Learner", workHours: "Mon-Fri, 8:00 AM-4:30 PM", afterHours: "Messages are held until the next work day" },
           { id: "bronx-charter", name: "Bronx Learning Charter", category: "Chartered", students: 412, staff: 49, status: "Onboarding", subdomain: "bronxlearning", plan: "Charter Launch", modules: ["SIS", "Messaging", "Enrollment"], storage: 31, uptime: "99.91%", theme: "Charter Gold", isolation: "Dedicated tenant database", avgGrade: "86.1%", attendance: "92.7%", messages: "8 pending", studentPoints: 890, studentName: "Explorer", guardianName: "Monica", learnerName: "Ari", workHours: "Mon-Fri, 7:45 AM-4:00 PM", afterHours: "Messages are held until staff office hours reopen" },
         ],
       },
@@ -142,21 +142,21 @@ export const teacherClasses = [
 ];
 
 export const rosterRecords = [
-  { id: "stu-1", student: "Leo Jenkins", guardian: "Sarah Jenkins", teacher: "Prof. Miller", className: "English Literature", grade: 91, attendance: 98, accommodations: "Visual vocabulary cards", status: "Active" },
-  { id: "stu-2", student: "Maya Rodriguez", guardian: "Elena Rodriguez", teacher: "Prof. Miller", className: "Creative Writing", grade: 88, attendance: 94, accommodations: "Extended quiz time", status: "Active" },
-  { id: "stu-3", student: "Liam Wilson", guardian: "Marcus Wilson", teacher: "Prof. Miller", className: "English Literature", grade: 82, attendance: 91, accommodations: "Reading support", status: "Watch" },
-  { id: "stu-4", student: "Sarah Chen", guardian: "Priya Chen", teacher: "Prof. Miller", className: "Creative Writing", grade: 96, attendance: 99, accommodations: "None", status: "Active" },
+  { id: "stu-1", student: "Demo Learner 1", guardian: "Demo Guardian 1", teacher: "Demo Teacher", className: "English Literature", grade: 91, attendance: 98, accommodations: "Visual vocabulary cards", status: "Active" },
+  { id: "stu-2", student: "Demo Learner 2", guardian: "Demo Guardian 2", teacher: "Demo Teacher", className: "Creative Writing", grade: 88, attendance: 94, accommodations: "Extended quiz time", status: "Active" },
+  { id: "stu-3", student: "Demo Learner 3", guardian: "Demo Guardian 3", teacher: "Demo Teacher", className: "English Literature", grade: 82, attendance: 91, accommodations: "Reading support", status: "Watch" },
+  { id: "stu-4", student: "Demo Learner 4", guardian: "Demo Guardian 4", teacher: "Demo Teacher", className: "Creative Writing", grade: 96, attendance: 99, accommodations: "None", status: "Active" },
 ];
 
 export const gradebookSubmissions = [
-  { id: "sub-1", student: "Leo Jenkins", assignment: "Fractions Mastery Check", status: "Submitted", score: 88, rubric: [["Concepts", 4], ["Accuracy", 3], ["Explanation", 4], ["Neatness", 3]], comment: "Strong reasoning. Recheck mixed-number conversions." },
-  { id: "sub-2", student: "Maya Rodriguez", assignment: "Great Depression Essay", status: "Needs review", score: 74, rubric: [["Thesis", 3], ["Evidence", 3], ["Organization", 2], ["Conventions", 4]], comment: "Good evidence. Add a clearer argument in the introduction." },
-  { id: "sub-3", student: "Liam Wilson", assignment: "Grammar Quiz - Week 5", status: "Missing", score: 0, rubric: [["Completion", 0], ["Accuracy", 0], ["Timeliness", 0]], comment: "Family reminder queued." },
+  { id: "sub-1", student: "Demo Learner 1", assignment: "Fractions Mastery Check", status: "Submitted", score: 88, rubric: [["Concepts", 4], ["Accuracy", 3], ["Explanation", 4], ["Neatness", 3]], comment: "Strong reasoning. Recheck mixed-number conversions." },
+  { id: "sub-2", student: "Demo Learner 2", assignment: "Great Depression Essay", status: "Needs review", score: 74, rubric: [["Thesis", 3], ["Evidence", 3], ["Organization", 2], ["Conventions", 4]], comment: "Good evidence. Add a clearer argument in the introduction." },
+  { id: "sub-3", student: "Demo Learner 3", assignment: "Grammar Quiz - Week 5", status: "Missing", score: 0, rubric: [["Completion", 0], ["Accuracy", 0], ["Timeliness", 0]], comment: "Family reminder queued." },
 ];
 
 export const activityFeed = [
-  ["Liam Wilson", "finished reading The Great Gatsby", "15 minutes ago", "Lit 101"],
-  ["Sarah Chen", "submitted Grammar Quiz - Week 5", "42 minutes ago", "Creative Writing"],
+  ["Demo Learner 3", "finished reading The Great Gatsby", "15 minutes ago", "Lit 101"],
+  ["Demo Learner 4", "submitted Grammar Quiz - Week 5", "42 minutes ago", "Creative Writing"],
   ["Marcus Thorne", "posted in the discussion board", "2 hours ago", "Shakespeare"],
 ];
 
@@ -178,8 +178,8 @@ export const lmsFiles = [
 ];
 
 export const lmsAccounts = [
-  { id: "teacher-school", name: "Prof. Miller", context: "Teacher at selected school", active: true },
-  { id: "parent-school", name: "Sarah Jenkins", context: "Parent profile", active: false },
+  { id: "teacher-school", name: "Demo Teacher", context: "Teacher at selected school", active: true },
+  { id: "parent-school", name: "Demo Guardian", context: "Parent profile", active: false },
   { id: "district-admin", name: "District Admin", context: "District-wide oversight", active: false },
 ];
 
@@ -190,7 +190,7 @@ export const lmsNotifications = [
 ];
 
 export const realtimeEvents = [
-  { id: "live-1", type: "Roster", title: "Leo Jenkins attendance synced", detail: "SIS updated attendance to 98%.", time: "Live now" },
+  { id: "live-1", type: "Roster", title: "Demo Learner 1 attendance synced", detail: "SIS updated attendance to 98%.", time: "Live now" },
   { id: "live-2", type: "LMS", title: "Rubric queue refreshed", detail: "3 submissions are ready for review.", time: "Live now" },
   { id: "live-3", type: "Messages", title: "Parent digest prepared", detail: "Routine updates will send during the next work window.", time: "Live now" },
 ];
@@ -255,7 +255,7 @@ export const calendarEvents = [
 export const offlineSyncQueue = [
   { item: "Fractions quiz attempt", owner: "Leo", status: "Queued for upload" },
   { item: "PDF annotation packet", owner: "Maya", status: "Conflict check ready" },
-  { item: "Teacher rubric draft", owner: "Prof. Miller", status: "Saved offline" },
+  { item: "Teacher rubric draft", owner: "Demo Teacher", status: "Saved offline" },
 ];
 
 export const approvalRules = [
@@ -290,7 +290,7 @@ export const designPresets = [
 export const conversations = [
   {
     id: "sarah",
-    name: "Sarah Jenkins",
+    name: "Demo Guardian 1",
     role: "Leo's parent",
     type: "Parents",
     unread: 0,
@@ -304,7 +304,7 @@ export const conversations = [
   },
   {
     id: "elena",
-    name: "Elena Rodriguez",
+    name: "Demo Guardian 2",
     role: "Maya's parent",
     type: "Parents",
     unread: 3,
@@ -339,7 +339,7 @@ export const communityBoards = {
     ],
     published: [
       { id: "ps-post-1", author: "Ms. Henderson", role: "Teacher", type: "Announcement", audience: "All families", title: "Science Night Volunteers", body: "We need four family volunteers for Thursday's hands-on moon lab.", media: "Flyer PDF", time: "Approved today" },
-      { id: "ps-post-2", author: "Sarah Jenkins", role: "Parent", type: "Resource", audience: "Grade 4", title: "Math Game Practice Link", body: "Sharing a free fractions game that helped Leo practice at home.", media: "Website link", time: "Approved yesterday" },
+      { id: "ps-post-2", author: "Demo Guardian 1", role: "Parent", type: "Resource", audience: "Grade 4", title: "Math Game Practice Link", body: "Sharing a free fractions game that helped a learner practice at home.", media: "Website link", time: "Approved yesterday" },
     ],
     pending: [
       { id: "ps-pending-1", author: "Mr. Anderson", role: "Teacher", type: "Photo", audience: "Grade 4", title: "Moon Rock Lab Photos", body: "A photo set from today's science station rotation.", media: "6 images", approverId: "principal-rivera", time: "Awaiting principal approval" },

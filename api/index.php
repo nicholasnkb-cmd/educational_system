@@ -62,9 +62,9 @@ $defaultProfiles = [
     ['id' => 'state-admin', 'label' => 'NYS State Admin', 'role' => 'State Admin', 'landing' => 'state-admin', 'scope' => 'state', 'stateId' => 'ny', 'permissions' => ['manage-tenants', 'approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance']],
     ['id' => 'district-admin', 'label' => 'District Admin', 'role' => 'District Admin', 'landing' => 'district-admin', 'scope' => 'district', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'permissions' => ['manage-tenants', 'approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance']],
     ['id' => 'school-admin', 'label' => 'School Admin', 'role' => 'School Admin', 'landing' => 'school-admin', 'scope' => 'school', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'permissions' => ['approve-posts', 'emergency', 'lms', 'teacher-tools', 'message', 'manage-users', 'view-compliance']],
-    ['id' => 'teacher', 'label' => 'Prof. Miller', 'role' => 'Teacher', 'landing' => 'teacher', 'scope' => 'school', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'permissions' => ['lms', 'teacher-tools', 'message', 'submit-post']],
-    ['id' => 'student', 'label' => 'Hero', 'role' => 'Student', 'landing' => 'student', 'scope' => 'student', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'studentId' => 'leo', 'permissions' => ['student-missions']],
-    ['id' => 'parent', 'label' => 'Sarah Jenkins', 'role' => 'Parent', 'landing' => 'parent', 'scope' => 'guardian', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'studentIds' => ['leo'], 'permissions' => ['message', 'submit-post']],
+    ['id' => 'teacher', 'label' => 'Demo Teacher', 'role' => 'Teacher', 'landing' => 'teacher', 'scope' => 'school', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'permissions' => ['lms', 'teacher-tools', 'message', 'submit-post']],
+    ['id' => 'student', 'label' => 'Demo Learner', 'role' => 'Student', 'landing' => 'student', 'scope' => 'student', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'studentId' => 'learner-1', 'permissions' => ['student-missions']],
+    ['id' => 'parent', 'label' => 'Demo Guardian', 'role' => 'Parent', 'landing' => 'parent', 'scope' => 'guardian', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'studentIds' => ['learner-1'], 'permissions' => ['message', 'submit-post']],
 ];
 
 $bootstrapPasswordVariables = [

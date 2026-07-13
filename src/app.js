@@ -502,6 +502,7 @@ function renderDemoLauncher() {
       <div>
         <p class="eyebrow">Demo login</p>
         <h3>${activeRole.label} view at ${school.name}</h3>
+        <small>All people and records shown here are synthetic.</small>
       </div>
       <div class="demo-role-grid">
         ${roles.map((role) => `
@@ -1382,7 +1383,7 @@ function renderTeacher() {
   const roster = state.rosterFilter === "All" ? rosterRecords : rosterRecords.filter((item) => item.status === state.rosterFilter);
   return `
     <section class="dashboard-grid teacher-grid">
-      <div class="welcome-strip"><div><p class="eyebrow">${school.name} instance</p><h2>Welcome back, Prof. Miller.</h2><p>${school.messages} need attention in this school tenant, with class data isolated from every other school.</p></div><button class="primary-action" data-create-assignment ${permissionAttrs("teacher-tools", "Only teachers and administrators can create assignments.")}>${icon("plus")} Create Assignment</button></div>
+      <div class="welcome-strip"><div><p class="eyebrow">${school.name} instance</p><h2>Welcome back, Demo Teacher.</h2><p>${school.messages} need attention in this school tenant, with class data isolated from every other school.</p></div><button class="primary-action" data-create-assignment ${permissionAttrs("teacher-tools", "Only teachers and administrators can create assignments.")}>${icon("plus")} Create Assignment</button></div>
       ${statCard("Average grade", school.avgGrade, "trending-up", "blue")}
       ${statCard("Attendance", school.attendance, "calendar-days", "teal")}
       ${statCard("Messages", school.messages, "mail", "gold")}
@@ -1510,7 +1511,7 @@ function renderCommunityBoard() {
       <section class="panel board-composer">
         <div class="section-heading"><h3>Create Post</h3><span>Parent or teacher submission</span></div>
         <form id="board-form" class="board-form">
-          <label><span>Author</span><input id="board-author" value="Sarah Jenkins" /></label>
+          <label><span>Author</span><input id="board-author" value="Demo Guardian" /></label>
           <label><span>Role</span><select id="board-role"><option>Parent</option><option>Teacher</option></select></label>
           <label><span>Type</span><select id="board-type"><option>Announcement</option><option>Resource</option><option>Photo</option><option>Event</option><option>File</option></select></label>
           <label><span>Audience</span><select id="board-audience"><option>All families</option><option>Grade 4</option><option>Teachers</option><option>PTA / PTO</option></select></label>

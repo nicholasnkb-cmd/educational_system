@@ -1,0 +1,14 @@
+RewriteEngine On
+Options -Indexes
+RewriteRule ^data(?:/|$) - [F,L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]
+
+Header always set X-Content-Type-Options "nosniff"
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+
+<FilesMatch "(^\.|\.(?:json|jsonl|sqlite|db|bak|tmp)$)">
+    Require all denied
+</FilesMatch>

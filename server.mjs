@@ -39,6 +39,7 @@ const port = Number(process.env.PORT || 8080);
 const sessions = new Map();
 
 const bootstrapPasswordVariables = {
+  "global-admin": "EDUCONNECT_BOOTSTRAP_GLOBAL_ADMIN",
   "state-admin": "EDUCONNECT_BOOTSTRAP_STATE_ADMIN",
   "district-admin": "EDUCONNECT_BOOTSTRAP_DISTRICT_ADMIN",
   "school-admin": "EDUCONNECT_BOOTSTRAP_SCHOOL_ADMIN",

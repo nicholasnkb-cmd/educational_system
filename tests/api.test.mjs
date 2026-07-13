@@ -9,6 +9,7 @@ let baseUrl;
 let dataDir;
 let adminToken;
 const testPasswords = {
+  "global-admin": "TestGlobalAdmin9!",
   "state-admin": "TestStateAdmin9!",
   "district-admin": "TestDistrictAdmin9!",
   "school-admin": "TestSchoolAdmin9!",
@@ -21,6 +22,7 @@ describe("operational API server", () => {
   before(async () => {
     dataDir = await mkdtemp(join(tmpdir(), "educonnect-api-"));
     process.env.DATA_DIR = dataDir;
+    process.env.EDUCONNECT_BOOTSTRAP_GLOBAL_ADMIN = testPasswords["global-admin"];
     process.env.EDUCONNECT_BOOTSTRAP_STATE_ADMIN = testPasswords["state-admin"];
     process.env.EDUCONNECT_BOOTSTRAP_DISTRICT_ADMIN = testPasswords["district-admin"];
     process.env.EDUCONNECT_BOOTSTRAP_SCHOOL_ADMIN = testPasswords["school-admin"];
@@ -99,6 +101,18 @@ describe("operational API server", () => {
     const payload = await login.json();
     assert.equal(login.status, 200);
     assert.equal(payload.user.id, "student");
+  });
+
+  it("creates a global administrator with every test capability", async () => {
+    const login = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier: "global-admin", password: testPasswords["global-admin"] }),
+    });
+    const payload = await login.json();
+    assert.equal(login.status, 200);
+    assert.equal(payload.user.role, "Global Admin");
+    assert.equal(payload.user.permissions.includes("global-access"), true);
   });
 
   it("supports admin user management and password lifecycle", async () => {

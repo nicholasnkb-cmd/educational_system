@@ -90,6 +90,9 @@ import {
   resetDemoState,
 } from "./storage.js";
 import { loginServerProfile, mockApiStatus, sendServerNotificationTest, uploadServerFile } from "./mockApi.js";
+import { initializeErrorReporting } from "./errorReporting.js";
+
+initializeErrorReporting();
 
 const app = document.querySelector("#app");
 

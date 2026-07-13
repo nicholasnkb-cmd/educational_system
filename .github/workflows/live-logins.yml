@@ -1,0 +1,66 @@
+name: Verify live role logins
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  logins:
+    runs-on: ubuntu-latest
+    env:
+      EDU_STATE_ADMIN_PASSWORD: ${{ secrets.EDU_STATE_ADMIN_PASSWORD }}
+      EDU_DISTRICT_ADMIN_PASSWORD: ${{ secrets.EDU_DISTRICT_ADMIN_PASSWORD }}
+      EDU_SCHOOL_ADMIN_PASSWORD: ${{ secrets.EDU_SCHOOL_ADMIN_PASSWORD }}
+      EDU_TEACHER_PASSWORD: ${{ secrets.EDU_TEACHER_PASSWORD }}
+      EDU_PARENT_PASSWORD: ${{ secrets.EDU_PARENT_PASSWORD }}
+      EDU_STUDENT_PASSWORD: ${{ secrets.EDU_STUDENT_PASSWORD }}
+      FIELD_SUPER_ADMIN_EMAIL: ${{ secrets.FIELD_SUPER_ADMIN_EMAIL }}
+      FIELD_SUPER_ADMIN_PASSWORD: ${{ secrets.FIELD_SUPER_ADMIN_PASSWORD }}
+      FIELD_TENANT_ADMIN_EMAIL: ${{ secrets.FIELD_TENANT_ADMIN_EMAIL }}
+      FIELD_TENANT_ADMIN_PASSWORD: ${{ secrets.FIELD_TENANT_ADMIN_PASSWORD }}
+      FIELD_TECHNICIAN_EMAIL: ${{ secrets.FIELD_TECHNICIAN_EMAIL }}
+      FIELD_TECHNICIAN_PASSWORD: ${{ secrets.FIELD_TECHNICIAN_PASSWORD }}
+      FIELD_CLIENT_EMAIL: ${{ secrets.FIELD_CLIENT_EMAIL }}
+      FIELD_CLIENT_PASSWORD: ${{ secrets.FIELD_CLIENT_PASSWORD }}
+    steps:
+      - name: Verify every education role
+        shell: bash
+        run: |
+          set -euo pipefail
+          for entry in \
+            "state-admin:$EDU_STATE_ADMIN_PASSWORD" \
+            "district-admin:$EDU_DISTRICT_ADMIN_PASSWORD" \
+            "school-admin:$EDU_SCHOOL_ADMIN_PASSWORD" \
+            "teacher:$EDU_TEACHER_PASSWORD" \
+            "parent:$EDU_PARENT_PASSWORD" \
+            "student:$EDU_STUDENT_PASSWORD"; do
+            profile=${entry%%:*}
+            password=${entry#*:}
+            test -n "$password"
+            curl --fail --silent --show-error --max-time 20 \
+              -H 'Content-Type: application/json' \
+              --data "$(jq -nc --arg p "$profile" --arg s "$password" '{profileId:$p,password:$s}')" \
+              https://api.educationalsystem.fieldserviceit.com/api/login | jq -e --arg p "$profile" '.ok == true and .token and .user.id == $p' >/dev/null
+          done
+      - name: Verify FieldserviceIT roles
+        shell: bash
+        run: |
+          set -euo pipefail
+          for entry in \
+            "$FIELD_SUPER_ADMIN_EMAIL:$FIELD_SUPER_ADMIN_PASSWORD" \
+            "$FIELD_TENANT_ADMIN_EMAIL:$FIELD_TENANT_ADMIN_PASSWORD" \
+            "$FIELD_TECHNICIAN_EMAIL:$FIELD_TECHNICIAN_PASSWORD" \
+            "$FIELD_CLIENT_EMAIL:$FIELD_CLIENT_PASSWORD"; do
+            email=${entry%%:*}
+            password=${entry#*:}
+            test -n "$email"
+            test -n "$password"
+            curl --fail --silent --show-error --max-time 20 \
+              -H 'Content-Type: application/json' \
+              --data "$(jq -nc --arg e "$email" --arg p "$password" '{email:$e,password:$p}')" \
+              https://api.fieldserviceit.com/v1/auth/login | jq -e '.accessToken and .user' >/dev/null
+          done

@@ -3,7 +3,7 @@ import { copyFile, mkdir, readFile, readdir, rename, stat, writeFile } from "nod
 import { createReadStream } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   state,
   userProfiles,
@@ -38,14 +38,19 @@ const backupDir = resolve(dataDir, "backups");
 const port = Number(process.env.PORT || 8080);
 const sessions = new Map();
 
-const defaultPasswords = {
-  "state-admin": "state123",
-  "district-admin": "admin123",
-  "school-admin": "school123",
-  teacher: "teacher123",
-  parent: "parent123",
-  student: "student123",
+const bootstrapPasswordVariables = {
+  "state-admin": "EDUCONNECT_BOOTSTRAP_STATE_ADMIN",
+  "district-admin": "EDUCONNECT_BOOTSTRAP_DISTRICT_ADMIN",
+  "school-admin": "EDUCONNECT_BOOTSTRAP_SCHOOL_ADMIN",
+  teacher: "EDUCONNECT_BOOTSTRAP_TEACHER",
+  parent: "EDUCONNECT_BOOTSTRAP_PARENT",
+  student: "EDUCONNECT_BOOTSTRAP_STUDENT",
 };
+
+function bootstrapPassword(profileId) {
+  const configured = process.env[bootstrapPasswordVariables[profileId]];
+  return configured || randomBytes(24).toString("base64url");
+}
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -92,9 +97,9 @@ function hashPassword(password) {
 function defaultAccounts() {
   return userProfiles.map((profile) => ({
     profileId: profile.id,
-    passwordHash: hashPassword(defaultPasswords[profile.id] || `${profile.id}123`),
+    passwordHash: hashPassword(bootstrapPassword(profile.id)),
     active: true,
-    mustChangePassword: false,
+    mustChangePassword: true,
     updatedAt: new Date().toISOString(),
   }));
 }
@@ -369,15 +374,19 @@ async function handleApi(req, res, pathname) {
     snapshot.userProfiles.push(profile);
     await saveSnapshot(snapshot);
     const accounts = await loadAccounts();
+    if (!body.password) {
+      sendJson(res, 400, { ok: false, error: "A strong temporary password is required" });
+      return true;
+    }
     accounts.push({
       profileId: id,
-      passwordHash: hashPassword(body.password || "changeme123"),
+      passwordHash: hashPassword(body.password),
       active: true,
       mustChangePassword: true,
       updatedAt: new Date().toISOString(),
     });
     await saveAccounts(accounts);
-    sendJson(res, 201, { ok: true, user: publicUser(profile, accounts.at(-1)), temporaryPassword: body.password ? undefined : "changeme123" });
+    sendJson(res, 201, { ok: true, user: publicUser(profile, accounts.at(-1)) });
     return true;
   }
 

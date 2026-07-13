@@ -1,0 +1,45 @@
+name: Encrypted education backup
+
+on:
+  schedule:
+    - cron: "41 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    env:
+      EDU_STATE_ADMIN_PASSWORD: ${{ secrets.EDU_STATE_ADMIN_PASSWORD }}
+      BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+    steps:
+      - name: Create and export an authenticated backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EDU_STATE_ADMIN_PASSWORD"
+          test -n "$BACKUP_ENCRYPTION_KEY"
+          login=$(curl --fail --silent --show-error --max-time 30 \
+            -H 'Content-Type: application/json' \
+            --data "$(jq -nc --arg p 'state-admin' --arg s "$EDU_STATE_ADMIN_PASSWORD" '{profileId:$p,password:$s}')" \
+            https://api.educationalsystem.fieldserviceit.com/api/login)
+          token=$(jq -er '.token' <<<"$login")
+          curl --fail --silent --show-error --max-time 30 -X POST \
+            -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{}' \
+            https://api.educationalsystem.fieldserviceit.com/api/backups | jq -e '.ok == true' >/dev/null
+          curl --fail --silent --show-error --max-time 60 \
+            -H "Authorization: Bearer $token" \
+            https://api.educationalsystem.fieldserviceit.com/api/admin/export > education-backup.json
+          jq -e '.ok == true and .snapshot and .accounts' education-backup.json >/dev/null
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
+            -in education-backup.json -out "education-backup-${GITHUB_RUN_ID}.json.enc" \
+            -pass env:BACKUP_ENCRYPTION_KEY
+          rm -f education-backup.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: education-backup-${{ github.run_id }}
+          path: education-backup-*.json.enc
+          if-no-files-found: error
+          retention-days: 30

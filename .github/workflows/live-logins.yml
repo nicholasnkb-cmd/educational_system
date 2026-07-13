@@ -43,7 +43,7 @@ jobs:
             test -n "$password"
             curl --fail --silent --show-error --max-time 20 \
               -H 'Content-Type: application/json' \
-              --data "$(jq -nc --arg p "$profile" --arg s "$password" '{profileId:$p,password:$s}')" \
+              --data "$(jq -nc --arg p "$profile" --arg s "$password" '{identifier:$p,password:$s}')" \
               https://api.educationalsystem.fieldserviceit.com/api/login | jq -e --arg p "$profile" '.ok == true and .token and .user.id == $p' >/dev/null
           done
       - name: Verify FieldserviceIT roles

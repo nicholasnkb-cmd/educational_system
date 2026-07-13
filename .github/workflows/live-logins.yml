@@ -12,6 +12,7 @@ jobs:
   logins:
     runs-on: ubuntu-latest
     env:
+      EDU_GLOBAL_ADMIN_PASSWORD: ${{ secrets.EDU_GLOBAL_ADMIN_PASSWORD }}
       EDU_STATE_ADMIN_PASSWORD: ${{ secrets.EDU_STATE_ADMIN_PASSWORD }}
       EDU_DISTRICT_ADMIN_PASSWORD: ${{ secrets.EDU_DISTRICT_ADMIN_PASSWORD }}
       EDU_SCHOOL_ADMIN_PASSWORD: ${{ secrets.EDU_SCHOOL_ADMIN_PASSWORD }}
@@ -32,6 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           for entry in \
+            "global-admin:$EDU_GLOBAL_ADMIN_PASSWORD" \
             "state-admin:$EDU_STATE_ADMIN_PASSWORD" \
             "district-admin:$EDU_DISTRICT_ADMIN_PASSWORD" \
             "school-admin:$EDU_SCHOOL_ADMIN_PASSWORD" \

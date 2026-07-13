@@ -492,16 +492,26 @@ try {
         $snapshot = load_snapshot($stateFile, $defaultProfiles);
         $profiles = $snapshot['userProfiles'] ?? $defaultProfiles;
         $accounts = load_accounts($accountsFile, $profiles, $bootstrapPasswords);
+        $identifier = strtolower(trim((string)($body['identifier'] ?? $body['profileId'] ?? '')));
         $profile = null;
-        foreach ($profiles as $item) if (($item['id'] ?? '') === ($body['profileId'] ?? '')) $profile = $item;
+        foreach ($profiles as $item) {
+            $aliases = [$item['id'] ?? '', $item['email'] ?? '', $item['username'] ?? ''];
+            foreach ($aliases as $alias) {
+                if ($alias !== '' && strtolower((string)$alias) === $identifier) {
+                    $profile = $item;
+                    break 2;
+                }
+            }
+        }
+        $profileId = (string)($profile['id'] ?? '');
         $account = null;
-        foreach ($accounts as $item) if (($item['profileId'] ?? '') === ($body['profileId'] ?? '')) $account = $item;
+        foreach ($accounts as $item) if (($item['profileId'] ?? '') === $profileId) $account = $item;
         if (!$profile || !$account || ($account['active'] ?? true) === false || !verify_password_for((string)($body['password'] ?? ''), (string)($account['passwordHash'] ?? ''))) {
             send_json(401, ['ok' => false, 'error' => 'Invalid credentials']);
         }
         if (substr((string)$account['passwordHash'], 0, 4) !== '$2y$' && substr((string)$account['passwordHash'], 0, 6) !== '$argon') {
             foreach ($accounts as &$storedAccount) {
-                if (($storedAccount['profileId'] ?? '') === ($body['profileId'] ?? '')) {
+                if (($storedAccount['profileId'] ?? '') === $profileId) {
                     $storedAccount['passwordHash'] = password_hash_for((string)$body['password']);
                     $storedAccount['updatedAt'] = gmdate(DATE_ATOM);
                     break;

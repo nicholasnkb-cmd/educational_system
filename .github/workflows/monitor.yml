@@ -21,7 +21,7 @@ jobs:
           grep -Eq '/assets/index-[^" ]+\.js' <<<"$frontend"
           curl --fail --silent --show-error --max-time 20 https://fieldserviceit.com/ >/dev/null
           curl --fail --silent --show-error --max-time 20 https://api.educationalsystem.fieldserviceit.com/api/health | jq -e '.ok == true and .service == "educonnect-dedicated-api"' >/dev/null
-          curl --fail --silent --show-error --max-time 20 https://api.fieldserviceit.com/v1/health | jq -e '.status == "ok" and .database.status == "ok"' >/dev/null
+          curl --fail --silent --show-error --max-time 20 https://api.fieldserviceit.com/v1/health | jq -e '.data.status == "ok" and .data.database.status == "ok"' >/dev/null
           edu_cors=$(curl --silent --show-error --max-time 20 -o /dev/null -w '%{http_code} %{header_json}' -X OPTIONS \
             -H 'Origin: https://educationalsystem.fieldserviceit.com' \
             -H 'Access-Control-Request-Method: POST' \
@@ -41,6 +41,7 @@ jobs:
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
           title="[monitor] Production health check failed"

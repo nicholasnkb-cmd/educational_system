@@ -50,6 +50,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [ -z "$FIELD_SUPER_ADMIN_EMAIL" ] || [ -z "$FIELD_SUPER_ADMIN_PASSWORD" ] || \
+             [ -z "$FIELD_TENANT_ADMIN_EMAIL" ] || [ -z "$FIELD_TENANT_ADMIN_PASSWORD" ] || \
+             [ -z "$FIELD_TECHNICIAN_EMAIL" ] || [ -z "$FIELD_TECHNICIAN_PASSWORD" ] || \
+             [ -z "$FIELD_CLIENT_EMAIL" ] || [ -z "$FIELD_CLIENT_PASSWORD" ]; then
+            echo "::warning::FieldserviceIT role credentials are not configured; API health and CORS remain monitored."
+            exit 0
+          fi
           for entry in \
             "$FIELD_SUPER_ADMIN_EMAIL:$FIELD_SUPER_ADMIN_PASSWORD" \
             "$FIELD_TENANT_ADMIN_EMAIL:$FIELD_TENANT_ADMIN_PASSWORD" \

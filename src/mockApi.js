@@ -105,6 +105,10 @@ export async function loginServerProfile(profileId, password) {
   });
 }
 
+export async function getServerSession() {
+  return requestServer("/api/session", { method: "GET" });
+}
+
 export async function uploadServerFile(file, area = "LMS") {
   const contentBase64 = await new Promise((resolve, reject) => {
     const reader = new FileReader();

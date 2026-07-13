@@ -4,8 +4,17 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.clear());
 });
 
-test("navigates roles, searches, opens settings, and resets demo state", async ({ page }) => {
+async function loginAs(page, profileId = "state-admin", workspace = "") {
   await page.goto("/");
+  await expect(page.getByRole("heading", { name: "The right school view for every person." })).toBeVisible();
+  await page.getByLabel("Login account").selectOption(profileId);
+  await page.getByRole("button", { name: /Sign in securely/i }).click();
+  await expect(page.getByLabel("Sign out")).toBeVisible();
+  if (workspace) await page.getByRole("link", { name: new RegExp(workspace, "i") }).first().click();
+}
+
+test("navigates roles, searches, opens settings, and resets demo state", async ({ page }) => {
+  await loginAs(page);
   await expect(page.getByRole("heading", { name: "Tenant Governance" })).toBeVisible();
 
   await page.getByPlaceholder("Search resources...").fill("fractions");
@@ -24,7 +33,7 @@ test("navigates roles, searches, opens settings, and resets demo state", async (
 });
 
 test("runs LMS, teacher, messaging, and community demo flows", async ({ page }) => {
-  await page.goto("/#lms");
+  await loginAs(page, "school-admin", "LMS");
   await page.getByRole("button", { name: /Build Offline Pack/i }).click();
   await expect(page.getByText("Offline pack built and sync queue prepared.")).toBeVisible();
   await expect(page.getByText("Offline pack ready")).toBeVisible();
@@ -50,43 +59,46 @@ test("runs LMS, teacher, messaging, and community demo flows", async ({ page }) 
 
 test("supports the mobile bottom navigation", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
-  await page.locator(".mobile-role-nav").getByRole("link", { name: /Student/i }).click();
+  await loginAs(page, "student");
+  await expect(page.locator(".mobile-role-nav").getByRole("link")).toHaveCount(1);
   await expect(page.getByRole("heading", { name: /Welcome back/i })).toBeVisible();
   await page.getByRole("button", { name: /Continue Adventure/i }).click();
   await expect(page.getByText(/marked complete/i)).toBeVisible();
 });
 
 test("switches demo identities and enforces role permissions", async ({ page }) => {
-  await page.goto("/");
-  await page.getByLabel("Login role").selectOption("parent");
+  await loginAs(page, "parent");
   await expect(page.getByText("Signed in as Demo Guardian.")).toBeVisible();
-  await page.getByRole("link", { name: /State Admin/i }).first().click();
-  await expect(page.getByRole("button", { name: /Add School Tenant/i })).toBeDisabled();
+  await expect(page.getByRole("link", { name: /State Admin/i })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /Teacher/i })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /Parent/i }).first()).toBeVisible();
 
   await page.getByRole("link", { name: /Messages/i }).first().click();
   await expect(page.getByRole("button", { name: /Enable/i })).toBeDisabled();
 
-  await page.getByLabel("Login role").selectOption("district-admin");
+  await page.getByLabel("Sign out").click();
+  await page.getByLabel("Login account").selectOption("district-admin");
+  await page.getByRole("button", { name: /Sign in securely/i }).click();
+  await expect(page.getByRole("link", { name: /State Admin/i })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /District Admin/i }).first()).toBeVisible();
   await page.getByRole("link", { name: /Messages/i }).first().click();
   await expect(page.getByRole("button", { name: /Enable/i })).toBeEnabled();
 });
 
-test("runs walkthrough and opens mock API mode", async ({ page }) => {
+test("uses a public landing page before opening a role workspace", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: /Start Walkthrough/i }).click();
-  await expect(page.getByText("Walkthrough started.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Choose a role" })).toBeVisible();
-  await page.getByRole("button", { name: /Next/i }).click();
-  await expect(page.getByRole("heading", { name: "Create learning work" })).toBeVisible();
-
-  await page.getByLabel("Settings").click();
-  await page.getByLabel("Data mode").selectOption("mock-api");
-  await expect(page.getByText("Mock API mode enabled.")).toBeVisible();
+  await expect(page.getByRole("link", { name: /Open your portal/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Everyone starts where their work begins." })).toBeVisible();
+  await expect(page.locator(".workspace")).toHaveCount(0);
+  await page.getByRole("button", { name: /Families/i }).click();
+  await expect(page.getByLabel("Login account")).toHaveValue("parent");
+  await page.getByRole("button", { name: /Sign in securely/i }).click();
+  await expect(page.getByRole("heading", { name: "Parent Dashboard" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Student/i })).toHaveCount(0);
 });
 
 test("manages permissions, roster, gradebook, and audit trail", async ({ page }) => {
-  await page.goto("/#platform");
+  await loginAs(page);
   await expect(page.getByRole("heading", { name: "Users & Roles" })).toBeVisible();
   await page.locator('[data-profile-permission="teacher:submit-post"]').click();
   await expect(page.getByText("permissions updated")).toBeVisible();
@@ -108,7 +120,7 @@ test("manages permissions, roster, gradebook, and audit trail", async ({ page })
 });
 
 test("validates imported demo state JSON", async ({ page }) => {
-  await page.goto("/");
+  await loginAs(page);
   await page.getByLabel("Settings").click();
   const chooserPromise = page.waitForEvent("filechooser");
   await page.getByText("Import JSON File").click();
@@ -122,7 +134,7 @@ test("validates imported demo state JSON", async ({ page }) => {
 });
 
 test("runs realtime app workflows with editable filler data", async ({ page }) => {
-  await page.goto("/#platform");
+  await loginAs(page);
   await page.locator(".realtime-panel").getByRole("button", { name: /Simulate Update/i }).click();
   await expect(page.getByText("Live app data updated.")).toBeVisible();
   await expect(page.locator(".realtime-panel").getByText(/synced|updated|message/i).first()).toBeVisible();
@@ -153,7 +165,7 @@ test("runs realtime app workflows with editable filler data", async ({ page }) =
 });
 
 test("keeps workspace-style services passive in the LMS background", async ({ page }) => {
-  await page.goto("/#lms");
+  await loginAs(page, "teacher", "LMS");
   const services = page.locator(".background-services");
   await expect(services.getByRole("heading", { name: "Background Services" })).toBeVisible();
   await expect(services.getByText("Runs quietly behind LMS work")).toBeVisible();
@@ -168,7 +180,7 @@ test("keeps workspace-style services passive in the LMS background", async ({ pa
 });
 
 test("integrates every workspace into the platform operating system", async ({ page }) => {
-  await page.goto("/#platform");
+  await loginAs(page);
   await expect(page.getByRole("heading", { name: "Unified School Operating System" })).toBeVisible();
   const hub = page.locator(".unified-os-panel");
   const modules = hub.locator(".unified-os-grid");
@@ -188,7 +200,7 @@ test("integrates every workspace into the platform operating system", async ({ p
 });
 
 test("runs production launch controls with backend-ready filler data", async ({ page }) => {
-  await page.goto("/#platform");
+  await loginAs(page);
   const launch = page.locator(".production-panel");
   await expect(launch.getByRole("heading", { name: "Launch Control" })).toBeVisible();
 

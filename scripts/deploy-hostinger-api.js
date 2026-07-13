@@ -7,30 +7,23 @@ const required = [
   "HOSTINGER_SFTP_HOST",
   "HOSTINGER_SFTP_USER",
   "HOSTINGER_SFTP_PASSWORD",
-  "HOSTINGER_REMOTE_DIR",
+  "HOSTINGER_API_REMOTE_DIR",
 ];
-
 const missing = required.filter((key) => !process.env[key]);
 if (missing.length) {
   console.error(`Missing required environment variables: ${missing.join(", ")}`);
-  console.error("Create a local .env file from .env.example, then rerun npm run deploy:hostinger.");
   process.exit(1);
 }
 
-const localDir = path.resolve("dist");
-const remoteDir = process.env.HOSTINGER_REMOTE_DIR.replace(/\/+$/, "");
-const expectedRemoteSuffix = "/domains/educationalsystem.fieldserviceit.com/public_html";
-const sftp = new SftpClient();
-
+const localDir = path.resolve("api");
+const remoteDir = process.env.HOSTINGER_API_REMOTE_DIR.replace(/\/+$/, "");
+const expectedRemoteSuffix = "/domains/educationalsystem.fieldserviceit.com/public_html/educonnect-api";
 if (!remoteDir.replace(/\\/g, "/").endsWith(expectedRemoteSuffix)) {
-  console.error(`Refusing deployment: HOSTINGER_REMOTE_DIR must end with ${expectedRemoteSuffix}`);
+  console.error(`Refusing deployment: HOSTINGER_API_REMOTE_DIR must end with ${expectedRemoteSuffix}`);
   process.exit(1);
 }
 
-async function assertBuildExists() {
-  const indexPath = path.join(localDir, "index.html");
-  await fs.access(indexPath);
-}
+const sftp = new SftpClient();
 
 async function ensureRemoteDirectory(dir) {
   const exists = await sftp.exists(dir);
@@ -53,7 +46,7 @@ async function uploadDirectory(localPath, remotePath) {
 }
 
 try {
-  await assertBuildExists();
+  await fs.access(path.join(localDir, "index.php"));
   await sftp.connect({
     host: process.env.HOSTINGER_SFTP_HOST,
     port: Number(process.env.HOSTINGER_SFTP_PORT || 22),
@@ -61,7 +54,7 @@ try {
     password: process.env.HOSTINGER_SFTP_PASSWORD,
   });
   await uploadDirectory(localDir, remoteDir);
-  console.log(`Deployment complete: ${remoteDir}`);
+  console.log(`Education API deployment complete: ${remoteDir}`);
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;

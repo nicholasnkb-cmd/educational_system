@@ -10,8 +10,10 @@
     "build": "vite build",
     "build:hostinger": "vite build --base=/",
     "deploy:hostinger": "npm run build:hostinger && node scripts/deploy-hostinger.js",
+    "deploy:hostinger:api": "node scripts/deploy-hostinger-api.js",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "npm run test:ui && npm run test:api",
+    "test": "npm run test:config && npm run test:ui && npm run test:api",
+    "test:config": "node --test tests/api-config.test.mjs",
     "test:ui": "playwright test",
     "test:api": "node --test tests/api.test.mjs",
     "test:live": "playwright test -c playwright.live.config.js"

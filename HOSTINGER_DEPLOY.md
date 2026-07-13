@@ -75,8 +75,18 @@ https://api.educationalsystem.fieldserviceit.com
 The dedicated API files live in `api/` and are deployed to the Hostinger subdomain directory:
 
 ```text
-educonnect-api
+/home/u209468809/domains/educationalsystem.fieldserviceit.com/public_html/educonnect-api
 ```
+
+Deploy only the education API with:
+
+```powershell
+npm run deploy:hostinger:api
+```
+
+The deployment command refuses any destination other than
+`api.educationalsystem.fieldserviceit.com`, preventing it from overwriting the
+FieldserviceIT API.
 
 Required health check:
 

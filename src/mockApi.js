@@ -1,3 +1,5 @@
+import { resolveEducationApiBase } from "./apiConfig.js";
+
 const MOCK_API_KEY = "educonnect-mock-api-v1";
 
 let requestCount = 0;
@@ -13,7 +15,11 @@ function delay() {
 }
 
 function apiBase() {
-  return window.__EDUCONNECT_API_BASE__ || import.meta.env.VITE_API_BASE_URL || "";
+  return resolveEducationApiBase(
+    window.location.hostname,
+    window.__EDUCONNECT_API_BASE__,
+    import.meta.env.VITE_API_BASE_URL,
+  );
 }
 
 function authHeaders() {

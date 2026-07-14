@@ -142,6 +142,29 @@ test("keeps role controls in one centralized workspace", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Role Control Center" })).toBeVisible();
 });
 
+test("customizes school identity, instance, logo, and colors from School Admin", async ({ page }) => {
+  await loginAs(page, "school-admin");
+  await expect(page.getByRole("heading", { name: "School Customization" })).toBeVisible();
+
+  await page.getByLabel("School name").fill("P.S. 118 Discovery Lab");
+  await page.getByLabel("Instance slug").fill("ps118lab");
+  await page.getByLabel("Logo mark").fill("DL");
+  await page.getByLabel("Crest / logo name").fill("Discovery Lab Owls");
+  await page.getByLabel("School voice").fill("Curious learners building a brighter future");
+  await page.getByLabel("Primary buttons").fill("#3157c8");
+  await page.getByRole("button", { name: /Save school customization/i }).click();
+
+  await expect(page.getByText("P.S. 118 Discovery Lab customization saved.")).toBeVisible();
+  await expect(page.locator(".tenant-bar").getByText("P.S. 118 Discovery Lab", { exact: true }).first()).toBeVisible();
+  await expect(page.locator(".tenant-bar").getByText("ps118lab.educonnect.local")).toBeVisible();
+  await expect(page.locator(".brand-mark")).toHaveText("DL");
+
+  await page.getByRole("link", { name: /LMS/i }).first().click();
+  await page.getByRole("button", { name: /School design/i }).click();
+  await expect(page.getByRole("heading", { name: "School Customization" })).toBeVisible();
+  await expect(page.getByLabel("School name")).toHaveValue("P.S. 118 Discovery Lab");
+});
+
 test("creates, publishes, previews, and completes a multimedia quiz lesson", async ({ page }) => {
   await loginAs(page, "teacher");
   await page.getByRole("button", { name: "Create lesson" }).first().click();

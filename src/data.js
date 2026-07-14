@@ -49,6 +49,12 @@ export const state = {
     hideAnswers: true,
     parentSummaries: true,
   },
+  lessonBuilderOpen: false,
+  lessonDraft: null,
+  lessonFilter: "All",
+  lessonPreviewId: "",
+  activeStudentLessonId: "lesson-moon-phases",
+  lessonProgress: {},
 };
 
 export const userProfiles = [
@@ -171,6 +177,48 @@ export const deadlines = [
 export const lmsAssignments = [
   { id: "fractions", title: "Fractions Mastery Check", type: "Automated quiz", rubric: "4-domain rubric", analytics: 82, lockDate: "Oct 24, 8:00 PM", exception: "Maya R. +24h" },
   { id: "essay", title: "Great Depression Essay", type: "Writing task", rubric: "Argument + evidence rubric", analytics: 74, lockDate: "Oct 28, 11:59 PM", exception: "None" },
+];
+
+export const lmsLessons = [
+  {
+    id: "lesson-moon-phases",
+    title: "Moon Phases Explorer",
+    subject: "Science",
+    className: "English Literature",
+    summary: "Explore why the Moon appears to change shape and check your understanding.",
+    status: "Published",
+    visibility: "Students and families",
+    dueDate: "2026-10-24",
+    estimatedMinutes: 35,
+    points: 20,
+    allowLate: true,
+    requireOrder: true,
+    updatedAt: "Today",
+    blocks: [
+      { id: "moon-intro", type: "text", title: "Look up at the Moon", body: "The Moon does not make its own light. As it travels around Earth, sunlight illuminates different portions that we can see." },
+      { id: "moon-video", type: "media", mediaType: "Video", title: "Moon phases video", url: "https://www.youtube.com/watch?v=3f_21N3wcX8", caption: "Watch the short overview, then continue to the knowledge check." },
+      { id: "moon-quiz", type: "quiz", title: "Knowledge check", question: "What causes the phases of the Moon?", questionType: "Multiple choice", options: ["Earth's shadow always covers the Moon", "We see different sunlit portions as the Moon orbits Earth", "Clouds change the Moon's shape", "The Moon produces different amounts of light"], correctAnswer: 1, feedback: "The Moon's orbit changes how much of its sunlit half is visible from Earth.", points: 10, required: true },
+    ],
+  },
+  {
+    id: "lesson-story-elements",
+    title: "Building a Strong Story",
+    subject: "English Language Arts",
+    className: "Creative Writing",
+    summary: "Use character, setting, conflict, and resolution to plan an original story.",
+    status: "Draft",
+    visibility: "Teacher only",
+    dueDate: "2026-10-28",
+    estimatedMinutes: 45,
+    points: 25,
+    allowLate: false,
+    requireOrder: false,
+    updatedAt: "Yesterday",
+    blocks: [
+      { id: "story-intro", type: "text", title: "Four story building blocks", body: "A memorable story gives readers a character to care about, a setting they can picture, a conflict that creates tension, and a resolution that shows change." },
+      { id: "story-link", type: "media", mediaType: "Link", title: "Story planner", url: "https://www.readwritethink.org/", caption: "Open the planning resource for additional examples." },
+    ],
+  },
 ];
 
 export const lmsFiles = [
@@ -355,6 +403,7 @@ export const databaseTables = [
   { name: "classes", records: teacherClasses.length, status: "Mapped", detail: "Teacher, room, attendance, pending work" },
   { name: "students", records: rosterRecords.length, status: "Mapped", detail: "Guardian, accommodations, grades, attendance" },
   { name: "assignments", records: lmsAssignments.length, status: "Mapped", detail: "Type, rubric, lock date, exceptions" },
+  { name: "lessons", records: lmsLessons.length, status: "Mapped", detail: "Content blocks, media, quizzes, publishing, and learner progress" },
   { name: "submissions", records: gradebookSubmissions.length, status: "Mapped", detail: "Rubric scores, comments, review status" },
   { name: "messages", records: conversations.length, status: "Mapped", detail: "Parent and group threads with work-hour controls" },
   { name: "community_posts", records: communityBoards["ps-118"].published.length + communityBoards["ps-118"].pending.length, status: "Mapped", detail: "Approvals, media, audience, publishing state" },

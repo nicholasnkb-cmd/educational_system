@@ -58,6 +58,7 @@ describe("operational API server", () => {
     const stateAdmin = await stateAdminLogin.json();
     const initial = await (await fetch(`${baseUrl}/api/state`)).json();
     initial.snapshot.state.selectedSchool = "ms-44";
+    initial.snapshot.lmsLessons = [{ id: "api-lesson", title: "Persisted API Lesson", status: "Draft", blocks: [] }];
     initial.snapshot.auditLogs.unshift({ event: "API persistence test", actor: "Node test", scope: "Operational", time: "Just now" });
 
     const save = await fetch(`${baseUrl}/api/state`, {
@@ -69,6 +70,7 @@ describe("operational API server", () => {
 
     const reloaded = await (await fetch(`${baseUrl}/api/state`)).json();
     assert.equal(reloaded.snapshot.state.selectedSchool, "ms-44");
+    assert.equal(reloaded.snapshot.lmsLessons[0].title, "Persisted API Lesson");
     assert.equal(reloaded.snapshot.auditLogs[0].event, "API persistence test");
     assert.equal(reloaded.snapshot.state.apiMode, "live-api");
   });

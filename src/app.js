@@ -55,6 +55,7 @@ import {
   activityFeed,
   deadlines,
   lmsAssignments,
+  lmsLessons,
   lmsFiles,
   lmsAccounts,
   lmsNotifications,
@@ -100,7 +101,7 @@ let landingBusy = false;
 
 const tourSteps = [
   { title: "Choose a role", body: "Use the demo login panel to switch between state, district, school, teacher, parent, and student access.", role: "state-admin" },
-  { title: "Create learning work", body: "Teachers and admins can create assignments and build offline packs in the LMS.", role: "lms" },
+  { title: "Create learning work", body: "Teachers can author multimedia lessons, build quizzes, publish assignments, and prepare offline packs in the LMS.", role: "lms" },
   { title: "Communicate safely", body: "Messaging respects school work hours, with emergency override reserved for admins.", role: "messages" },
   { title: "Approve community posts", body: "Admins can approve posts before they publish to the school community board.", role: "community" },
 ];
@@ -176,6 +177,42 @@ function escapeHtml(value) {
     "\"": "&quot;",
     "'": "&#39;",
   }[char]));
+}
+
+function safeExternalUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return ["http:", "https:"].includes(url.protocol) ? escapeHtml(url.href) : "";
+  } catch {
+    return "";
+  }
+}
+
+function lessonBlock(type, index = 0) {
+  const id = `block-${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`;
+  if (type === "quiz") return { id, type, title: "Knowledge check", question: "", questionType: "Multiple choice", options: ["", "", "", ""], correctAnswer: 0, feedback: "", points: 5, required: true };
+  if (type === "media") return { id, type, mediaType: "Video", title: "Learning media", url: "", caption: "" };
+  return { id, type: "text", title: "Lesson section", body: "" };
+}
+
+function newLessonDraft(lesson = null) {
+  if (lesson) return structuredClone(lesson);
+  return {
+    id: "",
+    title: "",
+    subject: "English Language Arts",
+    className: state.selectedClass === "All" ? teacherClasses[0].name : state.selectedClass,
+    summary: "",
+    status: "Draft",
+    visibility: "Teacher only",
+    dueDate: "",
+    estimatedMinutes: 30,
+    points: 20,
+    allowLate: true,
+    requireOrder: true,
+    updatedAt: "Just now",
+    blocks: [lessonBlock("text")],
+  };
 }
 
 function announce(message) {
@@ -379,6 +416,7 @@ function searchableItems() {
     ...missions.map((mission) => ({ label: mission.title, detail: `${mission.subject} mission`, role: "student" })),
     ...teacherClasses.map((item) => ({ label: item.name, detail: item.room, role: "teacher" })),
     ...lmsAssignments.map((item) => ({ label: item.title, detail: `${item.type} in LMS`, role: "lms" })),
+    ...lmsLessons.map((item) => ({ label: item.title, detail: `${item.status} ${item.subject} lesson`, role: "lms" })),
     ...deadlines.map((item) => ({ label: item.title, detail: item.meta, role: "parent" })),
     ...conversations.map((item) => ({ label: item.name, detail: item.preview, role: "messages" })),
     ...selectedCommunityBoard().published.map((post) => ({ label: post.title, detail: `${post.type} post`, role: "community" })),
@@ -1097,7 +1135,7 @@ function renderUnifiedOperatingSystem() {
   const pendingSubmissions = gradebookSubmissions.filter((submission) => submission.status !== "Reviewed").length;
   const unreadMessages = conversations.reduce((sum, conversation) => sum + (conversation.unread || 0), 0);
   const modules = [
-    { role: "lms", label: "LMS", iconName: "layers", metric: `${lmsAssignments.length} assignments`, detail: `${pendingSubmissions} gradebook items need review` },
+    { role: "lms", label: "LMS", iconName: "layers", metric: `${lmsLessons.length} lessons`, detail: `${lmsAssignments.length} assignments • ${pendingSubmissions} need review` },
     { role: "student", label: "Students", iconName: "sparkles", metric: `${rosterRecords.length} learners`, detail: `${watchCount} students on watch status` },
     { role: "teacher", label: "Teachers", iconName: "graduation-cap", metric: `${teacherClasses.length} classes`, detail: `${activityFeed.length} activity events in the feed` },
     { role: "parent", label: "Parents", iconName: "users", metric: `${deadlines.length} deadlines`, detail: `${state.checkedDeadlines.length} family tasks checked` },
@@ -1236,24 +1274,183 @@ function renderCompliancePanel() {
   `;
 }
 
+function renderLessonLibrary({ teacherStudio = false } = {}) {
+  const filtered = state.lessonFilter === "All" ? lmsLessons : lmsLessons.filter((lesson) => lesson.status === state.lessonFilter);
+  const published = lmsLessons.filter((lesson) => lesson.status === "Published").length;
+  const drafts = lmsLessons.length - published;
+  return `
+    <section class="panel lesson-library-panel ${teacherStudio ? "teacher-lesson-library" : "lms-panel"}">
+      <div class="section-heading lesson-library-heading">
+        <div><p class="eyebrow">${teacherStudio ? "Teacher authoring" : "Course content"}</p><h3>Lesson Library</h3></div>
+        <div class="inline-actions">
+          <select id="lesson-filter" aria-label="Filter lessons"><option>All</option><option ${state.lessonFilter === "Published" ? "selected" : ""}>Published</option><option ${state.lessonFilter === "Draft" ? "selected" : ""}>Draft</option></select>
+          ${teacherStudio ? `<button class="primary-action" type="button" data-new-lesson ${permissionAttrs("teacher-tools", "Only teachers and administrators can create lessons.")}>${icon("plus")} Create lesson</button>` : ""}
+        </div>
+      </div>
+      <div class="lesson-library-stats"><span><strong>${lmsLessons.length}</strong> total lessons</span><span><strong>${published}</strong> published</span><span><strong>${drafts}</strong> drafts</span></div>
+      <div class="lesson-card-grid">
+        ${filtered.map((lesson) => {
+          const quizCount = lesson.blocks.filter((block) => block.type === "quiz").length;
+          const mediaCount = lesson.blocks.filter((block) => block.type === "media").length;
+          return `
+            <article class="lesson-card">
+              <div class="lesson-card-top"><span class="lesson-status ${lesson.status.toLowerCase()}">${lesson.status}</span><small>${escapeHtml(lesson.subject)}</small></div>
+              <h4>${escapeHtml(lesson.title)}</h4>
+              <p>${escapeHtml(lesson.summary)}</p>
+              <div class="lesson-meta"><span>${icon("graduation-cap")} ${escapeHtml(lesson.className)}</span><span>${icon("clock")} ${lesson.estimatedMinutes} min</span><span>${icon("layers")} ${lesson.blocks.length} blocks</span></div>
+              <div class="lesson-feature-row"><span>${quizCount} quiz${quizCount === 1 ? "" : "zes"}</span><span>${mediaCount} media</span><span>${lesson.points} points</span></div>
+              <div class="lesson-card-actions">
+                <button class="secondary-action" type="button" data-preview-lesson="${lesson.id}">${icon("eye")} Preview</button>
+                ${can("teacher-tools") ? `<button class="secondary-action" type="button" data-edit-lesson="${lesson.id}">${icon("pen-line")} Edit</button><button class="text-button" type="button" data-toggle-lesson="${lesson.id}">${lesson.status === "Published" ? "Unpublish" : "Publish"}</button>` : ""}
+              </div>
+            </article>
+          `;
+        }).join("") || `<div class="empty-state">No ${state.lessonFilter.toLowerCase()} lessons yet.</div>`}
+      </div>
+      ${renderInstructorLessonPreview(lmsLessons.find((lesson) => lesson.id === state.lessonPreviewId))}
+    </section>
+  `;
+}
+
+function renderInstructorLessonPreview(lesson) {
+  if (!lesson) return "";
+  return `<aside class="lesson-preview-panel" aria-label="Lesson preview">
+    <div class="section-heading"><div><p class="eyebrow">Student preview</p><h4>${escapeHtml(lesson.title)}</h4></div><button class="icon-button" type="button" data-close-lesson-preview aria-label="Close lesson preview">${icon("x")}</button></div>
+    <p>${escapeHtml(lesson.summary)}</p>
+    <div class="lesson-preview-meta"><span>${escapeHtml(lesson.className)}</span><span>${lesson.estimatedMinutes} minutes</span><span>${lesson.points} points</span></div>
+    <div class="lesson-preview-blocks">${lesson.blocks.map((block, index) => {
+      if (block.type === "text") return `<article><span class="block-number">${index + 1}</span><div><strong>${escapeHtml(block.title)}</strong><p>${escapeHtml(block.body)}</p></div></article>`;
+      if (block.type === "media") return `<article><span class="block-number">${index + 1}</span><div><strong>${escapeHtml(block.title)}</strong>${renderLessonMedia(block)}</div></article>`;
+      return `<article><span class="block-number">${index + 1}</span><div><strong>${escapeHtml(block.title)}</strong><p>${escapeHtml(block.question)}</p><div class="preview-answer-list">${block.options.filter(Boolean).map((option) => `<span>${escapeHtml(option)}</span>`).join("")}</div></div></article>`;
+    }).join("")}</div>
+  </aside>`;
+}
+
+function renderLessonBlockEditor(block, index, total) {
+  const moveControls = `<div class="block-order-actions"><button type="button" data-move-lesson-block="${block.id}:up" ${index === 0 ? "disabled" : ""} aria-label="Move block up">↑</button><span>${index + 1}</span><button type="button" data-move-lesson-block="${block.id}:down" ${index === total - 1 ? "disabled" : ""} aria-label="Move block down">↓</button><button type="button" data-remove-lesson-block="${block.id}" aria-label="Remove block">${icon("x")}</button></div>`;
+  if (block.type === "quiz") return `
+    <article class="lesson-block-editor quiz-block-editor" data-lesson-block="${block.id}">
+      <div class="lesson-block-heading"><div><span class="block-type-icon">${icon("clipboard-check")}</span><div><strong>Quiz</strong><small>Auto-graded knowledge check</small></div></div>${moveControls}</div>
+      <div class="lesson-block-fields">
+        <label><span>Quiz title</span><input value="${escapeHtml(block.title)}" data-block-field="${block.id}:title" /></label>
+        <label><span>Question type</span><select data-block-field="${block.id}:questionType"><option ${block.questionType === "Multiple choice" ? "selected" : ""}>Multiple choice</option><option ${block.questionType === "True or false" ? "selected" : ""}>True or false</option><option ${block.questionType === "Short answer" ? "selected" : ""}>Short answer</option></select></label>
+        <label class="span-2"><span>Question</span><textarea data-block-field="${block.id}:question" placeholder="What should students understand?">${escapeHtml(block.question)}</textarea></label>
+        <div class="quiz-option-editor span-2">
+          ${block.questionType === "Short answer"
+            ? `<label><span>Accepted answer</span><input aria-label="Accepted short answer" value="${escapeHtml(block.options[0] || "")}" data-quiz-option="${block.id}:0" /></label>`
+            : block.options.map((option, optionIndex) => `<label class="quiz-option ${block.questionType === "True or false" && optionIndex > 1 ? "hidden-option" : ""}"><input type="radio" name="correct-${block.id}" value="${optionIndex}" data-correct-answer="${block.id}" ${Number(block.correctAnswer) === optionIndex ? "checked" : ""} /><span>Correct</span><input aria-label="Answer option ${optionIndex + 1}" value="${escapeHtml(option)}" data-quiz-option="${block.id}:${optionIndex}" /></label>`).join("")}
+        </div>
+        <label><span>Points</span><input type="number" min="1" max="100" value="${block.points}" data-block-field="${block.id}:points" /></label>
+        <label class="toggle-field"><input type="checkbox" data-block-field="${block.id}:required" ${block.required ? "checked" : ""} /><span>Required question</span></label>
+        <label class="span-2"><span>Answer feedback</span><textarea data-block-field="${block.id}:feedback" placeholder="Explain the correct answer.">${escapeHtml(block.feedback)}</textarea></label>
+      </div>
+    </article>`;
+  if (block.type === "media") return `
+    <article class="lesson-block-editor media-block-editor" data-lesson-block="${block.id}">
+      <div class="lesson-block-heading"><div><span class="block-type-icon">${icon("video")}</span><div><strong>Media</strong><small>Video, image, audio, document, or link</small></div></div>${moveControls}</div>
+      <div class="lesson-block-fields">
+        <label><span>Media title</span><input value="${escapeHtml(block.title)}" data-block-field="${block.id}:title" /></label>
+        <label><span>Media type</span><select data-block-field="${block.id}:mediaType">${["Video", "Image", "Audio", "Document", "Link"].map((type) => `<option ${block.mediaType === type ? "selected" : ""}>${type}</option>`).join("")}</select></label>
+        <label class="span-2"><span>Media URL</span><input type="url" value="${escapeHtml(block.url)}" data-block-field="${block.id}:url" placeholder="https://..." /></label>
+        <label class="span-2"><span>Caption or instructions</span><textarea data-block-field="${block.id}:caption">${escapeHtml(block.caption)}</textarea></label>
+      </div>
+    </article>`;
+  return `
+    <article class="lesson-block-editor text-block-editor" data-lesson-block="${block.id}">
+      <div class="lesson-block-heading"><div><span class="block-type-icon">${icon("file-text")}</span><div><strong>Content</strong><small>Directions, reading, or explanation</small></div></div>${moveControls}</div>
+      <div class="lesson-block-fields">
+        <label class="span-2"><span>Section title</span><input value="${escapeHtml(block.title)}" data-block-field="${block.id}:title" /></label>
+        <label class="span-2"><span>Lesson content</span><textarea class="lesson-content-textarea" data-block-field="${block.id}:body" placeholder="Write instructions or learning content...">${escapeHtml(block.body)}</textarea></label>
+      </div>
+    </article>`;
+}
+
+function renderLessonBuilder() {
+  const draft = state.lessonDraft || newLessonDraft();
+  return `
+    <section class="panel lesson-builder-panel" aria-labelledby="lesson-builder-title">
+      <div class="section-heading lesson-builder-heading"><div><p class="eyebrow">Lesson Studio</p><h3 id="lesson-builder-title">${draft.id ? "Edit lesson" : "Create a lesson"}</h3></div><button class="icon-button" type="button" data-close-lesson-builder aria-label="Close lesson builder">${icon("x")}</button></div>
+      <form id="lesson-builder-form" class="lesson-builder-form">
+        <div class="lesson-settings-grid">
+          <label class="span-2"><span>Lesson title</span><input required value="${escapeHtml(draft.title)}" data-lesson-field="title" placeholder="Example: Exploring persuasive writing" /></label>
+          <label><span>Subject</span><select data-lesson-field="subject">${["English Language Arts", "Math", "Science", "Social Studies", "Art", "Technology"].map((subject) => `<option ${draft.subject === subject ? "selected" : ""}>${subject}</option>`).join("")}</select></label>
+          <label><span>Class</span><select data-lesson-field="className">${teacherClasses.map((item) => `<option ${draft.className === item.name ? "selected" : ""}>${item.name}</option>`).join("")}</select></label>
+          <label class="span-2"><span>Learning objective and summary</span><textarea required data-lesson-field="summary" placeholder="What will students learn and do?">${escapeHtml(draft.summary)}</textarea></label>
+          <label><span>Due date</span><input type="date" value="${escapeHtml(draft.dueDate)}" data-lesson-field="dueDate" /></label>
+          <label><span>Estimated minutes</span><input type="number" min="5" max="240" value="${draft.estimatedMinutes}" data-lesson-field="estimatedMinutes" /></label>
+          <label><span>Total points</span><input type="number" min="0" max="1000" value="${draft.points}" data-lesson-field="points" /></label>
+          <label><span>Visibility</span><select data-lesson-field="visibility"><option ${draft.visibility === "Teacher only" ? "selected" : ""}>Teacher only</option><option ${draft.visibility === "Students" ? "selected" : ""}>Students</option><option ${draft.visibility === "Students and families" ? "selected" : ""}>Students and families</option></select></label>
+          <label class="toggle-field"><input type="checkbox" data-lesson-field="allowLate" ${draft.allowLate ? "checked" : ""} /><span>Allow late completion</span></label>
+          <label class="toggle-field"><input type="checkbox" data-lesson-field="requireOrder" ${draft.requireOrder ? "checked" : ""} /><span>Require blocks in order</span></label>
+        </div>
+        <div class="lesson-block-toolbar"><div><strong>Lesson blocks</strong><small>Add and reorder learning content.</small></div><div class="inline-actions"><button class="secondary-action" type="button" data-add-lesson-block="text">${icon("file-text")} Content</button><button class="secondary-action" type="button" data-add-lesson-block="media">${icon("video")} Media</button><button class="secondary-action" type="button" data-add-lesson-block="quiz">${icon("clipboard-check")} Quiz</button></div></div>
+        <div class="lesson-block-list">${draft.blocks.map((block, index) => renderLessonBlockEditor(block, index, draft.blocks.length)).join("")}</div>
+        <div class="lesson-publish-bar"><div><strong>${draft.blocks.length} blocks</strong><span>Changes are saved when you choose an action.</span></div><div class="inline-actions"><button class="secondary-action" type="submit" data-lesson-status="Draft">Save draft</button><button class="primary-action" type="submit" data-lesson-status="Published">${icon("check")} Publish lesson</button></div></div>
+      </form>
+    </section>
+  `;
+}
+
+function renderTeacherLessonStudio() {
+  return state.lessonBuilderOpen ? renderLessonBuilder() : renderLessonLibrary({ teacherStudio: true });
+}
+
+function renderLessonMedia(block) {
+  const url = safeExternalUrl(block.url);
+  if (!url) return `<div class="lesson-media-placeholder">${icon("paperclip")}<span>Media link has not been added yet.</span></div>`;
+  if (block.mediaType === "Image") return `<figure class="student-lesson-media"><img src="${url}" alt="${escapeHtml(block.caption || block.title)}" /><figcaption>${escapeHtml(block.caption)}</figcaption></figure>`;
+  if (block.mediaType === "Audio") return `<div class="student-lesson-media"><audio controls src="${url}"></audio><p>${escapeHtml(block.caption)}</p></div>`;
+  if (block.mediaType === "Video" && /\.(mp4|webm|ogg)(\?|$)/i.test(url)) return `<div class="student-lesson-media"><video controls src="${url}"></video><p>${escapeHtml(block.caption)}</p></div>`;
+  return `<a class="lesson-media-link" href="${url}" target="_blank" rel="noreferrer">${icon(block.mediaType === "Video" ? "play" : "paperclip")}<span><strong>${escapeHtml(block.title)}</strong><small>${escapeHtml(block.caption || `Open ${block.mediaType.toLowerCase()}`)}</small></span>${icon("chevron-right")}</a>`;
+}
+
+function renderStudentLessons() {
+  const lessons = lmsLessons.filter((lesson) => lesson.status === "Published");
+  const active = lessons.find((lesson) => lesson.id === state.activeStudentLessonId) || lessons[0];
+  const progressRecord = active ? state.lessonProgress?.[active.id] : null;
+  return `
+    <section class="panel student-lessons-panel">
+      <div class="section-heading"><div><p class="eyebrow">My classroom</p><h3>Lessons</h3></div><span>${lessons.length} available</span></div>
+      <div class="student-lesson-layout">
+        <div class="student-lesson-list">
+          ${lessons.map((lesson) => `<button class="student-lesson-card ${active?.id === lesson.id ? "active" : ""}" type="button" data-open-student-lesson="${lesson.id}"><span>${icon("book-open")}</span><div><strong>${escapeHtml(lesson.title)}</strong><small>${escapeHtml(lesson.subject)} • ${lesson.estimatedMinutes} min • ${lesson.points} points</small></div><em>${state.lessonProgress?.[lesson.id]?.completed ? "Completed" : "Open"}</em></button>`).join("")}
+        </div>
+        ${active ? `<article class="student-lesson-view">
+          <div class="student-lesson-hero"><span>${escapeHtml(active.subject)}</span><h4>${escapeHtml(active.title)}</h4><p>${escapeHtml(active.summary)}</p><div><small>Due ${active.dueDate || "anytime"}</small><small>${active.allowLate ? "Late work allowed" : "Firm deadline"}</small><small>${active.requireOrder ? "Complete in order" : "Flexible order"}</small></div></div>
+          <form class="student-lesson-content" data-submit-lesson="${active.id}">
+            ${active.blocks.map((block, index) => {
+              if (block.type === "text") return `<section class="student-content-block"><span class="block-number">${index + 1}</span><div><h5>${escapeHtml(block.title)}</h5><p>${escapeHtml(block.body).replace(/\n/g, "<br />")}</p></div></section>`;
+              if (block.type === "media") return `<section class="student-content-block"><span class="block-number">${index + 1}</span><div><h5>${escapeHtml(block.title)}</h5>${renderLessonMedia(block)}</div></section>`;
+              return `<fieldset class="student-quiz-block"><legend><span class="block-number">${index + 1}</span><span><strong>${escapeHtml(block.title)}</strong><small>${block.points} points${block.required ? " • Required" : ""}</small></span></legend><p>${escapeHtml(block.question)}</p><div class="student-answer-list">${block.questionType === "Short answer" ? `<label class="short-answer-field"><span>Your answer</span><input name="quiz-${block.id}" ${block.required ? "required" : ""} /></label>` : block.options.map((option, optionIndex) => ({ option, optionIndex })).filter(({ option }) => option.trim()).map(({ option, optionIndex }) => `<label><input type="radio" name="quiz-${block.id}" value="${optionIndex}" ${block.required ? "required" : ""} /><span>${escapeHtml(option)}</span></label>`).join("")}</div>${progressRecord ? `<div class="quiz-feedback ${progressRecord.answers?.[block.id]?.correct ? "correct" : "incorrect"}">${progressRecord.answers?.[block.id]?.correct ? icon("check") : icon("alert-triangle")} ${escapeHtml(progressRecord.answers?.[block.id]?.correct ? block.feedback || "Correct." : "Review this question and try again.")}</div>` : ""}</fieldset>`;
+            }).join("")}
+            <div class="student-lesson-submit"><div>${progressRecord ? `<strong>${progressRecord.score}%</strong><span>Latest score</span>` : `<strong>${active.points}</strong><span>points available</span>`}</div><button class="primary-action" type="submit">${icon("check")} ${progressRecord ? "Submit again" : "Complete lesson"}</button></div>
+          </form>
+        </article>` : `<div class="empty-state">No published lessons are available yet.</div>`}
+      </div>
+    </section>`;
+}
+
 function renderAdvancedLms() {
   const school = selectedSchoolRecord();
   const activeAccount = lmsAccounts.find((account) => account.id === state.activeAccount) || lmsAccounts[0];
+  const quizCount = lmsLessons.reduce((total, lesson) => total + lesson.blocks.filter((block) => block.type === "quiz").length, 0);
+  const publishedLessons = lmsLessons.filter((lesson) => lesson.status === "Published").length;
   return `
     <section class="dashboard-grid lms-grid">
       <div class="welcome-strip lms-welcome">
         <div>
           <p class="eyebrow">${school.name} advanced LMS</p>
-          <h2>Learning tools beyond basic classroom workflows</h2>
-          <p>Advanced grading, firm deadlines, file conversion, account context, organized alerts, and offline access are all managed inside this school instance.</p>
+          <h2>Lessons, quizzes, media, and grading in one LMS</h2>
+          <p>Teachers can build multimedia lessons, publish quizzes, manage assignments, grade submissions, and support offline learning inside this school instance.</p>
         </div>
         <button class="primary-action" data-build-offline ${permissionAttrs("lms", "Only teachers and administrators can build LMS offline packs.")}>${icon("download")} ${state.offlinePackReady ? "Rebuild Offline Pack" : "Build Offline Pack"}</button>
       </div>
 
-      ${statCard("Auto-graded checks", "18", "clipboard-check", "blue")}
-      ${statCard("Rubrics active", "7", "layers", "teal")}
+      ${statCard("Published lessons", publishedLessons, "book-open", "blue")}
+      ${statCard("Quiz blocks", quizCount, "clipboard-check", "teal")}
       ${statCard("Offline packs", state.offlinePackReady ? "Ready" : "Not built", "download", "gold")}
 
+      ${renderLessonLibrary()}
       ${renderBackgroundServices()}
 
       <section class="panel lms-panel simplicity-suite">
@@ -1372,6 +1569,7 @@ function renderStudent() {
       </div>
       ${statCard("Daily streak", "5 days", "trending-up", "blue")}
       ${statCard("Books read", "12", "book-open", "teal")}
+      ${renderStudentLessons()}
       <section class="panel missions-panel">
         <div class="section-heading"><div><p class="eyebrow">Today</p><h3>My Missions</h3></div><button class="text-button" data-action="All available missions are already shown for this learner.">See all ${icon("chevron-right")}</button></div>
         <div class="mission-list">
@@ -1446,10 +1644,11 @@ function renderTeacher() {
   const roster = state.rosterFilter === "All" ? rosterRecords : rosterRecords.filter((item) => item.status === state.rosterFilter);
   return `
     <section class="dashboard-grid teacher-grid">
-      <div class="welcome-strip"><div><p class="eyebrow">${school.name} instance</p><h2>Welcome back, Demo Teacher.</h2><p>${school.messages} need attention in this school tenant, with class data isolated from every other school.</p></div><button class="primary-action" data-create-assignment ${permissionAttrs("teacher-tools", "Only teachers and administrators can create assignments.")}>${icon("plus")} Create Assignment</button></div>
+      <div class="welcome-strip"><div><p class="eyebrow">${school.name} instance</p><h2>Welcome back, Demo Teacher.</h2><p>Build lessons with rich content, quizzes, and media, then publish them directly to your students.</p></div><button class="primary-action" data-new-lesson ${permissionAttrs("teacher-tools", "Only teachers and administrators can create lessons.")}>${icon("plus")} Create lesson</button></div>
       ${statCard("Average grade", school.avgGrade, "trending-up", "blue")}
       ${statCard("Attendance", school.attendance, "calendar-days", "teal")}
       ${statCard("Messages", school.messages, "mail", "gold")}
+      ${renderTeacherLessonStudio()}
       <section class="panel class-panel">
         <div class="section-heading">
           <h3>Active Classes</h3>
@@ -1458,7 +1657,7 @@ function renderTeacher() {
         <div class="class-list">${visible.map((item) => `<article class="class-card"><div><h4>${item.name}</h4><p>${item.room}</p></div><div class="class-metrics"><span>${item.grade}% grade</span><span>${item.attendance}% attendance</span><span>${item.pending} pending</span></div><button class="icon-button" aria-label="Open ${item.name} options" data-action="${item.name} class tools opened.">${icon("more-horizontal")}</button></article>`).join("")}</div>
       </section>
       <section class="panel assignment-composer-panel">
-        <div class="section-heading"><h3>Create Assignment</h3><span>Realtime LMS filler data</span></div>
+        <div class="section-heading"><h3>Quick Assignment</h3><span>Add a simple graded task</span></div>
         <form id="assignment-form" class="assignment-form">
           <label><span>Title</span><input id="assignment-title" placeholder="Example: Reading Checkpoint" required /></label>
           <label><span>Class</span><select id="assignment-class">${teacherClasses.map((item) => `<option>${item.name}</option>`).join("")}</select></label>
@@ -1737,6 +1936,82 @@ function createAssignmentRecord({ title, className, type, lockDate }) {
   pushNotification("Action", `${title} is ready to publish`, className, "Teacher inbox");
   pushRealtimeEvent("LMS", `${title} created`, `${type} assigned to ${className}.`);
   addAudit(`Created assignment ${title}`, selectedSchoolRecord().name);
+}
+
+function openLessonBuilder(lessonId = "") {
+  const lesson = lmsLessons.find((item) => item.id === lessonId);
+  state.lessonDraft = newLessonDraft(lesson);
+  state.lessonBuilderOpen = true;
+  if (state.role !== "teacher") goToRole("teacher", lesson ? `${lesson.title} opened in Lesson Studio.` : "Lesson Studio opened.");
+  else render();
+}
+
+function saveLesson(status) {
+  const draft = state.lessonDraft;
+  if (!draft?.title?.trim() || !draft?.summary?.trim()) {
+    announce("Add a lesson title and learning objective before saving.");
+    return;
+  }
+  if (!draft.blocks.length) {
+    announce("Add at least one content, media, or quiz block.");
+    return;
+  }
+  const invalidQuiz = draft.blocks.find((block) => block.type === "quiz" && (!block.question.trim() || (block.questionType === "Short answer" ? !block.options[0]?.trim() : block.options.filter((option) => option.trim()).length < 2)));
+  if (invalidQuiz) {
+    announce("Each quiz needs a question and at least two answer choices.");
+    return;
+  }
+  const lesson = structuredClone(draft);
+  lesson.id ||= `lesson-${lesson.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}-${Date.now()}`;
+  lesson.status = status;
+  lesson.visibility = status === "Published" && lesson.visibility === "Teacher only" ? "Students" : lesson.visibility;
+  lesson.updatedAt = "Just now";
+  const existingIndex = lmsLessons.findIndex((item) => item.id === lesson.id);
+  if (existingIndex >= 0) lmsLessons.splice(existingIndex, 1, lesson);
+  else lmsLessons.unshift(lesson);
+  state.lessonDraft = null;
+  state.lessonBuilderOpen = false;
+  state.activeStudentLessonId = status === "Published" ? lesson.id : state.activeStudentLessonId;
+  pushRealtimeEvent("LMS", `${lesson.title} ${status === "Published" ? "published" : "saved"}`, `${lesson.blocks.length} lesson blocks for ${lesson.className}.`);
+  pushNotification(status === "Published" ? "FYI" : "Action", `${lesson.title} ${status === "Published" ? "is available to students" : "saved as a draft"}`, lesson.className, "Lesson Studio");
+  addAudit(`${status === "Published" ? "Published" : "Saved draft lesson"} ${lesson.title}`, lesson.className);
+  announce(`${lesson.title} ${status === "Published" ? "published to students" : "saved as a draft"}.`);
+}
+
+function toggleLessonStatus(lessonId) {
+  const lesson = lmsLessons.find((item) => item.id === lessonId);
+  if (!lesson) return;
+  lesson.status = lesson.status === "Published" ? "Draft" : "Published";
+  lesson.visibility = lesson.status === "Published" && lesson.visibility === "Teacher only" ? "Students" : lesson.visibility;
+  lesson.updatedAt = "Just now";
+  addAudit(`${lesson.status === "Published" ? "Published" : "Unpublished"} lesson ${lesson.title}`, lesson.className);
+  announce(`${lesson.title} is now ${lesson.status.toLowerCase()}.`);
+}
+
+function submitStudentLesson(lessonId, form) {
+  const lesson = lmsLessons.find((item) => item.id === lessonId && item.status === "Published");
+  if (!lesson) return;
+  const quizBlocks = lesson.blocks.filter((block) => block.type === "quiz");
+  const answers = {};
+  let earned = 0;
+  let available = 0;
+  const formData = new FormData(form);
+  quizBlocks.forEach((block) => {
+    const rawAnswer = formData.get(`quiz-${block.id}`);
+    const selected = block.questionType === "Short answer" ? String(rawAnswer || "").trim() : rawAnswer === null ? -1 : Number(rawAnswer);
+    const correct = block.questionType === "Short answer"
+      ? selected.toLowerCase() === String(block.options[0] || "").trim().toLowerCase()
+      : selected === Number(block.correctAnswer);
+    answers[block.id] = { selected, correct };
+    available += Number(block.points) || 0;
+    if (correct) earned += Number(block.points) || 0;
+  });
+  const score = available ? Math.round((earned / available) * 100) : 100;
+  state.lessonProgress ||= {};
+  state.lessonProgress[lesson.id] = { completed: true, score, earned, available, answers, submittedAt: "Just now" };
+  activityFeed.unshift([activeUser().label, `completed ${lesson.title} with ${score}%`, "Just now", lesson.className]);
+  pushRealtimeEvent("LMS", `${activeUser().label} completed a lesson`, `${lesson.title}: ${score}% quiz score.`);
+  announce(`${lesson.title} completed with a ${score}% quiz score.`);
 }
 
 function continueAdventure() {
@@ -2098,6 +2373,114 @@ function bindEvents() {
       lockDate: document.querySelector("#assignment-lock").value.trim(),
     });
     announce(`${title} added to ${className}.`);
+  });
+
+  document.querySelectorAll("[data-new-lesson]").forEach((button) => button.addEventListener("click", () => openLessonBuilder()));
+
+  document.querySelector("[data-close-lesson-builder]")?.addEventListener("click", () => {
+    state.lessonBuilderOpen = false;
+    state.lessonDraft = null;
+    render();
+  });
+
+  document.querySelector("#lesson-filter")?.addEventListener("change", (event) => {
+    state.lessonFilter = event.target.value;
+    render();
+  });
+
+  document.querySelectorAll("[data-edit-lesson]").forEach((button) => button.addEventListener("click", () => openLessonBuilder(button.dataset.editLesson)));
+  document.querySelectorAll("[data-toggle-lesson]").forEach((button) => button.addEventListener("click", () => toggleLessonStatus(button.dataset.toggleLesson)));
+  document.querySelectorAll("[data-preview-lesson]").forEach((button) => button.addEventListener("click", () => {
+    state.lessonPreviewId = button.dataset.previewLesson;
+    render();
+    requestAnimationFrame(() => document.querySelector(".lesson-preview-panel")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  }));
+  document.querySelector("[data-close-lesson-preview]")?.addEventListener("click", () => {
+    state.lessonPreviewId = "";
+    render();
+  });
+
+  document.querySelectorAll("[data-lesson-field]").forEach((input) => {
+    input.addEventListener("change", () => {
+      if (!state.lessonDraft) return;
+      const field = input.dataset.lessonField;
+      state.lessonDraft[field] = input.type === "checkbox" ? input.checked : input.type === "number" ? Number(input.value) : input.value;
+    });
+    input.addEventListener("input", () => {
+      if (!state.lessonDraft || ["checkbox", "number"].includes(input.type)) return;
+      state.lessonDraft[input.dataset.lessonField] = input.value;
+    });
+  });
+
+  document.querySelectorAll("[data-block-field]").forEach((input) => {
+    const update = () => {
+      const [blockId, field] = input.dataset.blockField.split(":");
+      const block = state.lessonDraft?.blocks.find((item) => item.id === blockId);
+      if (!block) return;
+      block[field] = input.type === "checkbox" ? input.checked : input.type === "number" ? Number(input.value) : input.value;
+      if (field === "questionType" && input.value === "True or false") {
+        block.options = ["True", "False", "", ""];
+        block.correctAnswer = 0;
+        render();
+      }
+      if (field === "questionType" && input.value === "Short answer") {
+        block.options = ["", "", "", ""];
+        block.correctAnswer = 0;
+        render();
+      }
+    };
+    input.addEventListener("change", update);
+    input.addEventListener("input", update);
+  });
+
+  document.querySelectorAll("[data-quiz-option]").forEach((input) => input.addEventListener("input", () => {
+    const [blockId, optionIndex] = input.dataset.quizOption.split(":");
+    const block = state.lessonDraft?.blocks.find((item) => item.id === blockId);
+    if (block) block.options[Number(optionIndex)] = input.value;
+  }));
+
+  document.querySelectorAll("[data-correct-answer]").forEach((input) => input.addEventListener("change", () => {
+    const block = state.lessonDraft?.blocks.find((item) => item.id === input.dataset.correctAnswer);
+    if (block) block.correctAnswer = Number(input.value);
+  }));
+
+  document.querySelectorAll("[data-add-lesson-block]").forEach((button) => button.addEventListener("click", () => {
+    state.lessonDraft?.blocks.push(lessonBlock(button.dataset.addLessonBlock, state.lessonDraft.blocks.length));
+    render();
+  }));
+
+  document.querySelectorAll("[data-remove-lesson-block]").forEach((button) => button.addEventListener("click", () => {
+    if (!state.lessonDraft || state.lessonDraft.blocks.length === 1) {
+      announce("A lesson must keep at least one block.");
+      return;
+    }
+    state.lessonDraft.blocks = state.lessonDraft.blocks.filter((block) => block.id !== button.dataset.removeLessonBlock);
+    render();
+  }));
+
+  document.querySelectorAll("[data-move-lesson-block]").forEach((button) => button.addEventListener("click", () => {
+    if (!state.lessonDraft) return;
+    const [blockId, direction] = button.dataset.moveLessonBlock.split(":");
+    const index = state.lessonDraft.blocks.findIndex((block) => block.id === blockId);
+    const target = direction === "up" ? index - 1 : index + 1;
+    if (index < 0 || target < 0 || target >= state.lessonDraft.blocks.length) return;
+    [state.lessonDraft.blocks[index], state.lessonDraft.blocks[target]] = [state.lessonDraft.blocks[target], state.lessonDraft.blocks[index]];
+    render();
+  }));
+
+  document.querySelector("#lesson-builder-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    saveLesson(event.submitter?.dataset.lessonStatus || "Draft");
+  });
+
+  document.querySelectorAll("[data-open-student-lesson]").forEach((button) => button.addEventListener("click", () => {
+    state.activeStudentLessonId = button.dataset.openStudentLesson;
+    render();
+  }));
+
+  document.querySelector("[data-submit-lesson]")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitStudentLesson(event.currentTarget.dataset.submitLesson, event.currentTarget);
   });
 
   document.querySelector("[data-continue-adventure]")?.addEventListener("click", continueAdventure);

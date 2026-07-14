@@ -39,9 +39,11 @@ test("runs LMS, teacher, messaging, and community demo flows", async ({ page }) 
   await expect(page.getByText("Offline pack ready")).toBeVisible();
 
   await page.getByRole("link", { name: /Teacher/i }).first().click();
-  await page.getByRole("button", { name: /Create Assignment/i }).click();
-  await expect(page.getByText(/was created in the LMS grading suite/i)).toBeVisible();
-  await expect(page.getByText(/Quick Check/i).first()).toBeVisible();
+  const quickAssignment = page.locator(".assignment-composer-panel");
+  await quickAssignment.getByLabel("Title").fill("Reading Quick Check");
+  await quickAssignment.getByRole("button", { name: /Add Assignment/i }).click();
+  await expect(page.getByText(/Reading Quick Check added/i)).toBeVisible();
+  await expect(page.getByText(/Reading Quick Check/i).first()).toBeVisible();
 
   await page.getByRole("link", { name: /Messages/i }).first().click();
   await page.getByPlaceholder(/Message/i).fill("Demo message from test");
@@ -138,6 +140,48 @@ test("keeps role controls in one centralized workspace", async ({ page }) => {
   await page.getByRole("button", { name: /Role controls/i }).click();
   await expect(page.locator("#role-control-center")).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "Role Control Center" })).toBeVisible();
+});
+
+test("creates, publishes, previews, and completes a multimedia quiz lesson", async ({ page }) => {
+  await loginAs(page, "teacher");
+  await page.getByRole("button", { name: "Create lesson" }).first().click();
+  await expect(page.getByRole("heading", { name: "Create a lesson" })).toBeVisible();
+
+  await page.getByLabel("Lesson title").fill("Persuasive Media Lab");
+  await page.getByLabel("Learning objective and summary").fill("Analyze a message, identify supporting evidence, and demonstrate understanding.");
+  await page.getByLabel("Section title").fill("Start with a claim");
+  await page.getByLabel("Lesson content").fill("A strong claim is clear, focused, and supported by relevant evidence.");
+
+  await page.getByRole("button", { name: /Media/i }).click();
+  await page.getByLabel("Media title").fill("Persuasion example");
+  await page.getByLabel("Media URL").fill("https://example.com/persuasion-video");
+  await page.getByLabel("Caption or instructions").fill("Open the example and identify the main claim.");
+
+  await page.getByRole("button", { name: /Quiz/i }).click();
+  await page.getByLabel("Quiz title").fill("Claim check");
+  await page.getByLabel("Question", { exact: true }).fill("Which statement best describes a strong claim?");
+  await page.getByLabel("Answer option 1").fill("It includes every possible detail.");
+  await page.getByLabel("Answer option 2").fill("It is clear and supported by evidence.");
+  await page.locator('[data-correct-answer]').nth(1).check();
+  await page.getByLabel("Answer feedback").fill("A strong claim is focused and supported by relevant evidence.");
+  await page.getByRole("button", { name: /Publish lesson/i }).click();
+  await expect(page.getByText("Persuasive Media Lab published to students.")).toBeVisible();
+
+  await page.getByRole("link", { name: /LMS/i }).first().click();
+  const lessonCard = page.locator(".lesson-card").filter({ hasText: "Persuasive Media Lab" });
+  await expect(lessonCard.getByText("Published")).toBeVisible();
+  await lessonCard.getByRole("button", { name: /Preview/i }).click();
+  await expect(page.locator(".lesson-preview-panel").getByRole("heading", { name: "Persuasive Media Lab" })).toBeVisible();
+
+  await page.getByLabel("Sign out").click();
+  await page.getByLabel("School email or username").fill("student");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("button", { name: /Persuasive Media Lab/i }).click();
+  const lessonView = page.locator(".student-lesson-view");
+  await lessonView.getByText("It is clear and supported by evidence.").click();
+  await lessonView.getByRole("button", { name: /Complete lesson/i }).click();
+  await expect(page.getByText("Persuasive Media Lab completed with a 100% quiz score.")).toBeVisible();
+  await expect(lessonView.getByText("Latest score")).toBeVisible();
 });
 
 test("validates imported demo state JSON", async ({ page }) => {

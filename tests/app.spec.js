@@ -226,6 +226,15 @@ test("validates imported demo state JSON", async ({ page }) => {
     buffer: Buffer.from(JSON.stringify({ hello: "world" })),
   });
   await expect(page.getByText(/Import failed: Missing state object/i)).toBeVisible();
+
+  const legacySnapshot = await page.evaluate(() => JSON.parse(localStorage.getItem("educonnect-demo-state-v1")));
+  legacySnapshot.productionReadiness = { tenantIsolation: { status: "Enforced" } };
+  const legacyChooserPromise = page.waitForEvent("filechooser");
+  await page.getByText("Import JSON File").click();
+  const legacyChooser = await legacyChooserPromise;
+  await legacyChooser.setFiles({ name: "legacy-state.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(legacySnapshot)) });
+  await expect(page.getByRole("heading", { name: "Platform Operations Center" })).toBeVisible();
+  await expect(page.getByText("All systems operational")).toBeVisible();
 });
 
 test("runs realtime app workflows with editable filler data", async ({ page }) => {

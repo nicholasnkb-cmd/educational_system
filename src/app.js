@@ -3550,7 +3550,7 @@ function bindEvents() {
 }
 
 async function boot() {
-  if ("serviceWorker" in navigator && isProductionHost()) navigator.serviceWorker.register("/service-worker.js").catch(() => undefined);
+  if ("serviceWorker" in navigator && isProductionHost()) navigator.serviceWorker.register(`${import.meta.env.BASE_URL}service-worker.js`).catch(() => undefined);
   hydrateDemoState();
   const hostname = window.location.hostname.toLowerCase();
   const hostSchool = tenantStates.flatMap((item) => item.districts).flatMap((item) => item.schools).find((school) => [school.customDomain, `${school.subdomain}.educationalsystem.fieldserviceit.com`, school.id === "ps-118" ? "educationalsystem.fieldserviceit.com" : ""].filter(Boolean).includes(hostname));

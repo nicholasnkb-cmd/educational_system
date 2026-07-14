@@ -1,5 +1,6 @@
 const CACHE = "educonnect-shell-v2";
-const SHELL = ["/", "/manifest.webmanifest", "/favicon.svg", "/apple-touch-icon.png", "/maintenance.html"];
+const HOME = new URL("./", self.registration.scope).href;
+const SHELL = ["./", "./manifest.webmanifest", "./favicon.svg", "./apple-touch-icon.png", "./maintenance.html"].map((path) => new URL(path, self.registration.scope).href);
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
@@ -18,9 +19,9 @@ self.addEventListener("fetch", (event) => {
   if (request.mode === "navigate") {
     event.respondWith(fetch(request).then((response) => {
       const copy = response.clone();
-      caches.open(CACHE).then((cache) => cache.put("/", copy));
+      caches.open(CACHE).then((cache) => cache.put(HOME, copy));
       return response;
-    }).catch(() => caches.match("/").then((response) => response || caches.match("/maintenance.html"))));
+    }).catch(() => caches.match(HOME).then((response) => response || caches.match(new URL("./maintenance.html", self.registration.scope).href))));
     return;
   }
   event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then((response) => {

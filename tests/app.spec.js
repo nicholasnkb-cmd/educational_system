@@ -415,9 +415,11 @@ test("shows a family weekly summary and installable PWA metadata", async ({ page
   await expect(summary.getByRole("heading", { name: "This Week at a Glance" })).toBeVisible();
   await summary.getByRole("button", { name: /Send summary now/i }).click();
   await expect(page.getByText("Weekly family summary sent.")).toBeVisible();
-  const manifest = await page.request.get("/manifest.webmanifest");
+  const manifestHref = await page.locator('link[rel="manifest"]').getAttribute("href");
+  const manifestUrl = new URL(manifestHref, page.url());
+  const manifest = await page.request.get(manifestUrl.href);
   expect(manifest.ok()).toBeTruthy();
   expect((await manifest.json()).display).toBe("standalone");
-  const worker = await page.request.get("/service-worker.js");
+  const worker = await page.request.get(new URL("service-worker.js", manifestUrl).href);
   expect(worker.ok()).toBeTruthy();
 });

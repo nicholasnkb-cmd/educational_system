@@ -522,6 +522,7 @@ function selectedSchoolDesign() {
   if (!schoolDesigns[school.id]) {
     schoolDesigns[school.id] = {
       logo: initials(school.name).slice(0, 1),
+      logoUrl: "",
       crest: `${school.name} Crest`,
       primary: "#0050cb",
       accent: "#006b5f",
@@ -533,15 +534,30 @@ function selectedSchoolDesign() {
   return schoolDesigns[school.id];
 }
 
+function renderSchoolLogo(design, className = "") {
+  const logoUrl = safeExternalUrl(design.logoUrl);
+  return logoUrl
+    ? `<img class="school-logo-image ${className}" src="${logoUrl}" alt="${escapeHtml(design.crest || selectedSchoolRecord().name)} logo" />`
+    : `<span class="${className}">${escapeHtml(design.logo || initials(selectedSchoolRecord().name).slice(0, 1))}</span>`;
+}
+
 function designStyle(design) {
   return `--primary:${design.primary};--primary-2:${design.primary};--teal:${design.accent};--gold:${design.highlight};--background:${design.background};`;
 }
 
 function applyDesignFromForm() {
   const school = selectedSchoolRecord();
+  const subdomain = document.querySelector("#school-subdomain")?.value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  school.name = document.querySelector("#school-name")?.value.trim() || school.name;
+  school.subdomain = subdomain || school.subdomain;
+  school.category = document.querySelector("#school-category")?.value || school.category;
+  school.plan = document.querySelector("#school-plan")?.value.trim() || school.plan;
+  school.theme = document.querySelector("#school-theme")?.value.trim() || school.theme;
+  school.workHours = document.querySelector("#school-work-hours")?.value.trim() || school.workHours;
   schoolDesigns[school.id] = {
     ...selectedSchoolDesign(),
     logo: document.querySelector("#design-logo").value.trim() || initials(school.name).slice(0, 1),
+    logoUrl: document.querySelector("#design-logo-url")?.value.trim() || "",
     crest: document.querySelector("#design-crest").value.trim() || `${school.name} Crest`,
     voice: document.querySelector("#design-voice").value.trim() || "School-owned portal identity",
     primary: document.querySelector("#design-primary").value,
@@ -641,7 +657,7 @@ function renderTenantBar(school, design) {
   return `
     <section class="tenant-bar" aria-label="Current tenant">
       <div>
-        <span class="school-logo-mini">${design.logo}</span>
+        ${renderSchoolLogo(design, "school-logo-mini")}
         <span class="tenant-label">Tenant</span>
         <strong>${school.name}</strong>
         <em>${school.category} school</em>
@@ -662,7 +678,7 @@ function renderSidebar(activeRole, design) {
   return `
     <aside class="sidebar">
       <div class="brand-row">
-        <div class="brand-mark">${design.logo}</div>
+        ${renderSchoolLogo(design, "brand-mark")}
         <div><h1>${design.crest}</h1><p>${design.voice}</p></div>
       </div>
       <nav class="role-nav" aria-label="Portal views">
@@ -692,6 +708,7 @@ function renderTopbar(role) {
       <div class="topbar-actions">
         <label class="searchbox">${icon("search")}<input id="global-search" value="${escapeHtml(state.searchTerm)}" placeholder="Search resources..." /></label>
         ${can("manage-users") && allowedRoleIds().includes("state-admin") ? `<button class="secondary-action role-controls-action" data-role-controls type="button">${icon("users")} Role controls</button>` : ""}
+        ${can("manage-users") && allowedRoleIds().includes("school-admin") ? `<button class="secondary-action school-customization-action" data-school-customization type="button">${icon("settings")} School design</button>` : ""}
         <div class="account-chip"><span>${initials(activeUser().label)}</span><div><strong>${activeUser().label}</strong><small>${activeUser().role}</small></div></div>
         ${isProductionHost() ? "" : `<button class="secondary-action reset-action" data-reset-demo type="button">${icon("rotate-ccw")} Reset Demo</button>`}
         <button class="icon-button" aria-label="Notifications" data-toggle-notifications>${icon("bell")}${unreadNotifications() ? `<span class="status-dot">${unreadNotifications()}</span>` : ""}</button>
@@ -811,6 +828,54 @@ function renderDistrictAdmin() {
   `;
 }
 
+function renderSchoolCustomization() {
+  const school = selectedSchoolRecord();
+  const design = selectedSchoolDesign();
+  const district = selectedDistrictRecord();
+  return `
+    <section class="panel school-customization-panel" id="school-customization" aria-labelledby="school-customization-title">
+      <div class="section-heading customization-heading">
+        <div><p class="eyebrow">School-owned experience</p><h3 id="school-customization-title">School Customization</h3><p>Update this school's identity, instance details, logo, colors, and portal voice.</p></div>
+        <span>${can("manage-users") ? "Editable" : "Read-only"}</span>
+      </div>
+      ${can("manage-tenants") ? `<label class="customization-school-picker"><span>Customize school</span><select id="customization-school-filter">${district.schools.map((item) => `<option value="${item.id}" ${item.id === school.id ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></label>` : ""}
+      <div class="design-studio school-customization-studio">
+        <div class="brand-preview-card school-brand-preview" style="${designStyle(design)}">
+          <div class="brand-preview-top">
+            ${renderSchoolLogo(design, "brand-preview-logo")}
+            <div><strong>${escapeHtml(design.crest)}</strong><span>${escapeHtml(school.subdomain)}.educonnect.local</span></div>
+          </div>
+          <div><span class="preview-school-type">${escapeHtml(school.category)} • ${escapeHtml(school.plan)}</span><h4>${escapeHtml(school.name)}</h4><p>${escapeHtml(design.voice)}</p></div>
+          <div class="preview-color-row" aria-label="Current school colors"><span style="background:${design.primary}" title="Primary"></span><span style="background:${design.accent}" title="Accent"></span><span style="background:${design.highlight}" title="Highlight"></span><span style="background:${design.background}" title="Background"></span></div>
+          <div class="brand-preview-actions"><button data-open-role="parent" type="button">Family Portal</button><button data-open-role="lms" type="button">LMS</button><button data-open-role="community" type="button">Community</button></div>
+        </div>
+        <form class="design-form customization-form" id="design-form">
+          <div class="form-section-heading span-2"><strong>School identity</strong><span>Name and portal instance</span></div>
+          <label class="span-2"><span>School name</span><input id="school-name" value="${escapeHtml(school.name)}" required /></label>
+          <label><span>Instance slug</span><div class="input-suffix"><input id="school-subdomain" value="${escapeHtml(school.subdomain)}" required /><em>.educonnect.local</em></div></label>
+          <label><span>School type</span><select id="school-category"><option ${school.category === "Public" ? "selected" : ""}>Public</option><option ${school.category === "Private" ? "selected" : ""}>Private</option><option ${school.category === "Chartered" ? "selected" : ""}>Chartered</option></select></label>
+          <label><span>Plan name</span><input id="school-plan" value="${escapeHtml(school.plan)}" /></label>
+          <label><span>Theme name</span><input id="school-theme" value="${escapeHtml(school.theme)}" /></label>
+          <label class="span-2"><span>School work hours</span><input id="school-work-hours" value="${escapeHtml(school.workHours)}" /></label>
+          <div class="form-section-heading span-2"><strong>Logo and voice</strong><span>Use a short mark or an image URL</span></div>
+          <label><span>Logo mark</span><input id="design-logo" maxlength="3" value="${escapeHtml(design.logo)}" /></label>
+          <label><span>Crest / logo name</span><input id="design-crest" value="${escapeHtml(design.crest)}" /></label>
+          <label class="span-2"><span>Logo image URL</span><input type="url" id="design-logo-url" value="${escapeHtml(design.logoUrl || "")}" placeholder="https://school.edu/logo.png" /></label>
+          <label class="span-2"><span>School voice</span><input id="design-voice" value="${escapeHtml(design.voice)}" /></label>
+          <div class="form-section-heading span-2"><strong>Portal colors</strong><span>Applied throughout the selected school experience</span></div>
+          <label><span>Primary buttons</span><input type="color" id="design-primary" value="${design.primary}" /></label>
+          <label><span>Accent</span><input type="color" id="design-accent" value="${design.accent}" /></label>
+          <label><span>Highlight</span><input type="color" id="design-highlight" value="${design.highlight}" /></label>
+          <label><span>Page background</span><input type="color" id="design-background" value="${design.background}" /></label>
+          <div class="customization-form-actions span-2"><button class="secondary-action" type="button" data-reset-school-design>Reset colors</button><button class="primary-action" type="submit" ${permissionAttrs("manage-users", "Only school administrators can customize the school experience.")}>${icon("check")} Save school customization</button></div>
+        </form>
+      </div>
+      <div class="theme-presets"><div><strong>Theme presets</strong><span>Start with a coordinated school palette.</span></div><div class="palette-list">${designPresets.map((preset) => `<button class="palette-button ${school.theme === preset.name ? "active" : ""}" data-design-preset="${preset.name}" type="button"><span style="background:${preset.primary}"></span><span style="background:${preset.accent}"></span><span style="background:${preset.highlight}"></span><strong>${preset.name}</strong></button>`).join("")}</div></div>
+      ${permissionNotice("manage-users", "School branding is managed by authorized administrators.")}
+    </section>
+  `;
+}
+
 function renderSchoolAdmin() {
   const school = selectedSchoolRecord();
   const board = selectedCommunityBoard();
@@ -824,11 +889,12 @@ function renderSchoolAdmin() {
           <h2>${school.name}</h2>
           <p>School administrators run campus operations: users, safety messaging, approvals, LMS visibility, roster health, and family communication windows.</p>
         </div>
-        <button class="primary-action" data-open-role="community">${icon("megaphone")} Review Community Posts</button>
+        <div class="inline-actions"><button class="secondary-action" data-school-customization type="button">${icon("settings")} Customize school</button><button class="primary-action" data-open-role="community">${icon("megaphone")} Review Community Posts</button></div>
       </div>
       ${statCard("Students", school.students.toLocaleString(), "users", "blue")}
       ${statCard("Staff", school.staff.toLocaleString(), "shield-check", "teal")}
       ${statCard("Pending approvals", board.pending.length, "clipboard-check", "gold")}
+      ${renderSchoolCustomization()}
       <section class="panel instance-panel">
         <div class="section-heading"><h3>Campus Tenant</h3><span>${school.status}</span></div>
         <div class="instance-card">
@@ -2108,6 +2174,11 @@ function bindEvents() {
     requestAnimationFrame(() => document.querySelector("#role-control-center")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   });
 
+  document.querySelectorAll("[data-school-customization]").forEach((button) => button.addEventListener("click", () => {
+    goToRole("school-admin", "School Customization opened.");
+    requestAnimationFrame(() => document.querySelector("#school-customization")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }));
+
   document.querySelector("[data-start-tour]")?.addEventListener("click", () => {
     state.tourOpen = true;
     state.tourStep = 0;
@@ -2597,14 +2668,22 @@ function bindEvents() {
     render();
   });
 
-  document.querySelector("#design-form")?.addEventListener("change", () => {
-    applyDesignFromForm();
-    render();
-  });
-
   document.querySelector("#design-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
     applyDesignFromForm();
+    addAudit(`Updated school customization for ${selectedSchoolRecord().name}`);
+    announce(`${selectedSchoolRecord().name} customization saved.`);
+  });
+
+  document.querySelectorAll("#design-primary, #design-accent, #design-highlight, #design-background").forEach((input) => input.addEventListener("input", () => {
+    const preview = document.querySelector(".school-brand-preview");
+    if (!preview) return;
+    const property = { "design-primary": "--primary", "design-accent": "--teal", "design-highlight": "--gold", "design-background": "--background" }[input.id];
+    preview.style.setProperty(property, input.value);
+  }));
+
+  document.querySelector("#customization-school-filter")?.addEventListener("change", (event) => {
+    state.selectedSchool = event.target.value;
     render();
   });
 
@@ -2614,8 +2693,19 @@ function bindEvents() {
       const preset = designPresets.find((item) => item.name === button.dataset.designPreset);
       if (!preset) return;
       schoolDesigns[school.id] = { ...selectedSchoolDesign(), ...preset };
-      render();
+      school.theme = preset.name;
+      addAudit(`Applied ${preset.name} theme`, school.name);
+      announce(`${preset.name} applied to ${school.name}.`);
     });
+  });
+
+  document.querySelector("[data-reset-school-design]")?.addEventListener("click", () => {
+    const school = selectedSchoolRecord();
+    const preset = designPresets[0];
+    schoolDesigns[school.id] = { ...selectedSchoolDesign(), ...preset };
+    school.theme = preset.name;
+    addAudit("Reset school colors", school.name);
+    announce(`${school.name} colors reset.`);
   });
 
   document.querySelectorAll("[data-manage-district]").forEach((button) => {

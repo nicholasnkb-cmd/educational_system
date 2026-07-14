@@ -48,10 +48,14 @@ jobs:
             profile=${entry%%:*}
             password=${entry#*:}
             test -n "$password"
-            curl --fail --silent --show-error --max-time 20 \
+            response=$(curl --fail --silent --show-error --max-time 20 \
               -H 'Content-Type: application/json' \
               --data "$(jq -nc --arg p "$profile" --arg s "$password" '{identifier:$p,password:$s}')" \
-              https://api.educationalsystem.fieldserviceit.com/api/login | jq -e --arg p "$profile" '.ok == true and .token and .user.id == $p' >/dev/null
+              https://api.educationalsystem.fieldserviceit.com/api/login)
+            jq -e --arg p "$profile" '.ok == true and .token and .user.id == $p' <<<"$response" >/dev/null
+            if [ "$profile" = "global-admin" ]; then
+              echo "EDU_GLOBAL_ADMIN_TOKEN=$(jq -er '.token' <<<"$response")" >> "$GITHUB_ENV"
+            fi
           done
       - name: Verify FieldserviceIT roles
         shell: bash
@@ -78,6 +82,34 @@ jobs:
               --data "$(jq -nc --arg e "$email" --arg p "$password" '{email:$e,password:$p}')" \
               https://api.fieldserviceit.com/v1/auth/login | jq -e '.accessToken and .user' >/dev/null
           done
+      - name: Verify stale browser state cannot reset operational evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EDU_GLOBAL_ADMIN_TOKEN"
+          api=https://api.educationalsystem.fieldserviceit.com
+          auth="Authorization: Bearer $EDU_GLOBAL_ADMIN_TOKEN"
+          stale=$(curl --fail --silent --show-error --max-time 30 -H "$auth" "$api/api/state")
+          backup=$(curl --fail --silent --show-error --max-time 30 -X POST -H "$auth" -H 'Content-Type: application/json' -d '{}' "$api/api/backups")
+          backup_name=$(jq -er '.backup' <<<"$backup")
+          curl --fail --silent --show-error --max-time 30 -X POST -H "$auth" -H 'Content-Type: application/json' \
+            --data "$(jq -nc --arg backup "$backup_name" '{backup:$backup}')" "$api/api/backups/restore-test" | jq -e '.ok == true' >/dev/null
+          curl --fail --silent --show-error --max-time 30 -X POST -H "$auth" -H 'Content-Type: application/json' \
+            -d '{"action":"run-job","jobId":"media-optimization"}' "$api/api/platform/actions" | jq -e '.ok == true and .job.status == "Completed"' >/dev/null
+          stale_snapshot=$(jq '.snapshot
+            | .productionReadiness.backups.lastBackup = "Not run"
+            | .productionReadiness.backups.lastRestoreTest = "Not run"
+            | (.productionReadiness.jobs[] | select(.id == "media-optimization") | .status) = "Queued"
+            | (.productionReadiness.integrations[] | select(.id == "oneroster") | .status) = "Stale browser overwrite"' <<<"$stale")
+          curl --fail --silent --show-error --max-time 60 -X PUT -H "$auth" -H 'Content-Type: application/json' \
+            --data "$(jq -nc --argjson snapshot "$stale_snapshot" '{snapshot:$snapshot}')" "$api/api/state" | jq -e '.ok == true' >/dev/null
+          sleep 20
+          curl --fail --silent --show-error --max-time 30 -H "$auth" "$api/api/state" | jq -e '
+            .snapshot.productionReadiness as $readiness
+            | $readiness.backups.lastBackup != "Not run"
+              and ($readiness.backups.lastRestoreTest | startswith("Passed"))
+              and any($readiness.jobs[]; .id == "media-optimization" and .status == "Completed")
+              and any($readiness.integrations[]; .id == "oneroster" and .status != "Stale browser overwrite")' >/dev/null
       - name: Verify the public landing page and global role workspace
         run: |
           npm ci

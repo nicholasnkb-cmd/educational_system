@@ -28,6 +28,11 @@ jobs:
       FIELD_CLIENT_EMAIL: ${{ secrets.FIELD_CLIENT_EMAIL }}
       FIELD_CLIENT_PASSWORD: ${{ secrets.FIELD_CLIENT_PASSWORD }}
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
       - name: Verify every education role
         shell: bash
         run: |
@@ -73,3 +78,8 @@ jobs:
               --data "$(jq -nc --arg e "$email" --arg p "$password" '{email:$e,password:$p}')" \
               https://api.fieldserviceit.com/v1/auth/login | jq -e '.accessToken and .user' >/dev/null
           done
+      - name: Verify the public landing page and global role workspace
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run test:live

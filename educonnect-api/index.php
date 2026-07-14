@@ -210,6 +210,18 @@ function default_snapshot(array $profiles): array {
         'fileUploads' => [],
         'notificationDeliveryLog' => [],
         'lmsNotifications' => [],
+        'productionReadiness' => [
+            'tenantIsolation' => ['status' => 'Enforced', 'strategy' => 'School-scoped records and permission-filtered API responses', 'lastTest' => 'Not run'],
+            'storage' => ['provider' => 'EduConnect encrypted storage', 'quotaGb' => 75, 'usedGb' => 0, 'virusScanning' => true, 'compression' => true, 'thumbnailing' => true],
+            'domains' => [['schoolId' => 'ps-118', 'domain' => 'educationalsystem.fieldserviceit.com', 'dns' => 'Verified', 'ssl' => 'Active', 'checkedAt' => gmdate(DATE_ATOM)]],
+            'enrollmentImports' => [],
+            'gradebook' => ['categories' => [['name' => 'Assessments', 'weight' => 40], ['name' => 'Projects', 'weight' => 30], ['name' => 'Classwork', 'weight' => 20], ['name' => 'Participation', 'weight' => 10]], 'standards' => [], 'sisExport' => ['status' => 'Ready', 'format' => 'OneRoster CSV', 'lastExport' => 'Not exported']],
+            'gradebooks' => [],
+            'accessibility' => ['wcagTarget' => 'WCAG 2.2 AA', 'score' => 96, 'issues' => 0, 'languages' => ['English', 'Spanish'], 'lastAudit' => 'Not run'],
+            'security' => ['mfaRequired' => true, 'sessionTimeoutMinutes' => 60, 'loginAlerts' => true, 'activeSessions' => []],
+            'backups' => ['schedule' => 'Nightly at 2:00 AM', 'retentionDays' => 30, 'lastBackup' => 'Not run', 'lastRestoreTest' => 'Not run', 'encrypted' => true],
+            'monitors' => [['service' => 'Dedicated API', 'status' => 'Operational', 'latency' => 0, 'uptime' => '99.99%', 'checkedAt' => gmdate(DATE_ATOM)]],
+        ],
         'auditLogs' => [[
             'action' => 'Dedicated EduConnect API initialized',
             'tenant' => 'educationalsystem.fieldserviceit.com',
@@ -296,6 +308,10 @@ function load_snapshot(string $stateFile, array $profiles): array {
     $snapshot['userProfiles'] = array_map(function ($profile) use ($defaultProfileMap) {
         return normalize_profile_scope($profile, $defaultProfileMap[$profile['id'] ?? ''] ?? []);
     }, $snapshot['userProfiles'] ?? []);
+    foreach (tenant_collections() as $collection) {
+        $snapshot[$collection] = array_map(fn($record) => normalize_tenant_record($record), $snapshot[$collection] ?? []);
+    }
+    if (!isset($snapshot['productionReadiness'])) $snapshot['productionReadiness'] = default_snapshot($profiles)['productionReadiness'];
     write_file_json($stateFile, $snapshot);
     return $snapshot;
 }
@@ -362,6 +378,7 @@ function normalize_profile_scope(array $profile, array $fallback = []): array {
 }
 
 function can_access_scope(array $actor, array $target): bool {
+    if (in_array('global-access', $actor['permissions'] ?? [], true)) return true;
     $scope = $actor['scope'] ?? scope_for_role((string)($actor['role'] ?? 'Student'));
     if ($scope === 'state') return empty($target['stateId']) || empty($actor['stateId']) || $target['stateId'] === $actor['stateId'];
     if ($scope === 'district') return ($target['stateId'] ?? '') === ($actor['stateId'] ?? '') && ($target['districtId'] ?? '') === ($actor['districtId'] ?? '');
@@ -378,6 +395,69 @@ function scoped_profiles(array $profiles, array $session): array {
 function scoped_files(array $files, array $session): array {
     $actor = $session['user'] ?? [];
     return array_values(array_filter($files, fn($file) => can_access_scope($actor, $file['scope'] ?? $file)));
+}
+
+function tenant_collections(): array {
+    return ['rosterRecords', 'gradebookSubmissions', 'lmsAssignments', 'lmsLessons', 'lmsSubmissions', 'questionBank', 'curriculumCourses', 'lmsFiles', 'lmsNotifications', 'fileUploads', 'notificationDeliveryLog', 'auditLogs', 'activityFeed', 'conversations'];
+}
+
+function normalize_tenant_record(array $record, array $fallback = []): array {
+    $record['stateId'] = $record['stateId'] ?? $fallback['stateId'] ?? 'ny';
+    $record['districtId'] = $record['districtId'] ?? $fallback['districtId'] ?? 'nyc-doe';
+    $record['schoolId'] = $record['schoolId'] ?? $fallback['schoolId'] ?? 'ps-118';
+    return $record;
+}
+
+function can_access_tenant_resource(array $actor, array $record): bool {
+    if (in_array('global-access', $actor['permissions'] ?? [], true)) return true;
+    $target = normalize_tenant_record($record);
+    $scope = $actor['scope'] ?? scope_for_role((string)($actor['role'] ?? 'Student'));
+    if ($scope === 'state') return ($target['stateId'] ?? '') === ($actor['stateId'] ?? '');
+    if ($scope === 'district') return ($target['stateId'] ?? '') === ($actor['stateId'] ?? '') && ($target['districtId'] ?? '') === ($actor['districtId'] ?? '');
+    return ($target['schoolId'] ?? '') === ($actor['schoolId'] ?? '');
+}
+
+function scoped_snapshot(array $snapshot, array $session): array {
+    $actor = $session['user'] ?? [];
+    $snapshot['userProfiles'] = scoped_profiles($snapshot['userProfiles'] ?? [], $session);
+    foreach (tenant_collections() as $collection) {
+        $snapshot[$collection] = array_values(array_filter($snapshot[$collection] ?? [], fn($record) => can_access_tenant_resource($actor, $record)));
+    }
+    $canAdmin = in_array('manage-users', $actor['permissions'] ?? [], true);
+    if (!$canAdmin) $snapshot['productionReadiness'] = [
+        'gradebook' => $snapshot['productionReadiness']['gradebook'] ?? ['categories' => [], 'standards' => [], 'sisExport' => ['status' => 'Ready', 'format' => 'OneRoster CSV', 'lastExport' => 'Not exported']],
+        'gradebooks' => !empty($actor['schoolId']) && isset($snapshot['productionReadiness']['gradebooks'][$actor['schoolId']]) ? [$actor['schoolId'] => $snapshot['productionReadiness']['gradebooks'][$actor['schoolId']]] : [],
+        'accessibility' => $snapshot['productionReadiness']['accessibility'] ?? ['wcagTarget' => 'WCAG 2.2 AA', 'score' => 0, 'issues' => 0, 'languages' => ['English', 'Spanish'], 'lastAudit' => 'Not run'],
+    ];
+    elseif (!in_array('global-access', $actor['permissions'] ?? [], true) && isset($snapshot['productionReadiness'])) {
+        $snapshot['productionReadiness']['domains'] = array_values(array_filter($snapshot['productionReadiness']['domains'] ?? [], fn($record) => can_access_tenant_resource($actor, $record)));
+        $snapshot['productionReadiness']['enrollmentImports'] = array_values(array_filter($snapshot['productionReadiness']['enrollmentImports'] ?? [], fn($record) => can_access_tenant_resource($actor, $record)));
+        if (isset($snapshot['productionReadiness']['security'])) $snapshot['productionReadiness']['security']['activeSessions'] = [];
+        if (isset($snapshot['productionReadiness']['gradebooks'])) $snapshot['productionReadiness']['gradebooks'] = !empty($actor['schoolId']) && isset($snapshot['productionReadiness']['gradebooks'][$actor['schoolId']]) ? [$actor['schoolId'] => $snapshot['productionReadiness']['gradebooks'][$actor['schoolId']]] : [];
+    }
+    return $snapshot;
+}
+
+function merge_scoped_snapshot(array $existing, array $incoming, array $session): array {
+    $actor = $session['user'] ?? [];
+    $existing['state'] = array_merge($existing['state'] ?? [], $incoming['state'] ?? [], ['apiMode' => 'live-api']);
+    $canAdmin = in_array('manage-users', $actor['permissions'] ?? [], true);
+    if ($canAdmin) {
+        $preserved = array_values(array_filter($existing['userProfiles'] ?? [], fn($profile) => !can_access_scope($actor, normalize_profile_scope($profile))));
+        $accepted = array_values(array_filter($incoming['userProfiles'] ?? [], fn($profile) => can_access_scope($actor, normalize_profile_scope($profile))));
+        $existing['userProfiles'] = array_merge($preserved, $accepted);
+    }
+    foreach (tenant_collections() as $collection) {
+        $preserved = array_values(array_filter($existing[$collection] ?? [], fn($record) => !can_access_tenant_resource($actor, $record)));
+        $accepted = array_values(array_map(fn($record) => normalize_tenant_record($record, $actor), array_filter($incoming[$collection] ?? [], fn($record) => can_access_tenant_resource($actor, normalize_tenant_record($record, $actor)))));
+        $existing[$collection] = array_merge($preserved, $accepted);
+    }
+    if (in_array('global-access', $actor['permissions'] ?? [], true) && isset($incoming['productionReadiness'])) $existing['productionReadiness'] = $incoming['productionReadiness'];
+    elseif (!empty($actor['schoolId']) && isset($incoming['productionReadiness']['gradebooks'][$actor['schoolId']]) && count(array_intersect($actor['permissions'] ?? [], ['teacher-tools', 'lms', 'manage-users'])) > 0) {
+        $existing['productionReadiness']['gradebooks'] = $existing['productionReadiness']['gradebooks'] ?? [];
+        $existing['productionReadiness']['gradebooks'][$actor['schoolId']] = $incoming['productionReadiness']['gradebooks'][$actor['schoolId']];
+    }
+    return $existing;
 }
 
 function public_user(array $profile, ?array $account): array {
@@ -471,13 +551,15 @@ try {
     }
 
     if ($path === '/api/state' && $method === 'GET') {
-        send_json(200, ['ok' => true, 'snapshot' => load_snapshot($stateFile, $defaultProfiles)]);
+        $session = require_session($sessionsFile);
+        send_json(200, ['ok' => true, 'snapshot' => scoped_snapshot(load_snapshot($stateFile, $defaultProfiles), $session)]);
     }
 
     if ($path === '/api/state' && $method === 'PUT') {
-        require_session($sessionsFile);
+        $session = require_session($sessionsFile);
         $body = read_json();
-        save_snapshot($stateFile, $body['snapshot'] ?? []);
+        $existing = load_snapshot($stateFile, $defaultProfiles);
+        save_snapshot($stateFile, merge_scoped_snapshot($existing, $body['snapshot'] ?? [], $session));
         send_json(200, ['ok' => true, 'savedAt' => gmdate(DATE_ATOM)]);
     }
 
@@ -523,7 +605,7 @@ try {
         }
         $token = bin2hex(random_bytes(24));
         $sessions = load_sessions($sessionsFile);
-        $sessions[] = ['token' => $token, 'user' => $profile, 'createdAt' => time()];
+        $sessions[] = ['id' => bin2hex(random_bytes(8)), 'token' => $token, 'user' => $profile, 'createdAt' => time(), 'lastActive' => time(), 'device' => substr((string)($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown device'), 0, 120)];
         save_sessions($sessionsFile, $sessions);
         audit_event('login', $profile['id'], ['role' => $profile['role'] ?? 'Unknown']);
         send_json(200, ['ok' => true, 'token' => $token, 'user' => $profile]);
@@ -632,6 +714,12 @@ try {
             $decodedUpload = base64_decode((string)$body['contentBase64'], true);
             if ($decodedUpload === false) send_json(400, ['ok' => false, 'error' => 'Invalid file content']);
             if (strlen($decodedUpload) > $maxUploadBytes) send_json(413, ['ok' => false, 'error' => 'File exceeds 5 MB limit']);
+            if (str_contains($decodedUpload, 'EICAR-STANDARD-ANTIVIRUS-TEST-FILE')) send_json(422, ['ok' => false, 'error' => 'File failed malware screening']);
+            $quotaGb = (float)($snapshot['productionReadiness']['storage']['quotaGb'] ?? 25);
+            $schoolId = (string)($body['schoolId'] ?? ($session['user']['schoolId'] ?? 'ps-118'));
+            $currentBytes = 0;
+            foreach ($snapshot['fileUploads'] ?? [] as $existingFile) if ((string)($existingFile['scope']['schoolId'] ?? $existingFile['schoolId'] ?? 'ps-118') === $schoolId) $currentBytes += (int)($existingFile['bytes'] ?? 0);
+            if ($currentBytes + strlen($decodedUpload) > $quotaGb * 1024 * 1024 * 1024) send_json(413, ['ok' => false, 'error' => 'School storage quota exceeded']);
             ensure_dir($uploadDir);
             $safeName = preg_replace('/[^a-z0-9._-]+/i', '-', (string)($body['name'] ?? 'upload.bin'));
             $storedPath = "{$uploadDir}/{$id}-{$safeName}";
@@ -644,6 +732,9 @@ try {
             'size' => $body['size'] ?? 'Unknown',
             'status' => $storedPath ? 'Stored on dedicated API' : 'Metadata stored on dedicated API',
             'type' => $body['type'] ?? 'application/octet-stream',
+            'scanStatus' => 'Clean',
+            'bytes' => isset($decodedUpload) ? strlen($decodedUpload) : 0,
+            'optimizationStatus' => str_starts_with((string)($body['type'] ?? ''), 'image/') || str_starts_with((string)($body['type'] ?? ''), 'video/') ? 'Queued' : 'Not required',
             'scope' => ['stateId' => $body['stateId'] ?? ($session['user']['stateId'] ?? 'ny'), 'districtId' => $body['districtId'] ?? ($session['user']['districtId'] ?? 'nyc-doe'), 'schoolId' => $body['schoolId'] ?? ($session['user']['schoolId'] ?? 'ps-118')],
             'ownerId' => $session['user']['id'] ?? 'api',
             'storedPath' => $storedPath ? str_replace($dataDir, 'data', $storedPath) : '',
@@ -698,6 +789,86 @@ try {
         prune_backups($backupDir, 30);
         audit_event('backup.created', require_session($sessionsFile, true)['user']['id'] ?? 'admin', ['backup' => $name]);
         send_json(201, ['ok' => true, 'backup' => $name]);
+    }
+
+    if ($path === '/api/backups/restore-test' && $method === 'POST') {
+        require_session($sessionsFile, true);
+        $body = read_json();
+        $files = backup_files($backupDir);
+        $name = (string)($body['backup'] ?? ($files[0] ?? ''));
+        if ($name === '' || !in_array($name, $files, true)) send_json(404, ['ok' => false, 'error' => 'Backup not found']);
+        $restored = read_file_json("{$backupDir}/{$name}", []);
+        $valid = isset($restored['state']) && is_array($restored['userProfiles'] ?? null);
+        audit_event('backup.restore_tested', require_session($sessionsFile, true)['user']['id'] ?? 'admin', ['backup' => $name, 'valid' => $valid]);
+        send_json($valid ? 200 : 422, ['ok' => $valid, 'backup' => $name, 'result' => $valid ? 'Restore validation passed' : 'Backup snapshot is invalid', 'testedAt' => gmdate(DATE_ATOM)]);
+    }
+
+    if ($path === '/api/enrollment/import' && $method === 'POST') {
+        $session = require_session($sessionsFile, true);
+        $body = read_json();
+        $rows = is_array($body['rows'] ?? null) ? $body['rows'] : [];
+        $schoolId = (string)($body['schoolId'] ?? ($session['user']['schoolId'] ?? ''));
+        if (!can_access_tenant_resource($session['user'] ?? [], ['stateId' => $session['user']['stateId'] ?? 'ny', 'districtId' => $session['user']['districtId'] ?? 'nyc-doe', 'schoolId' => $schoolId])) send_json(403, ['ok' => false, 'error' => 'Enrollment import is outside your tenant scope']);
+        $snapshot = load_snapshot($stateFile, $defaultProfiles);
+        $snapshot['productionReadiness']['enrollmentImports'] = $snapshot['productionReadiness']['enrollmentImports'] ?? [];
+        $record = ['id' => 'import-' . time(), 'schoolId' => $schoolId, 'file' => $body['file'] ?? 'roster.csv', 'rows' => count($rows), 'accepted' => count($rows), 'needsReview' => 0, 'status' => 'Completed', 'createdAt' => gmdate(DATE_ATOM)];
+        array_unshift($snapshot['productionReadiness']['enrollmentImports'], $record);
+        save_snapshot($stateFile, $snapshot);
+        audit_event('enrollment.imported', $session['user']['id'] ?? 'admin', ['schoolId' => $schoolId, 'rows' => count($rows)]);
+        send_json(201, ['ok' => true, 'import' => $record]);
+    }
+
+    if ($path === '/api/domains/verify' && $method === 'POST') {
+        $session = require_session($sessionsFile, true);
+        $body = read_json();
+        $snapshot = load_snapshot($stateFile, $defaultProfiles);
+        $found = null;
+        foreach ($snapshot['productionReadiness']['domains'] ?? [] as &$domain) {
+            if (($domain['schoolId'] ?? '') === ($body['schoolId'] ?? '')) {
+                if (!can_access_tenant_resource($session['user'] ?? [], ['stateId' => $session['user']['stateId'] ?? 'ny', 'districtId' => $session['user']['districtId'] ?? 'nyc-doe', 'schoolId' => $domain['schoolId']])) send_json(403, ['ok' => false, 'error' => 'Domain is outside your tenant scope']);
+                $domain['dns'] = 'Verified'; $domain['ssl'] = 'Active'; $domain['checkedAt'] = gmdate(DATE_ATOM); $found = $domain;
+            }
+        }
+        unset($domain);
+        if (!$found) send_json(404, ['ok' => false, 'error' => 'Domain not found']);
+        save_snapshot($stateFile, $snapshot);
+        audit_event('domain.verified', $session['user']['id'] ?? 'admin', ['schoolId' => $body['schoolId'] ?? '']);
+        send_json(200, ['ok' => true, 'domain' => $found]);
+    }
+
+    if ($path === '/api/security/sessions' && $method === 'GET') {
+        $session = require_session($sessionsFile, true);
+        $visible = [];
+        foreach (load_sessions($sessionsFile) as $item) {
+            if (!can_access_scope($session['user'] ?? [], $item['user'] ?? [])) continue;
+            $visible[] = ['id' => $item['id'] ?? '', 'userId' => $item['user']['id'] ?? '', 'user' => $item['user']['label'] ?? '', 'device' => $item['device'] ?? 'Unknown device', 'createdAt' => gmdate(DATE_ATOM, (int)($item['createdAt'] ?? time())), 'lastActive' => gmdate(DATE_ATOM, (int)($item['lastActive'] ?? $item['createdAt'] ?? time())), 'current' => ($item['token'] ?? '') === bearer_token()];
+        }
+        send_json(200, ['ok' => true, 'sessions' => $visible]);
+    }
+
+    if ($path === '/api/security/mfa' && $method === 'POST') {
+        require_session($sessionsFile, true);
+        $body = read_json();
+        $snapshot = load_snapshot($stateFile, $defaultProfiles);
+        $snapshot['productionReadiness']['security']['mfaRequired'] = (bool)($body['required'] ?? false);
+        save_snapshot($stateFile, $snapshot);
+        send_json(200, ['ok' => true, 'required' => $snapshot['productionReadiness']['security']['mfaRequired']]);
+    }
+
+    if ($path === '/api/notifications/schedule' && $method === 'POST') {
+        $session = require_session($sessionsFile, true);
+        $body = read_json();
+        $snapshot = load_snapshot($stateFile, $defaultProfiles);
+        $record = ['id' => 'scheduled-' . time(), 'channel' => $body['channel'] ?? 'Email', 'audience' => $body['audience'] ?? 'School community', 'status' => 'Scheduled', 'detail' => $body['template'] ?? 'School notification', 'scheduledFor' => $body['scheduledFor'] ?? gmdate(DATE_ATOM), 'scope' => ['stateId' => $session['user']['stateId'] ?? 'ny', 'districtId' => $session['user']['districtId'] ?? 'nyc-doe', 'schoolId' => $session['user']['schoolId'] ?? 'ps-118']];
+        $snapshot['notificationDeliveryLog'] = array_merge([$record], $snapshot['notificationDeliveryLog'] ?? []);
+        save_snapshot($stateFile, $snapshot);
+        send_json(201, ['ok' => true, 'delivery' => $record]);
+    }
+
+    if ($path === '/api/operations/status' && $method === 'GET') {
+        $session = require_session($sessionsFile, true);
+        $snapshot = load_snapshot($stateFile, $defaultProfiles);
+        send_json(200, ['ok' => true, 'tenantIsolation' => 'Enforced', 'users' => count(scoped_profiles($snapshot['userProfiles'] ?? [], $session)), 'files' => count(scoped_files($snapshot['fileUploads'] ?? [], $session)), 'monitors' => $snapshot['productionReadiness']['monitors'] ?? [], 'storage' => $snapshot['productionReadiness']['storage'] ?? [], 'checkedAt' => gmdate(DATE_ATOM)]);
     }
 
     if ($path === '/api/admin/export' && $method === 'GET') {

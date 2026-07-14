@@ -409,7 +409,14 @@ function mergeScopedSnapshot(existing, incoming, session) {
     const accepted = (incoming[collection] || []).filter((record) => canAccessTenantResource(actor, normalizeTenantRecord(record, actor), collection)).map((record) => normalizeTenantRecord(record, actor));
     merged[collection] = [...preserved, ...accepted];
   });
-  if (incoming.productionReadiness && actor.permissions?.includes("global-access")) merged.productionReadiness = structuredClone(incoming.productionReadiness);
+  if (incoming.productionReadiness && actor.permissions?.includes("global-access")) {
+    const incomingReadiness = structuredClone(incoming.productionReadiness);
+    const serverManagedKeys = ["backups", "domains", "enrollmentImports", "dataPlatform", "providers", "integrations", "jobs", "academicYears", "interventions", "analytics", "sandbox", "pilot", "securityReview"];
+    for (const key of serverManagedKeys) {
+      if (Object.hasOwn(existing.productionReadiness || {}, key)) incomingReadiness[key] = structuredClone(existing.productionReadiness[key]);
+    }
+    merged.productionReadiness = incomingReadiness;
+  }
   else if (incoming.productionReadiness?.gradebooks && actor.schoolId && (actor.permissions || []).some((permission) => ["teacher-tools", "lms", "manage-users"].includes(permission))) {
     merged.productionReadiness ||= structuredClone(productionReadiness);
     merged.productionReadiness.gradebooks ||= {};

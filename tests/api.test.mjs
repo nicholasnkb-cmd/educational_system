@@ -315,6 +315,49 @@ describe("operational API server", () => {
     assert.match(stateAfterRejectedRestore.snapshot.productionReadiness.backups.lastRestoreTest, /^Failed • \d{4}-\d{2}-\d{2}T/);
   });
 
+  it("keeps server-managed operational evidence authoritative over stale global browser state", async () => {
+    const login = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier: "global-admin", password: testPasswords["global-admin"] }),
+    });
+    const globalAdmin = await login.json();
+    const staleState = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${globalAdmin.token}` } })).json();
+
+    const backup = await fetch(`${baseUrl}/api/backups`, { method: "POST", headers: { Authorization: `Bearer ${globalAdmin.token}` } });
+    const backupPayload = await backup.json();
+    const restore = await fetch(`${baseUrl}/api/backups/restore-test`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${globalAdmin.token}` },
+      body: JSON.stringify({ backup: backupPayload.backup }),
+    });
+    assert.equal(restore.status, 200);
+
+    const job = await fetch(`${baseUrl}/api/platform/actions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${globalAdmin.token}` },
+      body: JSON.stringify({ action: "run-job", jobId: "media-optimization" }),
+    });
+    assert.equal(job.status, 200);
+
+    staleState.snapshot.productionReadiness.backups.lastBackup = "Not run";
+    staleState.snapshot.productionReadiness.backups.lastRestoreTest = "Not run";
+    staleState.snapshot.productionReadiness.jobs.find((item) => item.id === "media-optimization").status = "Queued";
+    staleState.snapshot.productionReadiness.integrations.find((item) => item.id === "oneroster").status = "Stale browser overwrite";
+    const staleSave = await fetch(`${baseUrl}/api/state`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${globalAdmin.token}` },
+      body: JSON.stringify({ snapshot: staleState.snapshot }),
+    });
+    assert.equal(staleSave.status, 200);
+
+    const current = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${globalAdmin.token}` } })).json();
+    assert.match(current.snapshot.productionReadiness.backups.lastBackup, /^\d{4}-\d{2}-\d{2}T/);
+    assert.match(current.snapshot.productionReadiness.backups.lastRestoreTest, /^Passed • \d{4}-\d{2}-\d{2}T/);
+    assert.equal(current.snapshot.productionReadiness.jobs.find((item) => item.id === "media-optimization").status, "Completed");
+    assert.notEqual(current.snapshot.productionReadiness.integrations.find((item) => item.id === "oneroster").status, "Stale browser overwrite");
+  });
+
   it("protects tenant state and exposes production operations only to administrators", async () => {
     const anonymousState = await fetch(`${baseUrl}/api/state`);
     assert.equal(anonymousState.status, 401);
@@ -360,13 +403,21 @@ describe("operational API server", () => {
       { id: "privacy-conversation-other", name: "Other family", ...otherScope },
     ];
     globalState.snapshot.questionBank = [{ id: "privacy-answer-key", question: "Staff only", correctAnswer: 1, stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118" }];
-    globalState.snapshot.productionReadiness.interventions = [
+    const privacyInterventions = [
       { id: "privacy-intervention-own", area: "Reading", ...ownScope },
       { id: "privacy-intervention-other", area: "Math", ...otherScope },
       { id: "privacy-intervention-outside", area: "Science", ...outsideScope },
     ];
     const seed = await fetch(`${baseUrl}/api/state`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${globalAdmin.token}` }, body: JSON.stringify({ snapshot: globalState.snapshot }) });
     assert.equal(seed.status, 200);
+    for (const intervention of privacyInterventions) {
+      const created = await fetch(`${baseUrl}/api/platform/actions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${globalAdmin.token}` },
+        body: JSON.stringify({ action: "create-intervention", intervention }),
+      });
+      assert.equal(created.status, 201);
+    }
 
     const parentLogin = await fetch(`${baseUrl}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profileId: "parent", password: testPasswords.parent }) });
     const parent = await parentLogin.json();
@@ -391,7 +442,7 @@ describe("operational API server", () => {
     const teacherState = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${teacherUser.token}` } })).json();
     assert.deepEqual(teacherState.snapshot.rosterRecords.map((record) => record.id), ["privacy-roster-own", "privacy-roster-other"]);
     assert.deepEqual(teacherState.snapshot.questionBank.map((record) => record.id), ["privacy-answer-key"]);
-    assert.deepEqual(teacherState.snapshot.productionReadiness.interventions.map((record) => record.id), ["privacy-intervention-own", "privacy-intervention-other"]);
+    assert.deepEqual(teacherState.snapshot.productionReadiness.interventions.map((record) => record.id).filter((id) => id.startsWith("privacy-intervention-")).sort(), ["privacy-intervention-other", "privacy-intervention-own"]);
   });
 
   it("gates platform actions and reports provider and integration readiness without secrets", async () => {

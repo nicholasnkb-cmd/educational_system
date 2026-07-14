@@ -535,7 +535,14 @@ function merge_scoped_snapshot(array $existing, array $incoming, array $session)
         $accepted = array_values(array_map(fn($record) => normalize_tenant_record($record, $actor), array_filter($incoming[$collection] ?? [], fn($record) => can_access_tenant_resource($actor, normalize_tenant_record($record, $actor), $collection))));
         $existing[$collection] = array_merge($preserved, $accepted);
     }
-    if (in_array('global-access', $actor['permissions'] ?? [], true) && isset($incoming['productionReadiness'])) $existing['productionReadiness'] = $incoming['productionReadiness'];
+    if (in_array('global-access', $actor['permissions'] ?? [], true) && isset($incoming['productionReadiness'])) {
+        $incomingReadiness = $incoming['productionReadiness'];
+        $serverManagedKeys = ['backups', 'domains', 'enrollmentImports', 'dataPlatform', 'providers', 'integrations', 'jobs', 'academicYears', 'interventions', 'analytics', 'sandbox', 'pilot', 'securityReview'];
+        foreach ($serverManagedKeys as $key) {
+            if (array_key_exists($key, $existing['productionReadiness'] ?? [])) $incomingReadiness[$key] = $existing['productionReadiness'][$key];
+        }
+        $existing['productionReadiness'] = $incomingReadiness;
+    }
     elseif (!empty($actor['schoolId']) && isset($incoming['productionReadiness']['gradebooks'][$actor['schoolId']]) && count(array_intersect($actor['permissions'] ?? [], ['teacher-tools', 'lms', 'manage-users'])) > 0) {
         $existing['productionReadiness']['gradebooks'] = $existing['productionReadiness']['gradebooks'] ?? [];
         $existing['productionReadiness']['gradebooks'][$actor['schoolId']] = $incoming['productionReadiness']['gradebooks'][$actor['schoolId']];

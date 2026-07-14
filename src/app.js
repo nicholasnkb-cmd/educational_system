@@ -971,7 +971,7 @@ function render() {
   restoreRouteScroll = false;
   document.documentElement.lang = ({ English: "en", Spanish: "es", French: "fr", "Haitian Creole": "ht" })[state.language] || "en";
   if (!authenticatedProfile) {
-    document.title = "EduConnect | Learning that connects every school community";
+    document.title = "EduConnect | The right school view for every person";
     app.innerHTML = renderLandingPage();
     bindLandingEvents();
     enhanceIcons();

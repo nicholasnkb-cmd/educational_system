@@ -106,6 +106,8 @@ let landingBusy = false;
 let deferredInstallPrompt = null;
 let generalMenuOpener = null;
 let pendingMenuFocus = null;
+let restoreRouteScroll = false;
+const routeScrollPositions = new globalThis.Map();
 
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();
@@ -342,7 +344,17 @@ function signInProfile(profile, messagePrefix = "Signed in as") {
   const landing = allowedRoleIds(authenticatedProfile).includes(authenticatedProfile.landing)
     ? authenticatedProfile.landing
     : allowedRoleIds(authenticatedProfile)[0];
-  setActiveRole(landing || "student");
+  const requested = hashRoute();
+  if (requested.role && allowedRoleIds(authenticatedProfile).includes(requested.role)) {
+    const destination = findMenuDestination(requested.role, requested.functionId);
+    if (requested.functionId && !destination) state.toast = "That function is not available for your role.";
+    setActiveRole(requested.role, false, destination?.id || "");
+  } else if (requested.role) {
+    state.toast = "That workspace is not available for your role.";
+    setActiveRole(landing || "student", false);
+  } else {
+    setActiveRole(landing || "student");
+  }
 }
 
 function impersonateProfile(profileId) {
@@ -452,7 +464,7 @@ const generalMenuCatalog = [
       { id: "automated-reminders", label: "Automated reminders", role: "teacher", icon: "bell", permission: "teacher-tools" },
       { id: "standards-gradebook", label: "Standards gradebook", role: "teacher", icon: "file-text", permission: "teacher-tools" },
       { id: "teacher-intervention-center", label: "Teacher intervention center", role: "teacher", target: "intervention-center", icon: "trending-up", permission: "teacher-tools" },
-      { id: "create-lesson", label: "Create a lesson", role: "teacher", action: "create-lesson", icon: "plus", permission: "teacher-tools" },
+      { id: "create-lesson", label: "Create a lesson", role: "teacher", target: "lesson-studio", icon: "plus", permission: "teacher-tools" },
       { id: "lesson-studio", label: "Lesson Studio library", role: "teacher", icon: "pen-line", permission: "teacher-tools" },
       { id: "active-classes", label: "Active classes", role: "teacher", icon: "users", permission: "teacher-tools" },
       { id: "quick-assignment", label: "Quick assignment", role: "teacher", icon: "plus", permission: "teacher-tools" },
@@ -555,6 +567,128 @@ function findMenuDestination(roleId, functionId) {
   return generalMenuGroups().flatMap((group) => group.items).find((item) => item.role === roleId && item.id === functionId && !item.workspace) || null;
 }
 
+function roleMenuDestinations(roleId) {
+  return generalMenuGroups()
+    .flatMap((group) => group.items)
+    .filter((item) => item.role === roleId && !item.workspace && !item.action);
+}
+
+function menuDestinationGroup(destination) {
+  return generalMenuGroups().find((group) => group.items.some((item) => item.role === destination?.role && item.id === destination?.id)) || null;
+}
+
+function renderRoleWorkspace(roleId) {
+  const renderers = {
+    "state-admin": renderStateAdmin,
+    "district-admin": renderDistrictAdmin,
+    "school-admin": renderSchoolAdmin,
+    lms: renderAdvancedLms,
+    student: renderStudent,
+    teacher: renderTeacher,
+    parent: renderParent,
+    messages: renderMessages,
+    community: renderCommunityBoard,
+  };
+  return renderers[roleId]?.() || "";
+}
+
+function renderFunctionDirectory(destinations, title = "Open a related function") {
+  if (!destinations.length) return "";
+  return `
+    <nav class="function-directory" aria-label="${escapeHtml(title)}">
+      <div class="section-heading"><div><p class="eyebrow">Continue working</p><h3>${escapeHtml(title)}</h3></div><span>${destinations.length} pages</span></div>
+      <div class="function-directory-grid">
+        ${destinations.map((item) => `<a href="${menuItemHref(item)}" data-menu-role="${item.role}" data-menu-function="${item.id}">${icon(item.icon)}<span><strong>${escapeHtml(item.label)}</strong><small>Open page</small></span>${icon("chevron-right")}</a>`).join("")}
+      </div>
+    </nav>
+  `;
+}
+
+function extractWorkspaceFunction(roleId, destination) {
+  const template = document.createElement("template");
+  template.innerHTML = renderRoleWorkspace(roleId);
+  const targetId = destination?.target || destination?.id;
+  const source = targetId ? template.content.querySelector(`#${CSS.escape(targetId)}`) : null;
+  if (!source) {
+    return `<section class="panel function-page-missing" role="alert"><h3>Page unavailable</h3><p>This function could not be opened. Choose another page from the General menu.</p></section>`;
+  }
+
+  let clone = source.cloneNode(true);
+  if (clone.tagName === "ASIDE") {
+    const section = document.createElement("section");
+    Array.from(clone.attributes).forEach((attribute) => section.setAttribute(attribute.name, attribute.value));
+    section.setAttribute("aria-labelledby", "function-page-title");
+    section.append(...clone.childNodes);
+    clone = section;
+  }
+  const destinations = generalMenuCatalog.flatMap((group) => group.items).filter((item) => item.role === roleId && !item.action);
+  const destinationsByTarget = new globalThis.Map();
+  destinations.forEach((item) => {
+    const itemTarget = item.target || item.id;
+    if (!destinationsByTarget.has(itemTarget)) destinationsByTarget.set(itemTarget, []);
+    destinationsByTarget.get(itemTarget).push(item);
+  });
+  const nestedDestinations = [];
+  clone.querySelectorAll("[id]").forEach((element) => {
+    if (!destinationsByTarget.has(element.id)) return;
+    nestedDestinations.push(...destinationsByTarget.get(element.id));
+    element.remove();
+  });
+  clone.querySelectorAll(".production-grid").forEach((element) => {
+    if (!element.children.length) element.remove();
+  });
+  const headings = Array.from(clone.querySelectorAll("h2, h3, h4, h5, h6"));
+  const firstHeadingLevel = headings.length ? Number(headings[0].tagName.slice(1)) : 2;
+  const headingShift = Math.max(0, firstHeadingLevel - 2);
+  if (headingShift) {
+    headings.forEach((currentHeading) => {
+      const currentLevel = Number(currentHeading.tagName.slice(1));
+      const heading = document.createElement(`h${Math.max(2, currentLevel - headingShift)}`);
+      Array.from(currentHeading.attributes).forEach((attribute) => heading.setAttribute(attribute.name, attribute.value));
+      heading.innerHTML = currentHeading.innerHTML;
+      currentHeading.replaceWith(heading);
+    });
+  }
+  if (targetId === "launch-control") {
+    const unique = nestedDestinations.filter(menuItemAllowed).filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id && candidate.role === item.role) === index);
+    clone.insertAdjacentHTML("beforeend", renderFunctionDirectory(unique, "Launch and platform pages"));
+  }
+  return clone.outerHTML;
+}
+
+function renderWorkspacePage(role) {
+  const route = hashRoute();
+  const destinations = roleMenuDestinations(role.id);
+  const routedDestination = route.role === role.id && route.functionId ? findMenuDestination(role.id, route.functionId) : null;
+  const destination = routedDestination || destinations[0];
+  const group = menuDestinationGroup(destination);
+  const destinationIndex = Math.max(0, destinations.findIndex((item) => item.id === destination?.id));
+  const previous = destinationIndex > 0 ? destinations[destinationIndex - 1] : null;
+  const next = destinationIndex < destinations.length - 1 ? destinations[destinationIndex + 1] : null;
+  const pageTitle = destination?.label || `${role.label} dashboard`;
+  const routeFunction = routedDestination?.id || "";
+  const content = extractWorkspaceFunction(role.id, destination);
+  return `
+    <article class="function-page" data-route-page data-route-role="${role.id}" data-route-function="${routeFunction}" aria-labelledby="function-page-title">
+      <header class="function-page-header">
+        <nav class="function-page-breadcrumb" aria-label="Breadcrumb">
+          <a href="#${role.id}" data-menu-workspace="${role.id}" ${routeFunction ? "" : `aria-current="page"`}>${escapeHtml(role.label)}</a>
+          ${routeFunction ? `<span aria-hidden="true">${icon("chevron-right")}</span><span aria-current="page">${escapeHtml(pageTitle)}</span>` : ""}
+        </nav>
+        <div class="function-page-heading">
+          <div><p class="eyebrow">${escapeHtml(group?.label || `${role.label} workspace`)}</p><h1 id="function-page-title" tabindex="-1">${escapeHtml(pageTitle)}</h1><p>Everything for this function is collected on one focused page.</p></div>
+          <span class="function-page-position">${destinationIndex + 1} of ${destinations.length}</span>
+        </div>
+      </header>
+      <div class="function-page-stage">${content}</div>
+      <nav class="function-page-pagination" aria-label="Function pages">
+        ${previous ? `<a class="secondary-action" href="${menuItemHref(previous)}" data-menu-role="${previous.role}" data-menu-function="${previous.id}">${icon("chevron-right")}<span><small>Previous</small><strong>${escapeHtml(previous.label)}</strong></span></a>` : `<span></span>`}
+        ${next ? `<a class="primary-action" href="${menuItemHref(next)}" data-menu-role="${next.role}" data-menu-function="${next.id}"><span><small>Next</small><strong>${escapeHtml(next.label)}</strong></span>${icon("chevron-right")}</a>` : ""}
+      </nav>
+    </article>
+  `;
+}
+
 function hashRoute() {
   const requested = window.location.hash.replace(/^#/, "");
   const [rawRole, rawFunction = ""] = requested.split("/");
@@ -575,14 +709,15 @@ function validateDemoSnapshot(snapshot) {
   return errors;
 }
 
-function focusMenuDestination(destination) {
+function focusMenuDestination(destination, preserveScroll = false) {
   if (!destination) return;
-  const target = document.querySelector(`#${CSS.escape(destination.target || destination.id)}`);
-  if (!target) return;
-  target.scrollIntoView({ behavior: state.reducedMotion ? "auto" : "smooth", block: "start" });
-  const focusTarget = target.querySelector("h2, h3, h4") || target;
-  if (!focusTarget.hasAttribute("tabindex")) focusTarget.setAttribute("tabindex", "-1");
-  focusTarget.focus({ preventScroll: true });
+  const workspace = document.querySelector("#app-main");
+  if (!preserveScroll) {
+    workspace?.scrollTo({ top: 0, behavior: "auto" });
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }
+  const focusTarget = document.querySelector("#function-page-title") || document.querySelector(`#${CSS.escape(destination.target || destination.id)} h2, #${CSS.escape(destination.target || destination.id)} h3, #${CSS.escape(destination.target || destination.id)} h4`);
+  focusTarget?.focus({ preventScroll: true });
 }
 
 function setActiveRole(roleId, pushRoute = true, functionId = "") {
@@ -602,9 +737,15 @@ function setActiveRole(roleId, pushRoute = true, functionId = "") {
     state.toast = "That function is not available for your role.";
   }
   if (destination?.tab) state.activeOperationsTab = destination.tab;
+  if (destination?.id === "create-lesson") {
+    state.lessonBuilderOpen = true;
+    state.lessonDraft ||= newLessonDraft();
+  }
+  else if (destination?.id === "lesson-studio") state.lessonBuilderOpen = false;
   state.role = roleId;
   state.notificationsOpen = false;
   state.settingsOpen = false;
+  restoreRouteScroll = !pushRoute;
   pendingMenuFocus = destination ? { roleId, functionId: destination.id } : null;
   const nextHash = functionId ? `#${roleId}/${functionId}` : `#${roleId}`;
   if (pushRoute && window.location.hash !== nextHash) {
@@ -613,7 +754,10 @@ function setActiveRole(roleId, pushRoute = true, functionId = "") {
     history.replaceState(null, "", nextHash);
   }
   render();
-  if (!destination) requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+  if (!destination && pushRoute) requestAnimationFrame(() => {
+    document.querySelector("#app-main")?.scrollTo({ top: 0, behavior: "auto" });
+    window.scrollTo({ top: 0, behavior: "auto" });
+  });
 }
 
 function goToRole(roleId, message = "", functionId = "") {
@@ -819,50 +963,58 @@ function render() {
   const focused = document.activeElement;
   const focusId = focused?.id || "";
   const focusData = ["operationsTab", "testProvider", "testIntegration", "syncIntegration", "runJob", "completeIntervention"].map((key) => focused?.dataset?.[key] ? [key, focused.dataset[key]] : null).find(Boolean);
+  const previousPage = document.querySelector("[data-route-page]");
+  const previousRouteKey = previousPage ? `${previousPage.dataset.routeRole}/${previousPage.dataset.routeFunction}` : "";
+  const previousScrollTop = document.querySelector("#app-main")?.scrollTop || 0;
+  if (previousRouteKey) routeScrollPositions.set(previousRouteKey, previousScrollTop);
+  const restoreHistoryScroll = restoreRouteScroll;
+  restoreRouteScroll = false;
   document.documentElement.lang = ({ English: "en", Spanish: "es", French: "fr", "Haitian Creole": "ht" })[state.language] || "en";
   if (!authenticatedProfile) {
+    document.title = "EduConnect | Learning that connects every school community";
     app.innerHTML = renderLandingPage();
     bindLandingEvents();
     enhanceIcons();
     return;
   }
   const role = roles.find((item) => item.id === state.role);
+  const route = hashRoute();
+  const routeFunction = route.role === state.role ? route.functionId : "";
   const school = selectedSchoolRecord();
   const design = selectedSchoolDesign();
   app.innerHTML = `
     <div class="app ${state.compactMode ? "compact-mode" : ""} ${state.highContrast ? "high-contrast" : ""} ${state.fontScale === "Large" ? "font-large" : state.fontScale === "Extra large" ? "font-extra-large" : ""} ${state.dyslexiaFriendly ? "dyslexia-friendly" : ""} ${state.reducedMotion ? "reduced-motion" : ""}" style="${designStyle(design)}">
       ${renderSidebar(design)}
-      <main id="app-main" class="workspace workspace-${state.role}">
+      <main id="app-main" class="workspace workspace-${state.role}" data-route-role="${state.role}" data-route-function="${routeFunction}">
         ${impersonatingAdminProfile ? `<section class="impersonation-banner" role="status"><span>${icon("eye")} Previewing as <strong>${escapeHtml(activeUser().label)}</strong> (${escapeHtml(activeUser().role)})</span><button type="button" data-stop-impersonating>Return to Global Admin</button></section>` : ""}
         ${renderTenantBar(school, design)}
         ${renderTopbar(role)}
         ${renderTour()}
         ${renderSearchResults()}
-        ${state.role === "state-admin" ? renderStateAdmin() : ""}
-        ${state.role === "district-admin" ? renderDistrictAdmin() : ""}
-        ${state.role === "school-admin" ? renderSchoolAdmin() : ""}
-        ${state.role === "lms" ? renderAdvancedLms() : ""}
-        ${state.role === "student" ? renderStudent() : ""}
-        ${state.role === "teacher" ? renderTeacher() : ""}
-        ${state.role === "parent" ? renderParent() : ""}
-        ${state.role === "messages" ? renderMessages() : ""}
-        ${state.role === "community" ? renderCommunityBoard() : ""}
+        ${renderWorkspacePage(role)}
       </main>
       ${renderMobileNav()}
       ${renderUtilityPanels()}
     </div>
   `;
+  const nextPage = document.querySelector("[data-route-page]");
+  const nextRouteKey = nextPage ? `${nextPage.dataset.routeRole}/${nextPage.dataset.routeFunction}` : "";
+  const restoreSamePageScroll = Boolean(previousRouteKey && previousRouteKey === nextRouteKey && !pendingMenuFocus);
+  const historyScrollTop = restoreHistoryScroll ? routeScrollPositions.get(nextRouteKey) : undefined;
+  document.title = `${document.querySelector("#function-page-title")?.textContent || role.label} | ${design.crest}`;
   bindEvents();
   enhanceIcons();
   persistDemoState();
   requestAnimationFrame(() => {
+    if (restoreSamePageScroll) document.querySelector("#app-main")?.scrollTo({ top: previousScrollTop, behavior: "auto" });
     const selector = focusId ? `#${CSS.escape(focusId)}` : focusData ? `[data-${focusData[0].replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}="${CSS.escape(focusData[1])}"]` : "";
     if (selector) document.querySelector(selector)?.focus({ preventScroll: true });
     if (pendingMenuFocus) {
       const destination = findMenuDestination(pendingMenuFocus.roleId, pendingMenuFocus.functionId);
       pendingMenuFocus = null;
-      focusMenuDestination(destination);
+      focusMenuDestination(destination, restoreHistoryScroll);
     }
+    if (Number.isFinite(historyScrollTop)) document.querySelector("#app-main")?.scrollTo({ top: historyScrollTop, behavior: "auto" });
   });
 }
 
@@ -980,10 +1132,9 @@ function renderGeneralMenu(surface = "sidebar") {
                   : item.workspace
                     ? `data-menu-workspace="${item.role}"`
                     : `data-menu-role="${item.role}" data-menu-function="${item.id}" data-menu-target="${item.target || item.id}" ${item.tab ? `data-menu-tab="${item.tab}"` : ""}`;
-                return `<a class="general-menu-link ${isCurrent ? "active" : ""}" href="${menuItemHref(item)}" ${attributes} ${isCurrent ? `aria-current="${item.workspace ? "page" : "location"}"` : ""}>
-                  ${icon(item.icon)}
-                  <span><strong>${item.label}</strong><small>${item.workspace ? "Workspace" : roleLabel}</small></span>
-                </a>`;
+                const content = `${icon(item.icon)}<span><strong>${item.label}</strong><small>${item.workspace ? "Workspace" : roleLabel}</small></span>`;
+                if (item.action) return `<button class="general-menu-link" type="button" ${attributes}>${content}</button>`;
+                return `<a class="general-menu-link ${isCurrent ? "active" : ""}" href="${menuItemHref(item)}" ${attributes} ${isCurrent ? `aria-current="page"` : ""}>${content}</a>`;
               }).join("")}
             </div>
           </details>`;
@@ -1010,7 +1161,7 @@ function renderSidebar(design) {
     <aside class="sidebar">
       <div class="brand-row">
         ${renderSchoolLogo(design, "brand-mark")}
-        <div><h1>${design.crest}</h1><p>${design.voice}</p></div>
+        <div><strong class="brand-title">${design.crest}</strong><p>${design.voice}</p></div>
       </div>
       ${renderGeneralMenu()}
     </aside>
@@ -1031,7 +1182,7 @@ function renderTopbar(role) {
   const title = role.id === "messages" ? "Communication Hub" : role.id === "state-admin" ? "State Governance" : role.id === "district-admin" ? "District Operations" : role.id === "school-admin" ? "School Administration" : `${role.label} Dashboard`;
   return `
     <header class="topbar">
-      <div><p class="eyebrow">${role.label} workspace</p><h2>${title}</h2></div>
+      <div><p class="eyebrow">${role.label} workspace</p><strong class="topbar-title">${title}</strong></div>
       <div class="topbar-actions">
         <button class="secondary-action general-menu-trigger" type="button" data-open-general-menu aria-haspopup="dialog" aria-controls="general-menu-dialog" aria-expanded="false">${icon("layers")} General menu</button>
         <label class="searchbox">${icon("search")}<input id="global-search" value="${escapeHtml(state.searchTerm)}" placeholder="${t("search")}" /></label>
@@ -2576,8 +2727,8 @@ function openLessonBuilder(lessonId = "") {
   const lesson = lmsLessons.find((item) => item.id === lessonId);
   state.lessonDraft = newLessonDraft(lesson);
   state.lessonBuilderOpen = true;
-  if (state.role !== "teacher") goToRole("teacher", lesson ? `${lesson.title} opened in Lesson Studio.` : "Lesson Studio opened.", "lesson-studio");
-  else setActiveRole("teacher", true, "lesson-studio");
+  if (state.role !== "teacher") goToRole("teacher", lesson ? `${lesson.title} opened in Lesson Studio.` : "Lesson Studio opened.", "create-lesson");
+  else setActiveRole("teacher", true, "create-lesson");
 }
 
 function saveLesson(status) {
@@ -2615,7 +2766,8 @@ function saveLesson(status) {
   pushRealtimeEvent("LMS", `${lesson.title} ${status === "Published" ? "published" : "saved"}`, `${lesson.blocks.length} lesson blocks for ${lesson.className}.`);
   pushNotification(status === "Published" ? "FYI" : "Action", `${lesson.title} ${status === "Published" ? "is available to students" : "saved as a draft"}`, lesson.className, "Lesson Studio");
   addAudit(`${status === "Published" ? "Published" : "Saved draft lesson"} ${lesson.title}`, lesson.className);
-  announce(`${lesson.title} ${status === "Published" ? "published to students" : "saved as a draft"}.`);
+  state.toast = `${lesson.title} ${status === "Published" ? "published to students" : "saved as a draft"}.`;
+  setActiveRole("teacher", true, "lesson-studio");
 }
 
 function toggleLessonStatus(lessonId) {
@@ -2832,7 +2984,7 @@ function openGeneralMenu(button) {
   if (typeof dialog.showModal === "function") dialog.showModal();
   else dialog.setAttribute("open", "");
   requestAnimationFrame(() => {
-    const current = dialog.querySelector("[aria-current]");
+    const current = dialog.querySelector('[data-menu-function][aria-current="page"]') || dialog.querySelector("[aria-current]");
     (current || dialog.querySelector(".general-menu-link") || dialog.querySelector("[data-close-general-menu]"))?.focus();
   });
 }
@@ -3146,7 +3298,13 @@ function bindEvents() {
 
   document.querySelectorAll("[data-operations-tab]").forEach((button) => button.addEventListener("click", () => {
     state.activeOperationsTab = button.dataset.operationsTab;
-    render();
+    const destination = roleMenuDestinations("state-admin").find((item) => item.tab === state.activeOperationsTab);
+    if (destination) {
+      setActiveRole("state-admin", true, destination.id);
+      pendingMenuFocus = null;
+      requestAnimationFrame(() => document.querySelector(`#operations-tab-${state.activeOperationsTab}`)?.focus());
+    }
+    else render();
   }));
 
   document.querySelector("[role='tablist'][aria-label='Platform operations']")?.addEventListener("keydown", (event) => {
@@ -3156,8 +3314,16 @@ function bindEvents() {
     event.preventDefault();
     const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : event.key === "ArrowRight" ? (index + 1) % tabs.length : (index - 1 + tabs.length) % tabs.length;
     state.activeOperationsTab = tabs[nextIndex].dataset.operationsTab;
-    render();
-    requestAnimationFrame(() => document.querySelector(`#operations-tab-${state.activeOperationsTab}`)?.focus());
+    const destination = roleMenuDestinations("state-admin").find((item) => item.tab === state.activeOperationsTab);
+    if (destination) {
+      setActiveRole("state-admin", true, destination.id);
+      pendingMenuFocus = null;
+      requestAnimationFrame(() => document.querySelector(`#operations-tab-${state.activeOperationsTab}`)?.focus());
+    }
+    else {
+      render();
+      requestAnimationFrame(() => document.querySelector(`#operations-tab-${state.activeOperationsTab}`)?.focus());
+    }
   });
 
   document.querySelectorAll("[data-test-provider]").forEach((button) => button.addEventListener("click", async () => {
@@ -3607,7 +3773,7 @@ function bindEvents() {
   document.querySelector("[data-close-lesson-builder]")?.addEventListener("click", () => {
     state.lessonBuilderOpen = false;
     state.lessonDraft = null;
-    render();
+    setActiveRole("teacher", true, "lesson-studio");
   });
 
   document.querySelector("#lesson-filter")?.addEventListener("change", (event) => {
@@ -3620,7 +3786,7 @@ function bindEvents() {
   document.querySelectorAll("[data-preview-lesson]").forEach((button) => button.addEventListener("click", () => {
     state.lessonPreviewId = button.dataset.previewLesson;
     render();
-    requestAnimationFrame(() => document.querySelector(".lesson-preview-panel")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+    requestAnimationFrame(() => document.querySelector(".lesson-preview-panel")?.scrollIntoView({ behavior: state.reducedMotion ? "auto" : "smooth", block: "center" }));
   }));
   document.querySelector("[data-close-lesson-preview]")?.addEventListener("click", () => {
     state.lessonPreviewId = "";
@@ -4268,6 +4434,11 @@ async function boot() {
     state.role = requestedRoleAllowed ? requested.role : authenticatedProfile.landing;
     const destination = findMenuDestination(state.role, requested.functionId);
     if (destination?.tab) state.activeOperationsTab = destination.tab;
+    if (destination?.id === "create-lesson") {
+      state.lessonBuilderOpen = true;
+      state.lessonDraft ||= newLessonDraft();
+    }
+    else if (destination?.id === "lesson-studio") state.lessonBuilderOpen = false;
     if (destination) pendingMenuFocus = { roleId: state.role, functionId: destination.id };
     if (requested.role && !requestedRoleAllowed) state.toast = "That workspace is not available for your role.";
     else if (requested.functionId && !destination) state.toast = "That function is not available for your role.";

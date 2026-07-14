@@ -36,3 +36,10 @@ test("student learning view has no serious automated WCAG violations", async ({ 
   await expect(page.getByRole("heading", { name: /Welcome back/i })).toBeVisible();
   expect(await seriousViolations(page)).toEqual([]);
 });
+
+test("open general menu has no serious automated WCAG violations", async ({ page }) => {
+  await loginAs(page, "global-admin");
+  await page.getByRole("button", { name: "General menu" }).click();
+  await expect(page.getByRole("dialog", { name: "General menu" })).toBeVisible();
+  expect(await seriousViolations(page)).toEqual([]);
+});

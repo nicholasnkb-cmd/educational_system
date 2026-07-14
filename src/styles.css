@@ -30,6 +30,10 @@ button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 a { color: inherit; text-decoration: none; }
 
+.visually-hidden { position: fixed !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
+.skip-link { position: fixed; z-index: 1000; top: 10px; left: 10px; transform: translateY(-160%); padding: 10px 14px; border-radius: 10px; color: #fff; background: #10233f; font-weight: 850; transition: transform 120ms ease; }
+.skip-link:focus { transform: translateY(0); }
+
 .landing-shell {
   min-height: 100vh;
   overflow: hidden;
@@ -732,7 +736,7 @@ img.brand-preview-logo {
 .primary-action { color: #fff; background: var(--primary); }
 .hero-card .primary-action { color: #00201c; background: #71f8e4; }
 .secondary-action { color: var(--primary); background: #fff; border: 2px solid #dae1ff; }
-.text-button { border: 0; color: var(--primary); background: transparent; font-weight: 900; }
+.text-button { min-height: 28px; padding: 3px 2px; border: 0; color: var(--primary); background: transparent; font-weight: 900; }
 
 .orbital-scene {
   position: relative;
@@ -3333,6 +3337,68 @@ select {
 .operations-card > p { color: var(--muted); line-height: 1.55; }
 .operations-metric { display: flex; align-items: baseline; gap: 8px; margin: 12px 0; }
 .operations-metric strong { font: 800 30px/1 var(--display-font); color: var(--primary); }
+.operations-card.span-full { grid-column: 1 / -1; }
+.service-readiness-grid,
+.job-list { display: grid; gap: 10px; margin-top: 14px; }
+.service-readiness-row,
+.job-row { display: grid; grid-template-columns: minmax(180px, 1.5fr) minmax(120px, .65fr) auto minmax(140px, .8fr); gap: 12px; align-items: center; padding: 13px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-soft, #f8fbff); }
+.service-readiness-row div,
+.job-row div:first-child { min-width: 0; display: grid; gap: 3px; }
+.service-readiness-row small,
+.job-row small { color: var(--muted); line-height: 1.4; }
+.service-readiness-row em { color: var(--muted); font-size: 12px; font-style: normal; }
+.readiness-status,
+.integration-operation-card > span,
+.job-row > span { justify-self: start; padding: 5px 9px; border-radius: 999px; background: var(--gold-soft); color: var(--ink); font-size: 12px; font-weight: 850; }
+.integration-operations-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.integration-operation-card { display: grid; align-content: start; gap: 10px; min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(145deg, #fff, #f6fbff); }
+.integration-operation-card > div:first-child { display: grid; gap: 4px; }
+.integration-operation-card small,
+.integration-operation-card p { color: var(--muted); line-height: 1.45; }
+.integration-operation-card p { margin: 0; }
+.job-progress { min-width: 120px; }
+.analytics-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.analytics-row:last-of-type { border-bottom: 0; }
+.analytics-row div { min-width: 0; display: grid; gap: 3px; }
+.analytics-row small { color: var(--muted); }
+.analytics-row > span { flex: 0 0 auto; color: var(--primary); font: 800 24px/1 var(--display-font); }
+
+.school-success-panel,
+.intervention-center-panel { grid-column: span 12; }
+.panel-intro { max-width: 850px; margin: -2px 0 18px; color: var(--muted); line-height: 1.6; }
+.school-success-grid { display: grid; grid-template-columns: 1.25fr .75fr; gap: 16px; }
+.success-card { min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(145deg, #fff, #f8fbff); }
+.success-card > p { color: var(--muted); line-height: 1.55; }
+.stacked-form,
+.intervention-form { display: grid; gap: 12px; }
+.stacked-form label,
+.intervention-form label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 800; }
+.stacked-form input,
+.stacked-form select,
+.intervention-form input,
+.intervention-form select,
+.intervention-form textarea { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; color: var(--ink); background: #fff; font: inherit; }
+.intervention-form textarea { min-height: 104px; resize: vertical; }
+.date-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.rollover-preview { display: grid; gap: 4px; margin-top: 12px; padding: 12px 14px; border-left: 4px solid var(--accent); border-radius: 10px; background: var(--gold-soft); }
+.rollover-preview span { color: var(--muted); line-height: 1.45; }
+.year-history { display: grid; gap: 8px; margin-top: 15px; }
+.year-history > div { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.year-history small { grid-column: 1 / -1; color: var(--muted); }
+.intervention-layout { display: grid; grid-template-columns: minmax(300px, .8fr) minmax(380px, 1.2fr); gap: 16px; align-items: start; }
+.intervention-form { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface-soft, #f8fbff); }
+.intervention-form h4 { grid-column: 1 / -1; margin: 0 0 2px; }
+.intervention-form .span-2 { grid-column: span 2; }
+.intervention-list { display: grid; gap: 10px; }
+.intervention-card { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; padding: 15px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.intervention-card > div { display: grid; gap: 4px; }
+.intervention-card small,
+.intervention-card p,
+.intervention-card time { color: var(--muted); line-height: 1.45; }
+.intervention-card > span { align-self: start; padding: 5px 9px; border-radius: 999px; background: var(--teal-soft); color: var(--ink); font-size: 12px; font-weight: 850; }
+.intervention-card p,
+.intervention-card footer { grid-column: 1 / -1; margin: 0; }
+.intervention-card footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .domain-row, .session-row, .template-row, .monitor-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
 .domain-row div, .session-row div, .template-row div, .monitor-row div { display: grid; gap: 3px; min-width: 0; }
 .domain-row small, .session-row small, .template-row small, .monitor-row small { color: var(--muted); }
@@ -3372,7 +3438,10 @@ select {
   .student-assignment-layout, .grading-inbox-row { grid-template-columns: 1fr; }
   .curriculum-create-form, .curriculum-unit-list section { grid-template-columns: 1fr; }
   .module-selector { grid-template-columns: repeat(2, 1fr); }
-  .operations-grid, .enrollment-grid, .standards-gradebook-grid, .family-summary-body { grid-template-columns: 1fr; }
+  .operations-grid, .enrollment-grid, .standards-gradebook-grid, .family-summary-body, .school-success-grid, .intervention-layout { grid-template-columns: 1fr; }
+  .integration-operations-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .service-readiness-row, .job-row { grid-template-columns: minmax(180px, 1fr) auto auto; }
+  .service-readiness-row em, .job-progress { grid-column: 1 / -1; }
   .family-summary-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
@@ -3404,7 +3473,12 @@ select {
   .gradebook-layout, .compliance-grid, .assignment-form, .editable-roster-row, .realtime-row, .unified-os-grid, .production-grid, .background-service-grid, .background-activity, .system-snapshot-grid, .snapshot-metrics, .snapshot-row, .schema-row, .delivery-row, .pipeline-row, .upload-row, .gateway-actions, .mini-form, .login-form { grid-template-columns: 1fr; }
   .mini-form input { grid-column: span 1; }
   .assignment-row { grid-template-columns: 1fr; }
-  .integration-grid, .workflow-steps, .settings-grid, .design-form { grid-template-columns: 1fr; }
+  .integration-grid, .integration-operations-grid, .workflow-steps, .settings-grid, .design-form, .intervention-form, .date-pair { grid-template-columns: 1fr; }
+  .service-readiness-row, .job-row { grid-template-columns: 1fr; align-items: stretch; }
+  .service-readiness-row .text-button, .job-row .text-button { justify-self: start; }
+  .intervention-form .span-2, .intervention-form h4 { grid-column: span 1; }
+  .intervention-card { grid-template-columns: 1fr; }
+  .intervention-card > span, .intervention-card p, .intervention-card footer { grid-column: 1; }
   .lesson-card-grid, .lesson-settings-grid, .lesson-block-fields { grid-template-columns: 1fr; }
   .lesson-settings-grid .span-2, .lesson-block-fields .span-2 { grid-column: span 1; }
   .lesson-card-top, .lesson-card-actions, .lesson-publish-bar, .lesson-block-toolbar, .lesson-block-heading, .student-lesson-submit { align-items: stretch; flex-direction: column; }

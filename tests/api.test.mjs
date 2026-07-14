@@ -1,6 +1,6 @@
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -232,6 +232,25 @@ describe("operational API server", () => {
     });
     assert.equal(blockedUpload.status, 422);
 
+    const { createServer: createProbeServer } = await import("node:net");
+    const probe = createProbeServer();
+    await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));
+    const unavailablePort = probe.address().port;
+    await new Promise((resolve) => probe.close(resolve));
+    process.env.EDUCONNECT_CLAMAV_HOST = "127.0.0.1";
+    process.env.EDUCONNECT_CLAMAV_PORT = String(unavailablePort);
+    try {
+      const scannerUnavailable = await fetch(`${baseUrl}/api/files`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${stateAdmin.token}` },
+        body: JSON.stringify({ name: "fail-closed.txt", type: "text/plain", area: "LMS", contentBase64: Buffer.from("safe content").toString("base64") }),
+      });
+      assert.equal(scannerUnavailable.status, 503);
+    } finally {
+      delete process.env.EDUCONNECT_CLAMAV_HOST;
+      delete process.env.EDUCONNECT_CLAMAV_PORT;
+    }
+
     const notify = await fetch(`${baseUrl}/api/notifications/test`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${stateAdmin.token}` },
@@ -276,7 +295,17 @@ describe("operational API server", () => {
 
     const restoreTest = await fetch(`${baseUrl}/api/backups/restore-test`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ backup: backupPayload.backup }) });
     assert.equal(restoreTest.status, 200);
-    assert.equal((await restoreTest.json()).result, "Restore validation passed");
+    const restorePayload = await restoreTest.json();
+    assert.equal(restorePayload.result, "Restore validation passed");
+    assert.equal(restorePayload.schemaVersion, 2);
+    assert.equal(restorePayload.checksumVerified, true);
+
+    const backupPath = join(dataDir, "backups", backupPayload.backup);
+    const tampered = JSON.parse(await readFile(backupPath, "utf8"));
+    tampered.snapshot.state.role = "tampered";
+    await writeFile(backupPath, JSON.stringify(tampered));
+    const rejectedRestore = await fetch(`${baseUrl}/api/backups/restore-test`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ backup: backupPayload.backup }) });
+    assert.equal(rejectedRestore.status, 422);
   });
 
   it("protects tenant state and exposes production operations only to administrators", async () => {
@@ -297,6 +326,183 @@ describe("operational API server", () => {
     const teacher = await teacherLogin.json();
     const denied = await fetch(`${baseUrl}/api/operations/status`, { headers: { Authorization: `Bearer ${teacher.token}` } });
     assert.equal(denied.status, 403);
+  });
+
+  it("limits student-sensitive state to linked learners while keeping staff access", async () => {
+    const globalLogin = await fetch(`${baseUrl}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profileId: "global-admin", password: testPasswords["global-admin"] }) });
+    const globalAdmin = await globalLogin.json();
+    const globalState = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${globalAdmin.token}` } })).json();
+    const ownScope = { stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118", studentId: "learner-1" };
+    const otherScope = { stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118", studentId: "learner-2" };
+    const outsideScope = { stateId: "ny", districtId: "nyc-doe", schoolId: "bronx-charter", studentId: "learner-1" };
+    globalState.snapshot.rosterRecords = [
+      { id: "privacy-roster-own", student: "Linked learner", ...ownScope },
+      { id: "privacy-roster-other", student: "Other learner", ...otherScope },
+      { id: "privacy-roster-outside", student: "Outside school", ...outsideScope },
+    ];
+    globalState.snapshot.gradebookSubmissions = [
+      { id: "privacy-grade-own", assignment: "Reading", ...ownScope },
+      { id: "privacy-grade-other", assignment: "Reading", ...otherScope },
+    ];
+    globalState.snapshot.lmsSubmissions = [
+      { id: "privacy-work-own", assignmentId: "reading", ...ownScope },
+      { id: "privacy-work-other", assignmentId: "reading", ...otherScope },
+    ];
+    globalState.snapshot.conversations = [
+      { id: "privacy-conversation-own", name: "Linked family", ...ownScope },
+      { id: "privacy-conversation-other", name: "Other family", ...otherScope },
+    ];
+    globalState.snapshot.questionBank = [{ id: "privacy-answer-key", question: "Staff only", correctAnswer: 1, stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118" }];
+    globalState.snapshot.productionReadiness.interventions = [
+      { id: "privacy-intervention-own", area: "Reading", ...ownScope },
+      { id: "privacy-intervention-other", area: "Math", ...otherScope },
+      { id: "privacy-intervention-outside", area: "Science", ...outsideScope },
+    ];
+    const seed = await fetch(`${baseUrl}/api/state`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${globalAdmin.token}` }, body: JSON.stringify({ snapshot: globalState.snapshot }) });
+    assert.equal(seed.status, 200);
+
+    const parentLogin = await fetch(`${baseUrl}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profileId: "parent", password: testPasswords.parent }) });
+    const parent = await parentLogin.json();
+    const parentState = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${parent.token}` } })).json();
+    assert.deepEqual(parentState.snapshot.rosterRecords.map((record) => record.id), ["privacy-roster-own"]);
+    assert.deepEqual(parentState.snapshot.gradebookSubmissions.map((record) => record.id), ["privacy-grade-own"]);
+    assert.deepEqual(parentState.snapshot.lmsSubmissions.map((record) => record.id), ["privacy-work-own"]);
+    assert.deepEqual(parentState.snapshot.conversations.map((record) => record.id), ["privacy-conversation-own"]);
+    assert.deepEqual(parentState.snapshot.questionBank, []);
+    assert.equal(Object.hasOwn(parentState.snapshot.productionReadiness, "interventions"), false);
+
+    const studentLogin = await fetch(`${baseUrl}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profileId: "student", password: testPasswords.student }) });
+    const studentUser = await studentLogin.json();
+    const studentState = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${studentUser.token}` } })).json();
+    assert.deepEqual(studentState.snapshot.rosterRecords.map((record) => record.id), ["privacy-roster-own"]);
+    assert.deepEqual(studentState.snapshot.gradebookSubmissions.map((record) => record.id), ["privacy-grade-own"]);
+    assert.deepEqual(studentState.snapshot.lmsSubmissions.map((record) => record.id), ["privacy-work-own"]);
+    assert.equal(Object.hasOwn(studentState.snapshot.productionReadiness, "interventions"), false);
+
+    const teacherLogin = await fetch(`${baseUrl}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profileId: "teacher", password: testPasswords.teacher }) });
+    const teacherUser = await teacherLogin.json();
+    const teacherState = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${teacherUser.token}` } })).json();
+    assert.deepEqual(teacherState.snapshot.rosterRecords.map((record) => record.id), ["privacy-roster-own", "privacy-roster-other"]);
+    assert.deepEqual(teacherState.snapshot.questionBank.map((record) => record.id), ["privacy-answer-key"]);
+    assert.deepEqual(teacherState.snapshot.productionReadiness.interventions.map((record) => record.id), ["privacy-intervention-own", "privacy-intervention-other"]);
+  });
+
+  it("gates platform actions and reports provider and integration readiness without secrets", async () => {
+    process.env.EDUCONNECT_EMAIL_API_KEY = "";
+    process.env.EDUCONNECT_EMAIL_FROM = "";
+    process.env.EDUCONNECT_GOOGLE_CLIENT_ID = "";
+    process.env.EDUCONNECT_GOOGLE_CLIENT_SECRET = "";
+    const globalLogin = await fetch(`${baseUrl}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profileId: "global-admin", password: testPasswords["global-admin"] }) });
+    const globalAdmin = await globalLogin.json();
+
+    const provider = await fetch(`${baseUrl}/api/platform/actions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${globalAdmin.token}` },
+      body: JSON.stringify({ action: "test-provider", providerId: "email", apiKey: "must-never-return" }),
+    });
+    const providerPayload = await provider.json();
+    assert.equal(provider.status, 200);
+    assert.equal(providerPayload.provider.status, "Needs credentials");
+    assert.equal(providerPayload.provider.credentialConfigured, false);
+    assert.equal(JSON.stringify(providerPayload).includes("must-never-return"), false);
+
+    const forbiddenProvider = await fetch(`${baseUrl}/api/platform/actions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ action: "test-provider", providerId: "email" }) });
+    assert.equal(forbiddenProvider.status, 403);
+
+    const oneRoster = await fetch(`${baseUrl}/api/platform/actions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ action: "sync-integration", integrationId: "oneroster", schoolId: "ps-118" }) });
+    const oneRosterPayload = await oneRoster.json();
+    assert.equal(oneRoster.status, 200);
+    assert.equal(oneRosterPayload.blocked, false);
+    assert.equal(oneRosterPayload.integration.status, "Synced");
+
+    const hosted = await fetch(`${baseUrl}/api/platform/actions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ action: "sync-integration", integrationId: "google", schoolId: "ps-118" }) });
+    const hostedPayload = await hosted.json();
+    assert.equal(hosted.status, 200);
+    assert.equal(hostedPayload.blocked, true);
+    assert.equal(hostedPayload.integration.status, "Needs credentials");
+
+    const job = await fetch(`${baseUrl}/api/platform/actions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ action: "run-job", jobId: "media-optimization" }) });
+    assert.equal(job.status, 200);
+    assert.equal((await job.json()).job.status, "Completed");
+
+    const review = await fetch(`${baseUrl}/api/platform/actions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${globalAdmin.token}` }, body: JSON.stringify({ action: "generate-security-review", credential: "must-never-return" }) });
+    const reviewPayload = await review.json();
+    assert.equal(review.status, 200);
+    assert.equal(reviewPayload.reviewPackage.note.includes("excluded"), true);
+    assert.equal(JSON.stringify(reviewPayload).includes("must-never-return"), false);
+  });
+
+  it("creates a sanitized sandbox and performs an idempotent academic rollover", async () => {
+    const globalLogin = await fetch(`${baseUrl}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profileId: "global-admin", password: testPasswords["global-admin"] }) });
+    const globalAdmin = await globalLogin.json();
+    const sandboxResponse = await fetch(`${baseUrl}/api/platform/actions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${globalAdmin.token}` }, body: JSON.stringify({ action: "create-sandbox", sourceSchoolId: "ps-118", name: "Privacy Test Sandbox", expiresInDays: 30 }) });
+    const sandboxPayload = await sandboxResponse.json();
+    assert.equal(sandboxResponse.status, 201);
+    assert.equal(sandboxPayload.sandbox.syntheticOnly, true);
+    const sandboxId = sandboxPayload.sandbox.tenantId;
+    const sandboxSchool = sandboxPayload.tenantStates.flatMap((item) => item.districts).flatMap((item) => item.schools).find((item) => item.id === sandboxId);
+    assert.equal(sandboxSchool.students, 0);
+    assert.equal(sandboxSchool.staff, 0);
+    for (const forbiddenField of ["avgGrade", "attendance", "messages", "studentName", "guardianName", "learnerName"]) assert.equal(Object.hasOwn(sandboxSchool, forbiddenField), false);
+    assert.ok(sandboxPayload.lmsLessons.some((item) => item.schoolId === sandboxId && item.status === "Draft"));
+
+    const afterSandbox = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${globalAdmin.token}` } })).json();
+    assert.equal(afterSandbox.snapshot.userProfiles.some((item) => item.schoolId === sandboxId), false);
+    for (const collection of ["rosterRecords", "gradebookSubmissions", "lmsSubmissions", "conversations", "fileUploads", "auditLogs"]) {
+      assert.equal((afterSandbox.snapshot[collection] || []).some((item) => (item.schoolId || item.scope?.schoolId) === sandboxId), false);
+    }
+
+    const originalSubmissions = structuredClone(afterSandbox.snapshot.lmsSubmissions);
+    const originalGrades = structuredClone(afterSandbox.snapshot.gradebookSubmissions);
+    const rolloverBody = { action: "academic-year-rollover", schoolId: "ps-118", name: "2099–2100", startsOn: "2099-08-01", endsOn: "2100-07-31", copyLessons: true, copyGradebook: true };
+    const firstRollover = await fetch(`${baseUrl}/api/platform/actions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` }, body: JSON.stringify(rolloverBody) });
+    const firstPayload = await firstRollover.json();
+    assert.equal(firstRollover.status, 201);
+    assert.equal(firstPayload.idempotent, false);
+    assert.ok(firstPayload.lmsLessons.some((item) => item.academicYearId === firstPayload.year.id && item.status === "Draft"));
+    const lessonCount = firstPayload.lmsLessons.length;
+
+    const secondRollover = await fetch(`${baseUrl}/api/platform/actions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` }, body: JSON.stringify(rolloverBody) });
+    const secondPayload = await secondRollover.json();
+    assert.equal(secondRollover.status, 200);
+    assert.equal(secondPayload.idempotent, true);
+    assert.equal(secondPayload.lmsLessons.length, lessonCount);
+
+    const afterRollover = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${globalAdmin.token}` } })).json();
+    assert.deepEqual(afterRollover.snapshot.lmsSubmissions, originalSubmissions);
+    assert.deepEqual(afterRollover.snapshot.gradebookSubmissions, originalGrades);
+  });
+
+  it("suppresses small analytics cohorts and keeps interventions staff-only", async () => {
+    const teacherLogin = await fetch(`${baseUrl}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profileId: "teacher", password: testPasswords.teacher }) });
+    const teacherUser = await teacherLogin.json();
+    const interventionResponse = await fetch(`${baseUrl}/api/platform/actions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${teacherUser.token}` },
+      body: JSON.stringify({ action: "create-intervention", intervention: { id: "action-intervention-own", schoolId: "ps-118", studentId: "privacy-roster-own", student: "Linked learner", area: "Reading", tier: "Tier 2", owner: "Demo Teacher", nextReview: "2026-09-01", notes: "Targeted support" } }),
+    });
+    const interventionPayload = await interventionResponse.json();
+    assert.equal(interventionResponse.status, 201);
+    assert.equal(interventionPayload.intervention.schoolId, "ps-118");
+
+    const analyticsResponse = await fetch(`${baseUrl}/api/platform/actions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${teacherUser.token}` }, body: JSON.stringify({ action: "refresh-analytics", schoolId: "ps-118", privacyThreshold: 1 }) });
+    const analyticsPayload = await analyticsResponse.json();
+    assert.equal(analyticsResponse.status, 200);
+    assert.ok(analyticsPayload.analytics.privacyThreshold >= 5);
+    assert.ok(analyticsPayload.analytics.metrics.every((metric) => metric.status === "Suppressed" && metric.value === null && metric.cohortSize === 0));
+
+    const parentLogin = await fetch(`${baseUrl}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profileId: "parent", password: testPasswords.parent }) });
+    const parent = await parentLogin.json();
+    const familyState = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${parent.token}` } })).json();
+    assert.equal(Object.hasOwn(familyState.snapshot.productionReadiness, "interventions"), false);
+    const familyComplete = await fetch(`${baseUrl}/api/platform/actions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${parent.token}` }, body: JSON.stringify({ action: "complete-intervention", interventionId: "action-intervention-own" }) });
+    assert.equal(familyComplete.status, 403);
+
+    const crossSchool = await fetch(`${baseUrl}/api/platform/actions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${teacherUser.token}` }, body: JSON.stringify({ action: "create-intervention", intervention: { schoolId: "bronx-charter", studentId: "privacy-roster-outside", area: "Math" } }) });
+    assert.equal(crossSchool.status, 403);
+    const completed = await fetch(`${baseUrl}/api/platform/actions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${teacherUser.token}` }, body: JSON.stringify({ action: "complete-intervention", interventionId: "action-intervention-own" }) });
+    assert.equal(completed.status, 200);
+    assert.equal((await completed.json()).intervention.status, "Completed");
   });
 
   it("validates enrollment, domains, MFA, sessions, and scheduled notifications", async () => {

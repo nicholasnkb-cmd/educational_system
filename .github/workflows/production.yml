@@ -27,6 +27,17 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:ui
       - run: npm run build:hostinger
+      - name: Run Lighthouse release gate
+        shell: bash
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/educonnect-preview.log 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:4173 >/dev/null && break
+            sleep 1
+          done
+          LIGHTHOUSE_URL=http://127.0.0.1:4173 npm run audit:lighthouse
       - name: Verify required Hostinger security files
         run: test -f dist/.htaccess && test -f api/.htaccess
       - uses: actions/upload-artifact@v4

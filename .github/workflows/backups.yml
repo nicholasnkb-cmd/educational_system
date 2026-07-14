@@ -29,6 +29,9 @@ jobs:
           curl --fail --silent --show-error --max-time 30 -X POST \
             -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{}' \
             https://api.educationalsystem.fieldserviceit.com/api/backups | jq -e '.ok == true' >/dev/null
+          curl --fail --silent --show-error --max-time 30 -X POST \
+            -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d '{}' \
+            https://api.educationalsystem.fieldserviceit.com/api/backups/restore-test | jq -e '.ok == true' >/dev/null
           curl --fail --silent --show-error --max-time 60 \
             -H "Authorization: Bearer $token" \
             https://api.educationalsystem.fieldserviceit.com/api/admin/export > education-backup.json

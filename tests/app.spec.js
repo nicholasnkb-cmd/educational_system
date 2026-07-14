@@ -364,12 +364,12 @@ test("applies accessibility, language, and notification preferences", async ({ p
   await page.getByLabel("Settings").click();
   await page.getByLabel("Language").selectOption("Spanish");
   await expect(page.getByRole("heading", { name: "Configuración" })).toBeVisible();
-  await page.getByLabel("Text size").selectOption("Large");
+  await page.getByLabel("Tamaño del texto").selectOption("Large");
   await expect(page.locator(".app")).toHaveClass(/font-large/);
   await page.getByLabel("Dyslexia-friendly type").check();
   await expect(page.locator(".app")).toHaveClass(/dyslexia-friendly/);
   await page.getByLabel("SMS").check();
-  await page.getByRole("button", { name: /Send test notification/i }).click();
+  await page.getByRole("button", { name: /Enviar notificación de prueba/i }).click();
   await expect(page.getByText(/Test notification added/i)).toBeVisible();
 });
 
@@ -423,7 +423,7 @@ test("shows a family weekly summary and installable PWA metadata", async ({ page
   const summary = page.locator(".family-summary-panel");
   await expect(summary.getByRole("heading", { name: "This Week at a Glance" })).toBeVisible();
   await summary.getByRole("button", { name: /Send summary now/i }).click();
-  await expect(page.getByText("Weekly family summary sent.")).toBeVisible();
+  await expect(page.getByText("Weekly family summary queued.")).toBeVisible();
   const manifestHref = await page.locator('link[rel="manifest"]').getAttribute("href");
   const manifestUrl = new URL(manifestHref, page.url());
   const manifest = await page.request.get(manifestUrl.href);
@@ -431,4 +431,67 @@ test("shows a family weekly summary and installable PWA metadata", async ({ page
   expect((await manifest.json()).display).toBe("standalone");
   const worker = await page.request.get(new URL("service-worker.js", manifestUrl).href);
   expect(worker.ok()).toBeTruthy();
+});
+
+test("operates provider readiness, SIS sync, background jobs, and a synthetic sandbox", async ({ page }) => {
+  await loginAs(page, "global-admin");
+  const operations = page.locator(".operations-command-center");
+
+  await operations.getByRole("tab", { name: "Connected services" }).click();
+  const oneRoster = operations.locator(".integration-operation-card").filter({ hasText: "OneRoster 1.2" });
+  await oneRoster.getByRole("button", { name: "Test", exact: true }).click();
+  await expect(page.getByText("OneRoster 1.2 is ready.")).toBeVisible();
+  await oneRoster.getByRole("button", { name: "Sync now" }).click();
+  await expect(page.getByText("OneRoster 1.2 synchronized successfully.")).toBeVisible();
+
+  await operations.getByRole("tab", { name: "Jobs & recovery" }).click();
+  const analyticsJob = operations.locator(".job-row").filter({ hasText: "Privacy-safe analytics rollup" });
+  await analyticsJob.getByRole("button", { name: "Run now" }).click();
+  await expect(page.getByText("Privacy-safe analytics rollup completed.")).toBeVisible();
+  await expect(analyticsJob.getByText("Completed", { exact: true })).toBeVisible();
+
+  await operations.getByRole("tab", { name: "Launch & review" }).click();
+  await operations.getByRole("button", { name: "Create sandbox" }).click();
+  await expect(page.getByText(/ready with synthetic data only/i)).toBeVisible();
+  await expect(operations.getByText("Active", { exact: true }).first()).toBeVisible();
+});
+
+test("previews an academic rollover and manages an intervention without exposing a small cohort", async ({ page }) => {
+  await loginAs(page, "school-admin");
+  const continuity = page.locator(".school-success-panel");
+  await continuity.getByRole("button", { name: "Preview rollover" }).click();
+  await expect(continuity.getByText("Preview ready")).toBeVisible();
+  await continuity.getByRole("button", { name: "Create new year" }).click();
+  await expect(page.getByText(/2026–2027 was created/i)).toBeVisible();
+  await expect(continuity.getByText("Archived", { exact: true })).toBeVisible();
+
+  const interventions = page.locator(".intervention-center-panel");
+  await interventions.getByLabel("Support area").fill("Attendance support");
+  await interventions.getByLabel("Next review").fill("2026-09-15");
+  await interventions.getByLabel("Goal and supports").fill("Weekly check-ins with an attendance goal of 95 percent.");
+  await interventions.getByRole("button", { name: /Create support plan/i }).click();
+  await expect(page.getByText(/Support plan created/i)).toBeVisible();
+  await expect(interventions.getByText("Attendance support")).toBeVisible();
+
+  await continuity.getByRole("button", { name: "Refresh school analytics" }).click();
+  await expect(page.getByText("Analytics refreshed; small cohorts remain hidden.")).toBeVisible();
+  await expect(continuity.getByText(/Not shown—fewer than 5 learners/i).first()).toBeVisible();
+});
+
+test("supports multilingual chrome and keyboard navigation across operations tabs", async ({ page }) => {
+  await loginAs(page, "global-admin");
+  await page.getByLabel("Settings").click();
+  await page.getByLabel("Language").selectOption("French");
+  await expect(page.getByRole("heading", { name: "Paramètres" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "fr");
+  await page.getByLabel("Langue").selectOption("Haitian Creole");
+  await expect(page.getByRole("heading", { name: "Anviwònman" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "ht");
+  await page.getByLabel("Fèmen Anviwònman").click();
+
+  const firstTab = page.getByRole("tab", { name: "Tenants & domains" });
+  await firstTab.focus();
+  await firstTab.press("ArrowRight");
+  await expect(page.getByRole("tab", { name: "Security & backups" })).toBeFocused();
+  await expect(page.getByRole("tabpanel", { name: "Security & backups" })).toBeVisible();
 });

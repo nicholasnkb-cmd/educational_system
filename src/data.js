@@ -67,6 +67,7 @@ export const state = {
   impersonatingFrom: "",
   pwaInstalled: false,
   activeOperationsTab: "tenants",
+  academicRolloverPreview: null,
 };
 
 export const userProfiles = [
@@ -480,7 +481,7 @@ export const deployPipeline = [
 
 export const productionReadiness = {
   tenantIsolation: { status: "Enforced", strategy: "School-scoped records and permission-filtered API responses", lastTest: "Today" },
-  storage: { provider: "Dedicated tenant storage", quotaGb: 75, usedGb: 18.4, virusScanning: true, compression: "Media worker ready", thumbnailing: "Media worker ready" },
+  storage: { provider: "Dedicated tenant storage", quotaGb: 75, usedGb: 18.4, virusScanning: true, malwareEngine: "Built-in signature screening", compression: "Media worker ready", thumbnailing: "Media worker ready" },
   domains: [
     { schoolId: "ps-118", domain: "educationalsystem.fieldserviceit.com", dns: "Verified", ssl: "Active", checkedAt: "Just now" },
     { schoolId: "bronx-charter", domain: "bronxlearning.educonnect.local", dns: "Awaiting DNS", ssl: "Pending", checkedAt: "Today" },
@@ -500,13 +501,13 @@ export const productionReadiness = {
     loginAlerts: true,
     activeSessions: [{ id: "session-current", user: "Global Test Admin", device: "Current browser", location: "New York, US", lastActive: "Now", current: true }],
   },
-  backups: { schedule: "Nightly at 2:00 AM", retentionDays: 30, lastBackup: "Today 2:00 AM", lastRestoreTest: "Passed • Today", encrypted: false },
+  backups: { schedule: "Nightly at 2:00 AM", retentionDays: 30, lastBackup: "Today 2:00 AM", lastRestoreTest: "Passed • Today", encrypted: true, target: "Local encrypted backup", offsiteStatus: "Needs credentials", rpoHours: 24, rtoHours: 4 },
   notifications: {
     provider: "Operational API",
     templates: [{ id: "due", name: "Assignment due reminder", channels: ["Email", "Push"], status: "Active" }, { id: "weekly", name: "Weekly family summary", channels: ["Email"], status: "Active" }],
     optOuts: 3,
   },
-  accessibility: { wcagTarget: "WCAG 2.2 AA", score: 96, issues: 0, languages: ["English", "Spanish"], lastAudit: "Today" },
+  accessibility: { wcagTarget: "WCAG 2.2 AA", score: 96, issues: 0, languages: ["English", "Spanish", "French", "Haitian Creole"], lastAudit: "Today", keyboardStatus: "Automated checks enabled", ciStatus: "Axe + Lighthouse configured" },
   monitors: [
     { service: "Education website", status: "Operational", latency: 184, uptime: "99.98%", checkedAt: "Just now" },
     { service: "Dedicated API", status: "Operational", latency: 96, uptime: "99.99%", checkedAt: "Just now" },
@@ -514,4 +515,72 @@ export const productionReadiness = {
     { service: "Notifications", status: "Operational", latency: 208, uptime: "99.95%", checkedAt: "Just now" },
   ],
   billing: { plan: "District Core", schools: 5, monthlyEstimate: 0, status: "Community deployment" },
+  dataPlatform: {
+    engine: "PostgreSQL",
+    status: "Schema ready",
+    tenantPolicy: "Row-level security with default deny",
+    migration: "Awaiting DATABASE_URL",
+  },
+  providers: [
+    { id: "database", name: "PostgreSQL", purpose: "Relational tenant data and row-level security", status: "Needs credentials", requirements: ["DATABASE_URL"], lastTest: "Not run" },
+    { id: "object-storage", name: "S3 / Cloudflare R2", purpose: "School media and encrypted offsite backups", status: "Needs credentials", requirements: ["EDUCONNECT_OBJECT_STORAGE_ENDPOINT", "EDUCONNECT_OBJECT_STORAGE_BUCKET", "EDUCONNECT_OBJECT_STORAGE_KEY", "EDUCONNECT_OBJECT_STORAGE_SECRET"], lastTest: "Not run" },
+    { id: "email", name: "Postmark / SendGrid", purpose: "Transactional school and family email", status: "Needs credentials", requirements: ["EDUCONNECT_EMAIL_API_KEY", "EDUCONNECT_EMAIL_FROM"], lastTest: "Not run" },
+    { id: "sms", name: "Twilio", purpose: "Consent-aware SMS and emergency delivery", status: "Needs credentials", requirements: ["EDUCONNECT_TWILIO_ACCOUNT_SID", "EDUCONNECT_TWILIO_AUTH_TOKEN", "EDUCONNECT_TWILIO_FROM"], lastTest: "Not run" },
+    { id: "push", name: "Web Push", purpose: "Browser and installed-app notifications", status: "Needs credentials", requirements: ["EDUCONNECT_WEB_PUSH_PUBLIC_KEY", "EDUCONNECT_WEB_PUSH_PRIVATE_KEY"], lastTest: "Not run" },
+    { id: "mfa", name: "Authenticator MFA", purpose: "TOTP protection for administrator accounts", status: "Needs credentials", requirements: ["EDUCONNECT_TOTP_ENCRYPTION_KEY"], lastTest: "Not run" },
+    { id: "malware", name: "ClamAV", purpose: "Server-side malware scanning for uploads", status: "Fallback active", requirements: ["EDUCONNECT_CLAMAV_HOST"], lastTest: "Built-in signature screening active" },
+    { id: "observability", name: "Error + uptime alerts", purpose: "Structured errors, performance, and delivery alerts", status: "Needs credentials", requirements: ["EDUCONNECT_ERROR_WEBHOOK_URL"], lastTest: "Local error log active" },
+  ],
+  integrations: [
+    { id: "oneroster", name: "OneRoster 1.2", category: "SIS", direction: "Roster + grades + resources", status: "CSV ready", requirements: [], lastSync: "Not run", records: 0 },
+    { id: "google", name: "Google Workspace for Education", category: "Identity + classroom", direction: "Users, classes, and assignments", status: "Needs credentials", requirements: ["EDUCONNECT_GOOGLE_CLIENT_ID", "EDUCONNECT_GOOGLE_CLIENT_SECRET"], lastSync: "Not run", records: 0 },
+    { id: "microsoft", name: "Microsoft 365 Education", category: "Identity + classroom", direction: "Users, groups, and classes", status: "Needs credentials", requirements: ["EDUCONNECT_MICROSOFT_TENANT_ID", "EDUCONNECT_MICROSOFT_CLIENT_ID", "EDUCONNECT_MICROSOFT_CLIENT_SECRET"], lastSync: "Not run", records: 0 },
+    { id: "clever", name: "Clever", category: "Roster", direction: "District schools, users, and sections", status: "Needs credentials", requirements: ["EDUCONNECT_CLEVER_CLIENT_ID", "EDUCONNECT_CLEVER_CLIENT_SECRET"], lastSync: "Not run", records: 0 },
+    { id: "classlink", name: "ClassLink", category: "Roster", direction: "Tenant-scoped roster sync", status: "Needs credentials", requirements: ["EDUCONNECT_CLASSLINK_TENANT_ID", "EDUCONNECT_CLASSLINK_CLIENT_ID", "EDUCONNECT_CLASSLINK_CLIENT_SECRET"], lastSync: "Not run", records: 0 },
+  ],
+  jobs: [
+    { id: "media-optimization", name: "Media optimization", schedule: "Every 10 minutes", status: "Queued", progress: 0, lastRun: "Not run" },
+    { id: "notification-delivery", name: "Notification delivery", schedule: "Every minute", status: "Queued", progress: 0, lastRun: "Not run" },
+    { id: "sis-sync", name: "SIS synchronization", schedule: "Nightly", status: "Queued", progress: 0, lastRun: "Not run" },
+    { id: "analytics-rollup", name: "Privacy-safe analytics rollup", schedule: "Nightly", status: "Queued", progress: 0, lastRun: "Not run" },
+    { id: "backup-copy", name: "Offsite backup copy", schedule: "Nightly after backup", status: "Blocked", progress: 0, lastRun: "Needs object storage credentials" },
+  ],
+  academicYears: [
+    { id: "2025-2026", name: "2025–2026", status: "Active", startsOn: "2025-08-01", endsOn: "2026-07-31", archivedAt: "" },
+  ],
+  interventions: [
+    { id: "intervention-reading", schoolId: "ps-118", student: "Jordan Lee", area: "Reading fluency", owner: "Ms. Rivera", tier: "Tier 2", status: "Monitoring", nextReview: "2026-08-15", notes: "Six-week targeted reading plan with weekly progress checks." },
+  ],
+  analytics: {
+    privacyThreshold: 5,
+    lastRefresh: "Not run",
+    suppressedGroups: 0,
+    metrics: [
+      { label: "Active learners", value: 684, cohortSize: 684, status: "Published" },
+      { label: "Assignment completion", value: "87%", cohortSize: 54, status: "Published" },
+      { label: "Interventions on track", value: "100%", cohortSize: 1, status: "Suppressed" },
+    ],
+  },
+  sandbox: { status: "Ready to create", tenantId: "", name: "EduConnect Safe Test School", sourceSchoolId: "ps-118", syntheticOnly: true, expiresOn: "", createdAt: "" },
+  pilot: {
+    status: "Planning",
+    school: "Sanitized pilot school",
+    dataPolicy: "Synthetic or formally sanitized records only",
+    checkpoints: ["Leadership approval", "Teacher onboarding", "Family communication", "Two-week classroom trial", "Outcome review"],
+    completed: [],
+  },
+  securityReview: {
+    status: "Package ready",
+    reviewer: "Independent reviewer not assigned",
+    lastExport: "Not exported",
+    scope: ["Authentication and sessions", "Tenant isolation", "Upload pipeline", "API authorization", "Backup recovery", "Dependency and configuration review"],
+  },
+  observability: {
+    structuredLogs: true,
+    errorCapture: true,
+    performanceTracking: true,
+    deliveryAlerts: true,
+    alertDestination: "Needs credentials",
+    lastIncident: "No open incidents",
+  },
 };

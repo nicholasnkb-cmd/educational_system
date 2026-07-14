@@ -65,6 +65,8 @@ export const state = {
   language: "English",
   notificationPreferences: { email: true, sms: false, push: true, dueDays: 2, missingWork: true, gradeReturned: true },
   impersonatingFrom: "",
+  pwaInstalled: false,
+  activeOperationsTab: "tenants",
 };
 
 export const userProfiles = [
@@ -475,3 +477,41 @@ export const deployPipeline = [
   { step: "FTP deploy", status: "Live", detail: "educationalsystem.fieldserviceit.com is serving the app" },
   { step: "GitHub sync", status: "Connected", detail: "Backend repository deploys through Hostinger hPanel" },
 ];
+
+export const productionReadiness = {
+  tenantIsolation: { status: "Enforced", strategy: "School-scoped records and permission-filtered API responses", lastTest: "Today" },
+  storage: { provider: "Dedicated tenant storage", quotaGb: 75, usedGb: 18.4, virusScanning: true, compression: "Media worker ready", thumbnailing: "Media worker ready" },
+  domains: [
+    { schoolId: "ps-118", domain: "educationalsystem.fieldserviceit.com", dns: "Verified", ssl: "Active", checkedAt: "Just now" },
+    { schoolId: "bronx-charter", domain: "bronxlearning.educonnect.local", dns: "Awaiting DNS", ssl: "Pending", checkedAt: "Today" },
+  ],
+  enrollmentImports: [
+    { id: "import-fall", schoolId: "ps-118", file: "fall-roster.csv", rows: 684, accepted: 680, needsReview: 4, status: "Completed", createdAt: "Aug 18" },
+  ],
+  gradebook: {
+    categories: [{ name: "Assessments", weight: 40 }, { name: "Projects", weight: 30 }, { name: "Classwork", weight: 20 }, { name: "Participation", weight: 10 }],
+    standards: [{ code: "CCSS.ELA-LITERACY.W.4.1", mastery: 82 }, { code: "CCSS.ELA-LITERACY.RL.4.1", mastery: 88 }, { code: "NGSS 5-ESS1-1", mastery: 79 }],
+    sisExport: { status: "Ready", format: "OneRoster CSV", lastExport: "Not exported" },
+  },
+  gradebooks: {},
+  security: {
+    mfaRequired: true,
+    sessionTimeoutMinutes: 60,
+    loginAlerts: true,
+    activeSessions: [{ id: "session-current", user: "Global Test Admin", device: "Current browser", location: "New York, US", lastActive: "Now", current: true }],
+  },
+  backups: { schedule: "Nightly at 2:00 AM", retentionDays: 30, lastBackup: "Today 2:00 AM", lastRestoreTest: "Passed • Today", encrypted: false },
+  notifications: {
+    provider: "Operational API",
+    templates: [{ id: "due", name: "Assignment due reminder", channels: ["Email", "Push"], status: "Active" }, { id: "weekly", name: "Weekly family summary", channels: ["Email"], status: "Active" }],
+    optOuts: 3,
+  },
+  accessibility: { wcagTarget: "WCAG 2.2 AA", score: 96, issues: 0, languages: ["English", "Spanish"], lastAudit: "Today" },
+  monitors: [
+    { service: "Education website", status: "Operational", latency: 184, uptime: "99.98%", checkedAt: "Just now" },
+    { service: "Dedicated API", status: "Operational", latency: 96, uptime: "99.99%", checkedAt: "Just now" },
+    { service: "File storage", status: "Operational", latency: 121, uptime: "99.97%", checkedAt: "Just now" },
+    { service: "Notifications", status: "Operational", latency: 208, uptime: "99.95%", checkedAt: "Just now" },
+  ],
+  billing: { plan: "District Core", schools: 5, monthlyEstimate: 0, status: "Community deployment" },
+};

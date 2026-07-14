@@ -138,3 +138,31 @@ export async function sendServerNotificationTest(audience = "Launch test group")
     body: JSON.stringify({ audience }),
   });
 }
+
+export function createServerBackup() {
+  return requestServer("/api/backups", { method: "POST", body: "{}" });
+}
+
+export function testServerRestore(backup = "") {
+  return requestServer("/api/backups/restore-test", { method: "POST", body: JSON.stringify({ backup }) });
+}
+
+export function verifyServerDomain(schoolId) {
+  return requestServer("/api/domains/verify", { method: "POST", body: JSON.stringify({ schoolId }) });
+}
+
+export function importServerEnrollment(schoolId, file, rows) {
+  return requestServer("/api/enrollment/import", { method: "POST", body: JSON.stringify({ schoolId, file, rows }) });
+}
+
+export function updateServerMfa(required) {
+  return requestServer("/api/security/mfa", { method: "POST", body: JSON.stringify({ required }) });
+}
+
+export function scheduleServerNotification({ channel, audience, template, scheduledFor = "" }) {
+  return requestServer("/api/notifications/schedule", { method: "POST", body: JSON.stringify({ channel, audience, template, scheduledFor }) });
+}
+
+export function getServerOperationsStatus() {
+  return requestServer("/api/operations/status", { method: "GET" });
+}

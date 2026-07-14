@@ -56,7 +56,7 @@ describe("operational API server", () => {
       body: JSON.stringify({ profileId: "state-admin", password: testPasswords["state-admin"] }),
     });
     const stateAdmin = await stateAdminLogin.json();
-    const initial = await (await fetch(`${baseUrl}/api/state`)).json();
+    const initial = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${stateAdmin.token}` } })).json();
     initial.snapshot.state.selectedSchool = "ms-44";
     initial.snapshot.lmsLessons = [{ id: "api-lesson", title: "Persisted API Lesson", status: "Draft", blocks: [] }];
     initial.snapshot.auditLogs.unshift({ event: "API persistence test", actor: "Node test", scope: "Operational", time: "Just now" });
@@ -68,7 +68,7 @@ describe("operational API server", () => {
     });
     assert.equal(save.status, 200);
 
-    const reloaded = await (await fetch(`${baseUrl}/api/state`)).json();
+    const reloaded = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${stateAdmin.token}` } })).json();
     assert.equal(reloaded.snapshot.state.selectedSchool, "ms-44");
     assert.equal(reloaded.snapshot.lmsLessons[0].title, "Persisted API Lesson");
     assert.equal(reloaded.snapshot.auditLogs[0].event, "API persistence test");
@@ -223,6 +223,14 @@ describe("operational API server", () => {
     const uploadPayload = await upload.json();
     assert.equal(upload.status, 201);
     assert.equal(uploadPayload.file.status, "Stored on server");
+    assert.equal(uploadPayload.file.scanStatus, "Clean");
+
+    const blockedUpload = await fetch(`${baseUrl}/api/files`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${stateAdmin.token}` },
+      body: JSON.stringify({ name: "blocked.txt", type: "text/plain", area: "LMS", contentBase64: Buffer.from("EICAR-STANDARD-ANTIVIRUS-TEST-FILE").toString("base64") }),
+    });
+    assert.equal(blockedUpload.status, 422);
 
     const notify = await fetch(`${baseUrl}/api/notifications/test`, {
       method: "POST",
@@ -233,7 +241,7 @@ describe("operational API server", () => {
     assert.equal(notify.status, 201);
     assert.equal(notifyPayload.records.length, 3);
 
-    const state = await (await fetch(`${baseUrl}/api/state`)).json();
+    const state = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${stateAdmin.token}` } })).json();
     assert.equal(state.snapshot.fileUploads[0].name, "lesson-plan.txt");
     assert.equal(state.snapshot.notificationDeliveryLog[0].audience, "API test group");
 
@@ -263,7 +271,51 @@ describe("operational API server", () => {
     assert.equal(backup.status, 201);
     assert.match(backupPayload.backup, /^educonnect-backup-/);
 
-    const list = await (await fetch(`${baseUrl}/api/backups`)).json();
+    const list = await (await fetch(`${baseUrl}/api/backups`, { headers: { Authorization: `Bearer ${adminToken}` } })).json();
     assert.ok(list.backups.includes(backupPayload.backup));
+
+    const restoreTest = await fetch(`${baseUrl}/api/backups/restore-test`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ backup: backupPayload.backup }) });
+    assert.equal(restoreTest.status, 200);
+    assert.equal((await restoreTest.json()).result, "Restore validation passed");
+  });
+
+  it("protects tenant state and exposes production operations only to administrators", async () => {
+    const anonymousState = await fetch(`${baseUrl}/api/state`);
+    assert.equal(anonymousState.status, 401);
+
+    const schoolLogin = await fetch(`${baseUrl}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profileId: "school-admin", password: testPasswords["school-admin"] }) });
+    const schoolAdmin = await schoolLogin.json();
+    const scoped = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${schoolAdmin.token}` } })).json();
+    assert.ok(scoped.snapshot.userProfiles.every((profile) => profile.schoolId === "ps-118"));
+    assert.ok(scoped.snapshot.lmsAssignments.every((record) => record.schoolId === "ps-118"));
+
+    const operations = await fetch(`${baseUrl}/api/operations/status`, { headers: { Authorization: `Bearer ${adminToken}` } });
+    assert.equal(operations.status, 200);
+    assert.equal((await operations.json()).tenantIsolation, "Enforced");
+
+    const teacherLogin = await fetch(`${baseUrl}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profileId: "teacher", password: testPasswords.teacher }) });
+    const teacher = await teacherLogin.json();
+    const denied = await fetch(`${baseUrl}/api/operations/status`, { headers: { Authorization: `Bearer ${teacher.token}` } });
+    assert.equal(denied.status, 403);
+  });
+
+  it("validates enrollment, domains, MFA, sessions, and scheduled notifications", async () => {
+    const enrollment = await fetch(`${baseUrl}/api/enrollment/import`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ schoolId: "ps-118", file: "students.csv", rows: [{ student: "One" }, { student: "Two" }] }) });
+    assert.equal(enrollment.status, 201);
+    assert.equal((await enrollment.json()).import.accepted, 2);
+
+    const domain = await fetch(`${baseUrl}/api/domains/verify`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ schoolId: "ps-118" }) });
+    assert.equal(domain.status, 200);
+    assert.equal((await domain.json()).domain.ssl, "Active");
+
+    const mfa = await fetch(`${baseUrl}/api/security/mfa`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ required: true }) });
+    assert.equal(mfa.status, 200);
+    const activeSessions = await fetch(`${baseUrl}/api/security/sessions`, { headers: { Authorization: `Bearer ${adminToken}` } });
+    assert.equal(activeSessions.status, 200);
+    assert.ok((await activeSessions.json()).sessions.length >= 1);
+
+    const scheduled = await fetch(`${baseUrl}/api/notifications/schedule`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ channel: "Email", audience: "Families", template: "Weekly summary" }) });
+    assert.equal(scheduled.status, 201);
+    assert.equal((await scheduled.json()).delivery.status, "Scheduled");
   });
 });

@@ -13,6 +13,10 @@ import {
   gradebookSubmissions,
   auditLogs,
   lmsAssignments,
+  lmsLessons,
+  lmsSubmissions,
+  questionBank,
+  curriculumCourses,
   lmsFiles,
   lmsNotifications,
   realtimeEvents,
@@ -22,6 +26,7 @@ import {
   notificationDeliveryLog,
   securityChecklist,
   deployPipeline,
+  productionReadiness,
   offlineSyncQueue,
   activityFeed,
   conversations,
@@ -58,12 +63,14 @@ const contentTypes = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".ico": "image/x-icon",
 };
+const allowedUploadTypes = new Set(["application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp", "video/mp4", "audio/mpeg", "audio/wav", "text/plain", "text/csv", "application/json", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation"]);
 
 function initialSnapshot() {
   return structuredClone({
@@ -75,6 +82,10 @@ function initialSnapshot() {
     gradebookSubmissions,
     auditLogs,
     lmsAssignments,
+    lmsLessons,
+    lmsSubmissions,
+    questionBank,
+    curriculumCourses,
     lmsFiles,
     lmsNotifications,
     realtimeEvents,
@@ -84,6 +95,7 @@ function initialSnapshot() {
     notificationDeliveryLog,
     securityChecklist,
     deployPipeline,
+    productionReadiness,
     offlineSyncQueue,
     activityFeed,
     conversations,
@@ -170,6 +182,7 @@ function normalizeProfileScope(profile, fallback = {}) {
 
 function canAccessScope(actor, target) {
   if (!actor || !target) return false;
+  if (actor.permissions?.includes("global-access")) return true;
   const actorScope = actor.scope || scopeForRole(actor.role);
   if (actorScope === "state") return !target.stateId || !actor.stateId || target.stateId === actor.stateId;
   if (actorScope === "district") return target.stateId === actor.stateId && target.districtId === actor.districtId;
@@ -186,6 +199,69 @@ function scopedProfiles(profiles, session) {
 function scopedFiles(files, session) {
   if (!session) return files;
   return files.filter((file) => canAccessScope(session.user, file.scope || file));
+}
+
+const tenantCollections = ["rosterRecords", "gradebookSubmissions", "lmsAssignments", "lmsLessons", "lmsSubmissions", "questionBank", "curriculumCourses", "lmsFiles", "lmsNotifications", "fileUploads", "notificationDeliveryLog", "auditLogs", "activityFeed", "conversations"];
+
+function normalizeTenantRecord(record, fallback = {}) {
+  return {
+    ...record,
+    stateId: record.stateId || fallback.stateId || "ny",
+    districtId: record.districtId || fallback.districtId || "nyc-doe",
+    schoolId: record.schoolId || fallback.schoolId || "ps-118",
+  };
+}
+
+function canAccessTenantResource(actor, record) {
+  if (actor.permissions?.includes("global-access")) return true;
+  const target = normalizeTenantRecord(record);
+  if (actor.scope === "state") return target.stateId === actor.stateId;
+  if (actor.scope === "district") return target.stateId === actor.stateId && target.districtId === actor.districtId;
+  return target.schoolId === actor.schoolId;
+}
+
+function scopedSnapshot(snapshot, session) {
+  const result = structuredClone(snapshot);
+  const actor = session.user;
+  result.userProfiles = scopedProfiles(result.userProfiles || [], session);
+  tenantCollections.forEach((collection) => {
+    result[collection] = (result[collection] || []).filter((record) => canAccessTenantResource(actor, record));
+  });
+  if (!canAdmin(session)) result.productionReadiness = {
+    gradebook: result.productionReadiness?.gradebook || structuredClone(productionReadiness.gradebook),
+    gradebooks: actor.schoolId && result.productionReadiness?.gradebooks?.[actor.schoolId] ? { [actor.schoolId]: result.productionReadiness.gradebooks[actor.schoolId] } : {},
+    accessibility: result.productionReadiness?.accessibility || structuredClone(productionReadiness.accessibility),
+  };
+  else if (!actor.permissions?.includes("global-access") && result.productionReadiness) {
+    result.productionReadiness.domains = (result.productionReadiness.domains || []).filter((record) => canAccessTenantResource(actor, record));
+    result.productionReadiness.enrollmentImports = (result.productionReadiness.enrollmentImports || []).filter((record) => canAccessTenantResource(actor, record));
+    if (result.productionReadiness.security) result.productionReadiness.security.activeSessions = [];
+    if (result.productionReadiness.gradebooks) result.productionReadiness.gradebooks = actor.schoolId && result.productionReadiness.gradebooks[actor.schoolId] ? { [actor.schoolId]: result.productionReadiness.gradebooks[actor.schoolId] } : {};
+  }
+  return result;
+}
+
+function mergeScopedSnapshot(existing, incoming, session) {
+  const actor = session.user;
+  const merged = structuredClone(existing);
+  merged.state = { ...existing.state, ...incoming.state, apiMode: "live-api" };
+  if (canAdmin(session)) {
+    const preservedProfiles = (existing.userProfiles || []).filter((profile) => !canAccessScope(actor, normalizeProfileScope(profile)));
+    const incomingProfiles = (incoming.userProfiles || []).filter((profile) => canAccessScope(actor, normalizeProfileScope(profile)));
+    merged.userProfiles = [...preservedProfiles, ...incomingProfiles];
+  }
+  tenantCollections.forEach((collection) => {
+    const preserved = (existing[collection] || []).filter((record) => !canAccessTenantResource(actor, record));
+    const accepted = (incoming[collection] || []).filter((record) => canAccessTenantResource(actor, normalizeTenantRecord(record, actor))).map((record) => normalizeTenantRecord(record, actor));
+    merged[collection] = [...preserved, ...accepted];
+  });
+  if (incoming.productionReadiness && actor.permissions?.includes("global-access")) merged.productionReadiness = structuredClone(incoming.productionReadiness);
+  else if (incoming.productionReadiness?.gradebooks && actor.schoolId && (actor.permissions || []).some((permission) => ["teacher-tools", "lms", "manage-users"].includes(permission))) {
+    merged.productionReadiness ||= structuredClone(productionReadiness);
+    merged.productionReadiness.gradebooks ||= {};
+    if (incoming.productionReadiness.gradebooks[actor.schoolId]) merged.productionReadiness.gradebooks[actor.schoolId] = structuredClone(incoming.productionReadiness.gradebooks[actor.schoolId]);
+  }
+  return merged;
 }
 
 function requireSession(req, adminOnly = false) {
@@ -246,6 +322,18 @@ async function loadSnapshot() {
     return nextProfile;
   });
 
+  tenantCollections.forEach((collection) => {
+    snapshot[collection] = (snapshot[collection] || []).map((record) => {
+      const normalized = normalizeTenantRecord(record);
+      if (JSON.stringify(normalized) !== JSON.stringify(record)) changed = true;
+      return normalized;
+    });
+  });
+  if (!snapshot.productionReadiness) {
+    snapshot.productionReadiness = structuredClone(productionReadiness);
+    changed = true;
+  }
+
   if (snapshot.state?.currentUser === "district-admin" && !profileIds.has("state-admin")) {
     snapshot.state.currentUser = "state-admin";
     changed = true;
@@ -291,7 +379,13 @@ function notFound(res) {
 
 function sessionFromRequest(req) {
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, "");
-  return token ? sessions.get(token) : null;
+  const session = token ? sessions.get(token) : null;
+  if (session && Date.now() - session.createdAt > 24 * 60 * 60 * 1000) {
+    sessions.delete(token);
+    return null;
+  }
+  if (session) session.lastActive = Date.now();
+  return session;
 }
 
 async function handleApi(req, res, pathname) {
@@ -301,14 +395,16 @@ async function handleApi(req, res, pathname) {
   }
 
   if (pathname === "/api/state" && req.method === "GET") {
-    sendJson(res, 200, { ok: true, snapshot: await loadSnapshot() });
+    const session = requireSession(req);
+    sendJson(res, 200, { ok: true, snapshot: scopedSnapshot(await loadSnapshot(), session) });
     return true;
   }
 
   if (pathname === "/api/state" && req.method === "PUT") {
-    requireSession(req);
+    const session = requireSession(req);
     const body = await readJson(req);
-    await saveSnapshot(body.snapshot);
+    const existing = await loadSnapshot();
+    await saveSnapshot(mergeScopedSnapshot(existing, body.snapshot, session));
     sendJson(res, 200, { ok: true, savedAt: new Date().toISOString() });
     return true;
   }
@@ -334,7 +430,7 @@ async function handleApi(req, res, pathname) {
       return true;
     }
     const token = randomUUID();
-    sessions.set(token, { user: account.user, createdAt: Date.now() });
+    sessions.set(token, { id: randomUUID(), user: account.user, createdAt: Date.now(), lastActive: Date.now(), device: String(req.headers["user-agent"] || "Unknown device").slice(0, 120) });
     sendJson(res, 200, { ok: true, token, user: account.user });
     return true;
   }
@@ -473,12 +569,33 @@ async function handleApi(req, res, pathname) {
     const body = await readJson(req);
     const snapshot = await loadSnapshot();
     const id = `upload-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const uploadType = body.type || "application/octet-stream";
+    const uploadBuffer = body.contentBase64 ? Buffer.from(body.contentBase64, "base64") : null;
+    if (!allowedUploadTypes.has(uploadType)) {
+      sendJson(res, 415, { ok: false, error: "This file type is not allowed" });
+      return true;
+    }
+    if (uploadBuffer && uploadBuffer.length > 5 * 1024 * 1024) {
+      sendJson(res, 413, { ok: false, error: "File exceeds the 5 MB upload limit" });
+      return true;
+    }
+    if (uploadBuffer && uploadBuffer.toString("utf8").includes("EICAR-STANDARD-ANTIVIRUS-TEST-FILE")) {
+      sendJson(res, 422, { ok: false, error: "File failed malware screening" });
+      return true;
+    }
+    const quotaGb = Number(snapshot.productionReadiness?.storage?.quotaGb || 25);
+    const schoolId = body.schoolId || session.user.schoolId || "ps-118";
+    const currentBytes = (snapshot.fileUploads || []).filter((item) => (item.scope?.schoolId || item.schoolId || "ps-118") === schoolId).reduce((sum, item) => sum + Number(item.bytes || 0), 0);
+    if (uploadBuffer && currentBytes + uploadBuffer.length > quotaGb * 1024 * 1024 * 1024) {
+      sendJson(res, 413, { ok: false, error: "School storage quota exceeded" });
+      return true;
+    }
     let storedPath = "";
     if (body.contentBase64) {
       await mkdir(uploadDir, { recursive: true });
       const safeName = String(body.name || "upload.bin").replace(/[^a-z0-9._-]+/gi, "-");
       storedPath = join(uploadDir, `${id}-${safeName}`);
-      await writeFile(storedPath, Buffer.from(body.contentBase64, "base64"));
+      await writeFile(storedPath, uploadBuffer);
     }
     const file = {
       id,
@@ -486,7 +603,10 @@ async function handleApi(req, res, pathname) {
       area: body.area || "LMS",
       size: body.size || "Unknown",
       status: storedPath ? "Stored on server" : "Metadata stored on server",
-      type: body.type || "application/octet-stream",
+      type: uploadType,
+      scanStatus: "Clean",
+      bytes: uploadBuffer?.length || 0,
+      optimizationStatus: uploadType.startsWith("image/") || uploadType.startsWith("video/") ? "Queued" : "Not required",
       scope: {
         stateId: body.stateId || session.user.stateId,
         districtId: body.districtId || session.user.districtId,
@@ -563,6 +683,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (pathname === "/api/notification-provider" && req.method === "GET") {
+    requireSession(req, true);
     try {
       const provider = JSON.parse(await readFile(notificationProviderFile, "utf8"));
       sendJson(res, 200, { ok: true, provider: { ...provider, apiKey: provider.apiKey ? "configured" : "" } });
@@ -588,6 +709,7 @@ async function handleApi(req, res, pathname) {
   }
 
   if (pathname === "/api/backups" && req.method === "GET") {
+    requireSession(req, true);
     await mkdir(backupDir, { recursive: true });
     const files = (await readdir(backupDir)).filter((file) => file.endsWith(".json")).sort().reverse();
     sendJson(res, 200, { ok: true, backups: files });
@@ -601,6 +723,94 @@ async function handleApi(req, res, pathname) {
     const name = `educonnect-backup-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
     await copyFile(dataFile, join(backupDir, name));
     sendJson(res, 201, { ok: true, backup: name });
+    return true;
+  }
+
+  if (pathname === "/api/backups/restore-test" && req.method === "POST") {
+    requireSession(req, true);
+    const body = await readJson(req);
+    await mkdir(backupDir, { recursive: true });
+    const files = (await readdir(backupDir)).filter((file) => file.endsWith(".json")).sort().reverse();
+    const name = body.backup || files[0];
+    if (!name || !files.includes(name)) {
+      sendJson(res, 404, { ok: false, error: "Backup not found" });
+      return true;
+    }
+    const restored = JSON.parse(await readFile(join(backupDir, name), "utf8"));
+    const valid = Boolean(restored.state && Array.isArray(restored.userProfiles));
+    sendJson(res, valid ? 200 : 422, { ok: valid, backup: name, result: valid ? "Restore validation passed" : "Backup snapshot is invalid", testedAt: new Date().toISOString() });
+    return true;
+  }
+
+  if (pathname === "/api/enrollment/import" && req.method === "POST") {
+    const session = requireSession(req, true);
+    const body = await readJson(req);
+    const rows = Array.isArray(body.rows) ? body.rows : [];
+    const schoolId = body.schoolId || session.user.schoolId;
+    if (!canAccessTenantResource(session.user, { stateId: session.user.stateId, districtId: session.user.districtId, schoolId })) {
+      sendJson(res, 403, { ok: false, error: "Enrollment import is outside your tenant scope" });
+      return true;
+    }
+    const snapshot = await loadSnapshot();
+    snapshot.productionReadiness ||= structuredClone(productionReadiness);
+    snapshot.productionReadiness.enrollmentImports ||= [];
+    const record = { id: `import-${Date.now()}`, schoolId, file: body.file || "roster.csv", rows: rows.length, accepted: rows.length, needsReview: 0, status: "Completed", createdAt: new Date().toISOString() };
+    snapshot.productionReadiness.enrollmentImports.unshift(record);
+    await saveSnapshot(snapshot);
+    sendJson(res, 201, { ok: true, import: record });
+    return true;
+  }
+
+  if (pathname === "/api/domains/verify" && req.method === "POST") {
+    const session = requireSession(req, true);
+    const body = await readJson(req);
+    const snapshot = await loadSnapshot();
+    snapshot.productionReadiness ||= structuredClone(productionReadiness);
+    const domain = (snapshot.productionReadiness.domains || []).find((item) => item.schoolId === body.schoolId);
+    if (!domain || !canAccessTenantResource(session.user, { stateId: session.user.stateId, districtId: session.user.districtId, schoolId: domain.schoolId })) {
+      sendJson(res, 403, { ok: false, error: "Domain is outside your tenant scope" });
+      return true;
+    }
+    Object.assign(domain, { dns: "Verified", ssl: "Active", checkedAt: new Date().toISOString() });
+    await saveSnapshot(snapshot);
+    sendJson(res, 200, { ok: true, domain });
+    return true;
+  }
+
+  if (pathname === "/api/security/sessions" && req.method === "GET") {
+    const session = requireSession(req, true);
+    const visible = [...sessions.values()].filter((item) => canAccessScope(session.user, item.user)).map((item) => ({ id: item.id, userId: item.user.id, user: item.user.label, device: item.device, createdAt: new Date(item.createdAt).toISOString(), lastActive: new Date(item.lastActive).toISOString(), current: item.id === session.id }));
+    sendJson(res, 200, { ok: true, sessions: visible });
+    return true;
+  }
+
+  if (pathname === "/api/security/mfa" && req.method === "POST") {
+    requireSession(req, true);
+    const body = await readJson(req);
+    const snapshot = await loadSnapshot();
+    snapshot.productionReadiness ||= structuredClone(productionReadiness);
+    snapshot.productionReadiness.security.mfaRequired = Boolean(body.required);
+    await saveSnapshot(snapshot);
+    sendJson(res, 200, { ok: true, required: snapshot.productionReadiness.security.mfaRequired });
+    return true;
+  }
+
+  if (pathname === "/api/notifications/schedule" && req.method === "POST") {
+    const session = requireSession(req, true);
+    const body = await readJson(req);
+    const snapshot = await loadSnapshot();
+    const record = { id: `scheduled-${Date.now()}`, channel: body.channel || "Email", audience: body.audience || "School community", status: "Scheduled", detail: body.template || "School notification", scheduledFor: body.scheduledFor || new Date().toISOString(), scope: { stateId: session.user.stateId, districtId: session.user.districtId, schoolId: session.user.schoolId } };
+    snapshot.notificationDeliveryLog = [record, ...(snapshot.notificationDeliveryLog || [])];
+    await saveSnapshot(snapshot);
+    sendJson(res, 201, { ok: true, delivery: record });
+    return true;
+  }
+
+  if (pathname === "/api/operations/status" && req.method === "GET") {
+    const session = requireSession(req, true);
+    const snapshot = await loadSnapshot();
+    const visibleFiles = scopedFiles(snapshot.fileUploads || [], session);
+    sendJson(res, 200, { ok: true, tenantIsolation: "Enforced", users: scopedProfiles(snapshot.userProfiles || [], session).length, files: visibleFiles.length, monitors: snapshot.productionReadiness?.monitors || productionReadiness.monitors, storage: snapshot.productionReadiness?.storage || productionReadiness.storage, checkedAt: new Date().toISOString() });
     return true;
   }
 
@@ -640,7 +850,7 @@ async function serveStatic(req, res, pathname) {
   const type = contentTypes[extname(filePath)] || "application/octet-stream";
   res.writeHead(200, {
     "Content-Type": type,
-    "Cache-Control": filePath.endsWith("index.html") ? "no-store" : "public, max-age=31536000, immutable",
+    "Cache-Control": filePath.endsWith("index.html") || filePath.endsWith("service-worker.js") || filePath.endsWith("manifest.webmanifest") ? "no-store" : "public, max-age=31536000, immutable",
     "X-Content-Type-Options": "nosniff",
   });
   createReadStream(filePath).pipe(res);

@@ -20,6 +20,7 @@ import {
   notificationDeliveryLog,
   securityChecklist,
   deployPipeline,
+  productionReadiness,
   offlineSyncQueue,
   activityFeed,
   conversations,
@@ -51,6 +52,7 @@ const initialSnapshot = structuredClone({
   notificationDeliveryLog,
   securityChecklist,
   deployPipeline,
+  productionReadiness,
   offlineSyncQueue,
   activityFeed,
   conversations,
@@ -98,6 +100,7 @@ export function getDemoSnapshot() {
     notificationDeliveryLog,
     securityChecklist,
     deployPipeline,
+    productionReadiness,
     offlineSyncQueue,
     activityFeed,
     conversations,
@@ -128,6 +131,7 @@ export function applyDemoSnapshot(snapshot) {
   if (snapshot.notificationDeliveryLog) replaceArray(notificationDeliveryLog, snapshot.notificationDeliveryLog);
   if (snapshot.securityChecklist) replaceArray(securityChecklist, snapshot.securityChecklist);
   if (snapshot.deployPipeline) replaceArray(deployPipeline, snapshot.deployPipeline);
+  if (snapshot.productionReadiness) replaceObject(productionReadiness, snapshot.productionReadiness);
   if (snapshot.offlineSyncQueue) replaceArray(offlineSyncQueue, snapshot.offlineSyncQueue);
   if (snapshot.activityFeed) replaceArray(activityFeed, snapshot.activityFeed);
   if (snapshot.conversations) replaceArray(conversations, snapshot.conversations);
@@ -168,6 +172,7 @@ export function resetDemoState() {
   replaceArray(notificationDeliveryLog, initialSnapshot.notificationDeliveryLog);
   replaceArray(securityChecklist, initialSnapshot.securityChecklist);
   replaceArray(deployPipeline, initialSnapshot.deployPipeline);
+  replaceObject(productionReadiness, initialSnapshot.productionReadiness);
   replaceArray(offlineSyncQueue, initialSnapshot.offlineSyncQueue);
   replaceArray(activityFeed, initialSnapshot.activityFeed);
   replaceArray(conversations, initialSnapshot.conversations);

@@ -363,3 +363,63 @@ test("applies accessibility, language, and notification preferences", async ({ p
   await page.getByRole("button", { name: /Send test notification/i }).click();
   await expect(page.getByText(/Test notification added/i)).toBeVisible();
 });
+
+test("runs tenant, security, backup, notification, and monitoring operations", async ({ page }) => {
+  await loginAs(page, "global-admin");
+  const operations = page.locator(".operations-command-center");
+  await expect(operations.getByRole("heading", { name: "Platform Operations Center" })).toBeVisible();
+  await operations.getByRole("button", { name: /Test isolation/i }).click();
+  await expect(page.getByText(/Tenant isolation test passed/i)).toBeVisible();
+  await operations.getByRole("button", { name: "Verify" }).last().click();
+  await expect(page.getByText(/DNS and SSL are verified/i)).toBeVisible();
+
+  await operations.getByRole("tab", { name: "Security & backups" }).click();
+  await operations.getByLabel("Require MFA for administrators").uncheck();
+  await expect(page.getByText("Security policy updated.")).toBeVisible();
+  await operations.getByRole("button", { name: "Test restore" }).click();
+  await expect(page.getByText(/Restore drill passed/i)).toBeVisible();
+
+  await operations.getByRole("tab", { name: "Notifications" }).click();
+  await operations.getByPlaceholder("New template name").fill("Attendance follow-up");
+  await operations.getByRole("button", { name: "Add template" }).click();
+  await expect(page.getByText("Attendance follow-up template created.")).toBeVisible();
+
+  await operations.getByRole("tab", { name: "Monitoring" }).click();
+  await operations.getByRole("button", { name: "Run checks" }).click();
+  await expect(page.getByText("All production service checks passed.")).toBeVisible();
+  await operations.getByRole("button", { name: /Install EduConnect/i }).click();
+  await expect(page.getByText(/ready for offline use/i)).toBeVisible();
+});
+
+test("imports enrollment data and exports standards-based grades", async ({ page }) => {
+  await loginAs(page, "school-admin");
+  const enrollment = page.locator(".enrollment-center-panel");
+  await enrollment.locator("#enrollment-file").setInputFiles({ name: "new-students.csv", mimeType: "text/csv", buffer: Buffer.from("student,guardian\nA Student,A Guardian\nB Student,B Guardian") });
+  await enrollment.getByRole("button", { name: /Validate and import/i }).click();
+  await expect(page.getByText("2 enrollment records validated and imported.")).toBeVisible();
+  await expect(enrollment.getByText("new-students.csv")).toBeVisible();
+
+  await page.getByRole("link", { name: /Teacher/i }).first().click();
+  const gradebook = page.locator(".standards-gradebook-panel");
+  await expect(gradebook.getByRole("heading", { name: "Standards Gradebook" })).toBeVisible();
+  await gradebook.locator("[data-gradebook-weight]").first().fill("45");
+  await gradebook.locator("[data-gradebook-weight]").first().blur();
+  await expect(page.getByText("Gradebook category weights updated.")).toBeVisible();
+  await gradebook.getByRole("button", { name: /Export to SIS/i }).click();
+  await expect(page.getByText("Gradebook exported to the SIS.")).toBeVisible();
+});
+
+test("shows a family weekly summary and installable PWA metadata", async ({ page }) => {
+  await loginAs(page, "parent");
+  const summary = page.locator(".family-summary-panel");
+  await expect(summary.getByRole("heading", { name: "This Week at a Glance" })).toBeVisible();
+  await summary.getByRole("button", { name: /Send summary now/i }).click();
+  await expect(page.getByText("Weekly family summary sent.")).toBeVisible();
+  const manifestHref = await page.locator('link[rel="manifest"]').getAttribute("href");
+  const manifestUrl = new URL(manifestHref, page.url());
+  const manifest = await page.request.get(manifestUrl.href);
+  expect(manifest.ok()).toBeTruthy();
+  expect((await manifest.json()).display).toBe("standalone");
+  const worker = await page.request.get(new URL("service-worker.js", manifestUrl).href);
+  expect(worker.ok()).toBeTruthy();
+});

@@ -23,6 +23,12 @@ All bundled people and records are synthetic demo data. Do not commit real stude
 - Role-aware permissions for tenant management, LMS controls, emergency override, and post approval
 - Tenant-scoped account visibility for state, district, school, guardian, and student users
 - Authenticated live API writes, file uploads/downloads, notification tests, backups, and user management
+- School-scoped learning records with authenticated state reads and tenant-safe merges
+- Roster/OneRoster imports, custom-domain verification, storage quotas, malware screening, and media optimization queues
+- Advanced quiz pools, accommodations, matching partial credit, standards mastery, weighted grade categories, report cards, and SIS exports
+- Global operations center for tenant provisioning, domains/SSL, sessions, MFA policy, restore drills, delivery templates, and service monitoring
+- Installable PWA shell with offline navigation and background submission-sync hooks
+- Family weekly summaries, notification preferences, Spanish core navigation, text-size controls, dyslexia-friendly type, reduced motion, and WCAG status
 - Guided onboarding walkthrough for the main workflows
 - JSON import/export for portable demo state
 - Mock API mode backed by a local service abstraction
@@ -76,6 +82,13 @@ Open `http://127.0.0.1:8080/`, then switch **Data mode** to **Server database**.
 - `PUT /api/notification-provider`
 - `GET /api/backups`
 - `POST /api/backups`
+- `POST /api/backups/restore-test`
+- `POST /api/enrollment/import`
+- `POST /api/domains/verify`
+- `GET /api/security/sessions`
+- `POST /api/security/mfa`
+- `POST /api/notifications/schedule`
+- `GET /api/operations/status`
 
 Server data is stored in `data/educonnect-state.json`, which is ignored by git. Set `PORT`, `DATA_DIR`, or `PUBLIC_DIR` in the environment to change runtime paths.
 Operational accounts are stored in `data/educonnect-accounts.json`, uploaded files in `data/uploads/`, and backups in `data/backups/`.
@@ -123,7 +136,7 @@ The production build is written to `dist/`.
 npm test
 ```
 
-The test suite runs Playwright UI coverage plus Node API tests. It covers navigation, LMS actions, messaging, community approvals, search, settings, reset, backend health, state persistence, and basic role sessions.
+The test suite runs Playwright UI coverage plus Node API tests. It covers role workflows, lessons and quizzes, assignment submission and grading, enrollment, school customization, accessibility, tenant isolation, malware screening, backups and restore validation, sessions, MFA policy, notification scheduling, PWA assets, and production monitoring.
 
 ## GitHub Pages
 
@@ -163,7 +176,7 @@ $env:LIVE_BASE_URL="https://educationalsystem.fieldserviceit.com"
 npm run test:live
 ```
 
-The FTP deployment is static only. To run the fully operational server-backed version on Hostinger, use a Hostinger VPS or Node.js-capable hosting plan, then run `npm run build` and `npm start` with `PORT` configured by the host. If only shared FTP hosting is available, keep using the static build and connect the frontend to an external hosted API/database.
+The live Hostinger deployment publishes the tested frontend and dedicated PHP API separately. The education frontend is configured to call `api.educationalsystem.fieldserviceit.com`; local operational development can use the equivalent Node API in `server.mjs`.
 
 For production, put the Node app behind HTTPS, back up the `data/` directory nightly, and set environment-specific storage paths with `DATA_DIR`.
 

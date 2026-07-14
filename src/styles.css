@@ -3324,12 +3324,56 @@ select {
 .teaching-calendar-list time { color: var(--primary); font-weight: 900; }
 .delivery-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .delivery-summary span { padding: 7px 10px; border-radius: 999px; background: var(--surface-soft); font-size: 12px; }
+.operations-command-center { margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--line); }
+.operations-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.operations-tabs button { border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; color: var(--muted); background: #fff; font-weight: 850; }
+.operations-tabs button.active { border-color: var(--primary); color: #fff; background: var(--primary); }
+.operations-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.operations-card { min-width: 0; padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.operations-card > p { color: var(--muted); line-height: 1.55; }
+.operations-metric { display: flex; align-items: baseline; gap: 8px; margin: 12px 0; }
+.operations-metric strong { font: 800 30px/1 var(--display-font); color: var(--primary); }
+.domain-row, .session-row, .template-row, .monitor-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.domain-row div, .session-row div, .template-row div, .monitor-row div { display: grid; gap: 3px; min-width: 0; }
+.domain-row small, .session-row small, .template-row small, .monitor-row small { color: var(--muted); }
+.domain-row strong { overflow-wrap: anywhere; }
+.domain-row .text-button { flex: 0 0 auto; }
+.health-dot { width: 10px; height: 10px; border-radius: 50%; background: #9ca3af; flex: 0 0 auto; }
+.health-dot.operational { background: #0b8d68; box-shadow: 0 0 0 4px rgba(11,141,104,.12); }
+.monitor-row { justify-content: flex-start; }
+.monitor-row em { margin-left: auto; color: #08785a; font-weight: 850; }
+.enrollment-center-panel, .standards-gradebook-panel, .family-summary-panel { grid-column: span 12; }
+.enrollment-grid { display: grid; grid-template-columns: .8fr 1.2fr; gap: 18px; }
+.enrollment-import-card { display: grid; gap: 12px; align-content: start; padding: 16px; border: 1px solid var(--line); border-radius: 15px; }
+.enrollment-import-card select { padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.enrollment-history { padding: 16px; border: 1px solid var(--line); border-radius: 15px; }
+.enrollment-history article { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.enrollment-history article div { display: grid; gap: 3px; }
+.enrollment-history em { color: #9a6200; font-weight: 800; }
+.enrollment-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.enrollment-actions > span { color: var(--muted); font-size: 12px; }
+.standards-gradebook-grid { display: grid; grid-template-columns: .8fr 1.2fr .8fr; gap: 18px; }
+.standards-gradebook-grid > div { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 15px; }
+.weight-list, .standards-list, .reporting-actions { display: grid; gap: 10px; }
+.weight-list label { display: grid; grid-template-columns: 1fr 80px auto; align-items: center; gap: 8px; }
+.weight-list input { width: 100%; }
+.standards-list article { display: grid; gap: 7px; }
+.standards-list article div { display: flex; justify-content: space-between; gap: 12px; }
+.standards-list strong { overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+.family-summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.family-summary-grid article { display: grid; gap: 5px; padding: 15px; border-radius: 14px; background: var(--surface-soft); }
+.family-summary-grid strong { color: var(--primary); font: 800 26px/1 var(--display-font); }
+.family-summary-body { display: grid; grid-template-columns: 1fr 1fr auto; align-items: center; gap: 18px; margin-top: 16px; }
+.quick-assignment-list { display: grid; gap: 4px; margin-top: 12px; }
+.quick-assignment-list article { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
 
 @media (max-width: 900px) {
   .student-progress-grid, .teacher-operation-stats { grid-template-columns: repeat(2, 1fr); }
   .student-assignment-layout, .grading-inbox-row { grid-template-columns: 1fr; }
   .curriculum-create-form, .curriculum-unit-list section { grid-template-columns: 1fr; }
   .module-selector { grid-template-columns: repeat(2, 1fr); }
+  .operations-grid, .enrollment-grid, .standards-gradebook-grid, .family-summary-body { grid-template-columns: 1fr; }
+  .family-summary-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 680px) {

@@ -68,6 +68,14 @@ function replaceArray(target, next) {
   target.splice(0, target.length, ...structuredClone(next));
 }
 
+function mergeWithDefaults(defaults, next) {
+  if (Array.isArray(defaults)) return Array.isArray(next) ? structuredClone(next) : structuredClone(defaults);
+  if (!defaults || typeof defaults !== "object") return next === undefined ? defaults : next;
+  const result = {};
+  for (const key of new Set([...Object.keys(defaults), ...Object.keys(next || {})])) result[key] = mergeWithDefaults(defaults[key], next?.[key]);
+  return result;
+}
+
 export function hydrateDemoState() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
@@ -131,7 +139,7 @@ export function applyDemoSnapshot(snapshot) {
   if (snapshot.notificationDeliveryLog) replaceArray(notificationDeliveryLog, snapshot.notificationDeliveryLog);
   if (snapshot.securityChecklist) replaceArray(securityChecklist, snapshot.securityChecklist);
   if (snapshot.deployPipeline) replaceArray(deployPipeline, snapshot.deployPipeline);
-  if (snapshot.productionReadiness) replaceObject(productionReadiness, snapshot.productionReadiness);
+  if (snapshot.productionReadiness) replaceObject(productionReadiness, mergeWithDefaults(initialSnapshot.productionReadiness, snapshot.productionReadiness));
   if (snapshot.offlineSyncQueue) replaceArray(offlineSyncQueue, snapshot.offlineSyncQueue);
   if (snapshot.activityFeed) replaceArray(activityFeed, snapshot.activityFeed);
   if (snapshot.conversations) replaceArray(conversations, snapshot.conversations);

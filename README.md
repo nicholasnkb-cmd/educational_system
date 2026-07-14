@@ -27,8 +27,12 @@ All bundled people and records are synthetic demo data. Do not commit real stude
 - Roster/OneRoster imports, custom-domain verification, storage quotas, malware screening, and media optimization queues
 - Advanced quiz pools, accommodations, matching partial credit, standards mastery, weighted grade categories, report cards, and SIS exports
 - Global operations center for tenant provisioning, domains/SSL, sessions, MFA policy, restore drills, delivery templates, and service monitoring
+- Production service readiness for PostgreSQL, S3/R2, email, SMS, Web Push, authenticator MFA, ClamAV, and private alert delivery without storing provider secrets in client state
+- OneRoster 1.2, Clever, ClassLink, Google Workspace for Education, and Microsoft 365 Education integration controls with credential-aware sync states
+- Retryable background jobs, academic-year rollover, staff-only intervention plans, privacy-threshold analytics, synthetic sandbox schools, pilot tracking, and independent security-review exports
+- PostgreSQL relational schema and default-deny row-level security migrations under `database/postgres/migrations`
 - Installable PWA shell with offline navigation and background submission-sync hooks
-- Family weekly summaries, notification preferences, Spanish core navigation, text-size controls, dyslexia-friendly type, reduced motion, and WCAG status
+- Family weekly summaries, notification preferences, English, Spanish, French, and Haitian Creole chrome, text-size controls, dyslexia-friendly type, reduced motion, and WCAG status
 - Guided onboarding walkthrough for the main workflows
 - JSON import/export for portable demo state
 - Mock API mode backed by a local service abstraction
@@ -89,6 +93,7 @@ Open `http://127.0.0.1:8080/`, then switch **Data mode** to **Server database**.
 - `POST /api/security/mfa`
 - `POST /api/notifications/schedule`
 - `GET /api/operations/status`
+- `POST /api/platform/actions`
 
 Server data is stored in `data/educonnect-state.json`, which is ignored by git. Set `PORT`, `DATA_DIR`, or `PUBLIC_DIR` in the environment to change runtime paths.
 Operational accounts are stored in `data/educonnect-accounts.json`, uploaded files in `data/uploads/`, and backups in `data/backups/`.
@@ -136,7 +141,9 @@ The production build is written to `dist/`.
 npm test
 ```
 
-The test suite runs Playwright UI coverage plus Node API tests. It covers role workflows, lessons and quizzes, assignment submission and grading, enrollment, school customization, accessibility, tenant isolation, malware screening, backups and restore validation, sessions, MFA policy, notification scheduling, PWA assets, and production monitoring.
+The test suite runs Playwright UI and Axe coverage plus Node API tests. It covers role workflows, lessons and quizzes, assignment submission and grading, enrollment, school customization, accessibility, tenant and learner privacy boundaries, malware screening, backups and restore validation, sessions, MFA policy, notification scheduling, PWA assets, production monitoring, provider readiness, SIS sync, background jobs, sandboxes, rollover idempotency, interventions, and small-cohort analytics suppression. Production CI also runs Lighthouse performance, accessibility, and best-practice thresholds.
+
+See [Production operations](docs/PRODUCTION-OPERATIONS.md) for provider activation, scheduled work, recovery objectives, pilot boundaries, and the independent-review handoff.
 
 ## GitHub Pages
 

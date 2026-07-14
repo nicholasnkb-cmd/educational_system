@@ -93,7 +93,7 @@ import {
   persistDemoState,
   resetDemoState,
 } from "./storage.js";
-import { createServerBackup, getServerOperationsStatus, getServerSession, importServerEnrollment, loginServerProfile, scheduleServerNotification, sendServerNotificationTest, serverFileDownloadUrl, testServerRestore, updateServerMfa, uploadServerFile, verifyServerDomain } from "./mockApi.js";
+import { createServerBackup, getServerOperationsStatus, getServerSession, importServerEnrollment, loginServerProfile, runServerPlatformAction, scheduleServerNotification, sendServerNotificationTest, serverFileDownloadUrl, testServerRestore, updateServerMfa, uploadServerFile, verifyServerDomain } from "./mockApi.js";
 import { initializeErrorReporting } from "./errorReporting.js";
 
 initializeErrorReporting();
@@ -111,8 +111,10 @@ window.addEventListener("beforeinstallprompt", (event) => {
 });
 
 const translations = {
-  English: { settings: "Settings", notifications: "Notifications", lessons: "Lessons", assignments: "Assignments", progress: "My Progress", saveDraft: "Save draft", submit: "Submit assignment" },
-  Spanish: { settings: "Configuración", notifications: "Notificaciones", lessons: "Lecciones", assignments: "Tareas", progress: "Mi progreso", saveDraft: "Guardar borrador", submit: "Entregar tarea" },
+  English: { settings: "Settings", notifications: "Notifications", lessons: "Lessons", assignments: "Assignments", progress: "My Progress", saveDraft: "Save draft", submit: "Submit assignment", language: "Language", textSize: "Text size", email: "Email", push: "Push notifications", close: "Close", search: "Search resources...", signOut: "Sign out", noNotifications: "No notifications.", markRead: "Mark all read", sendTest: "Send test notification" },
+  Spanish: { settings: "Configuración", notifications: "Notificaciones", lessons: "Lecciones", assignments: "Tareas", progress: "Mi progreso", saveDraft: "Guardar borrador", submit: "Entregar tarea", language: "Idioma", textSize: "Tamaño del texto", email: "Correo electrónico", push: "Notificaciones push", close: "Cerrar", search: "Buscar recursos...", signOut: "Cerrar sesión", noNotifications: "No hay notificaciones.", markRead: "Marcar todo como leído", sendTest: "Enviar notificación de prueba" },
+  French: { settings: "Paramètres", notifications: "Notifications", lessons: "Leçons", assignments: "Travaux", progress: "Mes progrès", saveDraft: "Enregistrer le brouillon", submit: "Remettre le travail", language: "Langue", textSize: "Taille du texte", email: "Courriel", push: "Notifications push", close: "Fermer", search: "Rechercher des ressources...", signOut: "Se déconnecter", noNotifications: "Aucune notification.", markRead: "Tout marquer comme lu", sendTest: "Envoyer une notification test" },
+  "Haitian Creole": { settings: "Anviwònman", notifications: "Notifikasyon", lessons: "Leson", assignments: "Devwa", progress: "Pwogrè mwen", saveDraft: "Sove bouyon", submit: "Voye devwa", language: "Lang", textSize: "Gwosè tèks", email: "Imèl", push: "Notifikasyon push", close: "Fèmen", search: "Chèche resous...", signOut: "Dekonekte", noNotifications: "Pa gen notifikasyon.", markRead: "Make tout kòm li", sendTest: "Voye notifikasyon tès" },
 };
 
 function t(key) {
@@ -182,7 +184,8 @@ function initials(name) {
 }
 
 function progress(value) {
-  return `<div class="progress" aria-label="${value}% complete"><span style="width:${value}%"></span></div>`;
+  const normalized = Math.max(0, Math.min(100, Number(value) || 0));
+  return `<div class="progress" role="progressbar" aria-label="${normalized}% complete" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${normalized}"><span style="width:${normalized}%"></span></div>`;
 }
 
 function statCard(label, value, iconName, tone) {
@@ -502,11 +505,11 @@ function renderLandingPage() {
   return `
     <div class="landing-shell">
       <header class="landing-header">
-        <a class="landing-brand" href="#top" aria-label="EduConnect home"><span>EC</span><strong>EduConnect</strong></a>
+        <a class="landing-brand" href="#app-main" aria-label="EduConnect home"><span>EC</span><strong>EduConnect</strong></a>
         <nav aria-label="Public navigation"><a href="#solutions">For everyone</a><a href="#trust">For schools</a><a href="#signin">Sign in</a></nav>
         <a class="primary-action landing-header-cta" href="#signin">Open your portal</a>
       </header>
-      <main id="top">
+      <main id="app-main">
         <section class="landing-hero">
           <div class="landing-hero-copy">
             <p class="eyebrow">A brighter school day, all in one place</p>
@@ -535,7 +538,7 @@ function renderLandingPage() {
           <div class="landing-trust-grid"><article>${icon("sparkles")}<strong>Joyful learning</strong><span>Friendly activities and clear progress help students feel proud of every step.</span></article><article>${icon("users")}<strong>Closer families</strong><span>Updates and reminders make it easier for families to take part in learning.</span></article><article>${icon("graduation-cap")}<strong>Helpful for teachers</strong><span>Everyday classroom work stays organized and easy to find.</span></article></div>
         </section>
       </main>
-      <footer class="landing-footer"><a class="landing-brand" href="#top"><span>EC</span><strong>EduConnect</strong></a><p>Learning together. Growing together.</p><small>Made for students, families, teachers, and schools.</small></footer>
+      <footer class="landing-footer"><a class="landing-brand" href="#app-main"><span>EC</span><strong>EduConnect</strong></a><p>Learning together. Growing together.</p><small>Made for students, families, teachers, and schools.</small></footer>
     </div>
   `;
 }
@@ -626,6 +629,10 @@ function applyDesignFromForm() {
 }
 
 function render() {
+  const focused = document.activeElement;
+  const focusId = focused?.id || "";
+  const focusData = ["operationsTab", "testProvider", "testIntegration", "syncIntegration", "runJob", "completeIntervention"].map((key) => focused?.dataset?.[key] ? [key, focused.dataset[key]] : null).find(Boolean);
+  document.documentElement.lang = ({ English: "en", Spanish: "es", French: "fr", "Haitian Creole": "ht" })[state.language] || "en";
   if (!authenticatedProfile) {
     app.innerHTML = renderLandingPage();
     bindLandingEvents();
@@ -638,7 +645,7 @@ function render() {
   app.innerHTML = `
     <div class="app ${state.compactMode ? "compact-mode" : ""} ${state.highContrast ? "high-contrast" : ""} ${state.fontScale === "Large" ? "font-large" : state.fontScale === "Extra large" ? "font-extra-large" : ""} ${state.dyslexiaFriendly ? "dyslexia-friendly" : ""} ${state.reducedMotion ? "reduced-motion" : ""}" style="${designStyle(design)}">
       ${renderSidebar(role, design)}
-      <main class="workspace workspace-${state.role}">
+      <main id="app-main" class="workspace workspace-${state.role}">
         ${impersonatingAdminProfile ? `<section class="impersonation-banner" role="status"><span>${icon("eye")} Previewing as <strong>${escapeHtml(activeUser().label)}</strong> (${escapeHtml(activeUser().role)})</span><button type="button" data-stop-impersonating>Return to Global Admin</button></section>` : ""}
         ${renderTenantBar(school, design)}
         ${renderTopbar(role)}
@@ -661,6 +668,10 @@ function render() {
   bindEvents();
   enhanceIcons();
   persistDemoState();
+  requestAnimationFrame(() => {
+    const selector = focusId ? `#${CSS.escape(focusId)}` : focusData ? `[data-${focusData[0].replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}="${CSS.escape(focusData[1])}"]` : "";
+    if (selector) document.querySelector(selector)?.focus({ preventScroll: true });
+  });
 }
 
 function renderTour() {
@@ -686,9 +697,9 @@ function renderUtilityPanels() {
     ${state.toast ? `<div class="toast" role="status"><span>${escapeHtml(state.toast)}</span><button class="icon-button" aria-label="Dismiss message" data-dismiss-toast>${icon("x")}</button></div>` : ""}
     ${state.notificationsOpen ? `
       <aside class="utility-panel" aria-label="Notifications">
-        <div class="section-heading"><h3>${t("notifications")}</h3><button class="icon-button" aria-label="Close notifications" data-close-panel>${icon("x")}</button></div>
+        <div class="section-heading"><h3>${t("notifications")}</h3><button class="icon-button" aria-label="${t("close")} ${t("notifications")}" data-close-panel>${icon("x")}</button></div>
         <div class="utility-actions">
-          <button class="secondary-action" data-mark-notifications>${icon("check")} Mark all read</button>
+          <button class="secondary-action" data-mark-notifications>${icon("check")} ${t("markRead")}</button>
           <button class="secondary-action" data-simulate-live>${icon("refresh-cw")} Simulate live update</button>
         </div>
         ${lmsNotifications.length ? lmsNotifications.map((notice) => `
@@ -697,24 +708,24 @@ function renderUtilityPanels() {
             <div><span>${notice.title}</span><small>${notice.target} • ${notice.channel}</small></div>
             <button class="icon-button" aria-label="Dismiss ${escapeHtml(notice.title)}" data-dismiss-notification="${notice.id}">${icon("x")}</button>
           </article>
-        `).join("") : `<div class="empty-state">No notifications.</div>`}
+        `).join("") : `<div class="empty-state">${t("noNotifications")}</div>`}
       </aside>
     ` : ""}
     ${state.settingsOpen ? `
       <aside class="utility-panel" aria-label="Settings">
-        <div class="section-heading"><h3>${t("settings")}</h3><button class="icon-button" aria-label="Close settings" data-close-panel>${icon("x")}</button></div>
-        <label class="setting-field"><span>Language</span><select data-setting-select="language"><option ${state.language === "English" ? "selected" : ""}>English</option><option ${state.language === "Spanish" ? "selected" : ""}>Spanish</option></select></label>
-        <label class="setting-field"><span>Text size</span><select data-setting-select="fontScale"><option ${state.fontScale === "Normal" ? "selected" : ""}>Normal</option><option ${state.fontScale === "Large" ? "selected" : ""}>Large</option><option ${state.fontScale === "Extra large" ? "selected" : ""}>Extra large</option></select></label>
+        <div class="section-heading"><h3>${t("settings")}</h3><button class="icon-button" aria-label="${t("close")} ${t("settings")}" data-close-panel>${icon("x")}</button></div>
+        <label class="setting-field"><span>${t("language")}</span><select aria-label="${t("language")}" data-setting-select="language">${Object.keys(translations).map((language) => `<option ${state.language === language ? "selected" : ""}>${language}</option>`).join("")}</select></label>
+        <label class="setting-field"><span>${t("textSize")}</span><select aria-label="${t("textSize")}" data-setting-select="fontScale"><option ${state.fontScale === "Normal" ? "selected" : ""}>Normal</option><option ${state.fontScale === "Large" ? "selected" : ""}>Large</option><option ${state.fontScale === "Extra large" ? "selected" : ""}>Extra large</option></select></label>
         <label class="toggle-row"><input type="checkbox" data-toggle-setting="compactMode" ${state.compactMode ? "checked" : ""} /><span>Compact dashboard density</span></label>
         <label class="toggle-row"><input type="checkbox" data-toggle-setting="highContrast" ${state.highContrast ? "checked" : ""} /><span>High contrast panels</span></label>
         <label class="toggle-row"><input type="checkbox" data-toggle-setting="dyslexiaFriendly" ${state.dyslexiaFriendly ? "checked" : ""} /><span>Dyslexia-friendly type</span></label>
         <label class="toggle-row"><input type="checkbox" data-toggle-setting="reducedMotion" ${state.reducedMotion ? "checked" : ""} /><span>Reduce motion</span></label>
         <div class="notification-preferences"><strong>Notification preferences</strong>
-          <label class="toggle-row"><input type="checkbox" data-notification-preference="email" ${state.notificationPreferences.email ? "checked" : ""} /><span>Email</span></label>
+          <label class="toggle-row"><input type="checkbox" data-notification-preference="email" ${state.notificationPreferences.email ? "checked" : ""} /><span>${t("email")}</span></label>
           <label class="toggle-row"><input type="checkbox" data-notification-preference="sms" ${state.notificationPreferences.sms ? "checked" : ""} /><span>SMS</span></label>
-          <label class="toggle-row"><input type="checkbox" data-notification-preference="push" ${state.notificationPreferences.push ? "checked" : ""} /><span>Push notifications</span></label>
+          <label class="toggle-row"><input type="checkbox" data-notification-preference="push" ${state.notificationPreferences.push ? "checked" : ""} /><span>${t("push")}</span></label>
           <label class="setting-field"><span>Remind me before due dates</span><select data-notification-days><option value="1" ${state.notificationPreferences.dueDays === 1 ? "selected" : ""}>1 day</option><option value="2" ${state.notificationPreferences.dueDays === 2 ? "selected" : ""}>2 days</option><option value="7" ${state.notificationPreferences.dueDays === 7 ? "selected" : ""}>1 week</option></select></label>
-          <button class="secondary-action" type="button" data-send-preference-test>${icon("bell")} Send test notification</button>
+          <button class="secondary-action" type="button" data-send-preference-test>${icon("bell")} ${t("sendTest")}</button>
         </div>
         <button class="secondary-action" data-export-demo>${icon("download")} Export JSON File</button>
         <label class="secondary-action import-action">${icon("file-text")} Import JSON File<input type="file" id="import-demo-state" accept="application/json" /></label>
@@ -776,14 +787,14 @@ function renderTopbar(role) {
     <header class="topbar">
       <div><p class="eyebrow">${role.label} workspace</p><h2>${title}</h2></div>
       <div class="topbar-actions">
-        <label class="searchbox">${icon("search")}<input id="global-search" value="${escapeHtml(state.searchTerm)}" placeholder="Search resources..." /></label>
+        <label class="searchbox">${icon("search")}<input id="global-search" value="${escapeHtml(state.searchTerm)}" placeholder="${t("search")}" /></label>
         ${can("manage-users") && allowedRoleIds().includes("state-admin") ? `<button class="secondary-action role-controls-action" data-role-controls type="button">${icon("users")} Role controls</button>` : ""}
         ${can("manage-users") && allowedRoleIds().includes("school-admin") ? `<button class="secondary-action school-customization-action" data-school-customization type="button">${icon("settings")} School design</button>` : ""}
         <div class="account-chip"><span>${initials(activeUser().label)}</span><div><strong>${activeUser().label}</strong><small>${activeUser().role}</small></div></div>
         ${isProductionHost() ? "" : `<button class="secondary-action reset-action" data-reset-demo type="button">${icon("rotate-ccw")} Reset Demo</button>`}
         <button class="icon-button" aria-label="Notifications" data-toggle-notifications>${icon("bell")}${unreadNotifications() ? `<span class="status-dot">${unreadNotifications()}</span>` : ""}</button>
         <button class="icon-button" aria-label="Settings" data-toggle-settings>${icon("settings")}</button>
-        <button class="icon-button" aria-label="Sign out" data-sign-out>${icon("x")}</button>
+        <button class="icon-button" aria-label="${t("signOut")}" data-sign-out>${icon("x")}</button>
       </div>
     </header>
   `;
@@ -951,6 +962,41 @@ function renderSchoolCustomization() {
   `;
 }
 
+function renderInterventionCenter({ compact = false } = {}) {
+  const school = selectedSchoolRecord();
+  const interventions = productionReadiness.interventions.filter((item) => item.schoolId === school.id);
+  const watchLearners = rosterRecords.filter((record) => record.status === "Watch");
+  return `<section class="panel intervention-center-panel ${compact ? "compact-intervention-center" : ""}" aria-labelledby="intervention-center-title">
+    <div class="section-heading"><div><p class="eyebrow">Student support</p><h3 id="intervention-center-title">Intervention Center</h3></div><span>${interventions.filter((item) => item.status !== "Completed").length} active plans</span></div>
+    <p class="panel-intro">Coordinate goals, owners, review dates, and progress checks without exposing student-level details in district or state analytics.</p>
+    <div class="intervention-layout">
+      <form id="intervention-form" class="intervention-form">
+        <h4>Create a support plan</h4>
+        <label><span>Learner</span><select id="intervention-student" required>${(watchLearners.length ? watchLearners : rosterRecords).map((record) => `<option value="${record.id}">${escapeHtml(record.student)} • ${escapeHtml(record.className)}</option>`).join("")}</select></label>
+        <label><span>Support area</span><input id="intervention-area" placeholder="Reading fluency, attendance, math..." required /></label>
+        <label><span>Tier</span><select id="intervention-tier"><option>Tier 1</option><option selected>Tier 2</option><option>Tier 3</option></select></label>
+        <label><span>Plan owner</span><input id="intervention-owner" value="${escapeHtml(activeUser().label)}" required /></label>
+        <label><span>Next review</span><input id="intervention-review" type="date" required /></label>
+        <label class="span-2"><span>Goal and supports</span><textarea id="intervention-notes" placeholder="Describe the measurable goal, supports, and check-in cadence." required></textarea></label>
+        <button class="primary-action span-2" type="submit">${icon("plus")} Create support plan</button>
+      </form>
+      <div class="intervention-list" aria-label="Current intervention plans">${interventions.length ? interventions.map((item) => `<article class="intervention-card"><div><strong>${escapeHtml(item.student)}</strong><small>${escapeHtml(item.area)} • ${escapeHtml(item.tier)} • Owner: ${escapeHtml(item.owner)}</small></div><span>${escapeHtml(item.status)}</span><p>${escapeHtml(item.notes)}</p><footer><time>Review ${escapeHtml(item.nextReview)}</time>${item.status !== "Completed" ? `<button class="text-button" type="button" data-complete-intervention="${item.id}">Mark complete</button>` : ""}</footer></article>`).join("") : `<div class="empty-state">No support plans have been created for this school.</div>`}</div>
+    </div>
+  </section>`;
+}
+
+function renderSchoolSuccessCenter() {
+  const ops = productionReadiness;
+  const currentYear = ops.academicYears.find((year) => year.status === "Active") || ops.academicYears.at(-1);
+  return `<section class="panel school-success-panel" aria-labelledby="school-success-title">
+    <div class="section-heading"><div><p class="eyebrow">School continuity</p><h3 id="school-success-title">Academic Year & Privacy Center</h3></div><span>${escapeHtml(currentYear?.name || "Not configured")}</span></div>
+    <div class="school-success-grid">
+      <article class="success-card"><div class="section-heading"><h4>Academic-year rollover</h4><span>${escapeHtml(currentYear?.status || "Setup needed")}</span></div><p>Preview the next school year, then copy course structure and draft learning content while keeping prior grades and submissions archived.</p><form id="academic-rollover-form" class="stacked-form"><label><span>New school year</span><input id="rollover-name" value="2026–2027" required /></label><div class="date-pair"><label><span>Starts</span><input id="rollover-start" type="date" value="2026-08-01" required /></label><label><span>Ends</span><input id="rollover-end" type="date" value="2027-07-31" required /></label></div><label class="toggle-row"><input id="rollover-copy-lessons" type="checkbox" checked/><span>Copy courses, units, and lessons as drafts</span></label><label class="toggle-row"><input id="rollover-copy-gradebook" type="checkbox" checked/><span>Copy gradebook categories and standards</span></label><div class="inline-actions"><button class="secondary-action" type="button" data-preview-rollover>Preview rollover</button><button class="primary-action" type="submit">Create new year</button></div></form>${state.academicRolloverPreview ? `<div class="rollover-preview" role="status"><strong>Preview ready</strong><span>${escapeHtml(state.academicRolloverPreview)}</span></div>` : ""}<div class="year-history">${ops.academicYears.map((year) => `<div><strong>${escapeHtml(year.name)}</strong><span>${escapeHtml(year.status)}</span><small>${escapeHtml(year.startsOn)} to ${escapeHtml(year.endsOn)}</small></div>`).join("")}</div></article>
+      <article class="success-card"><div class="section-heading"><h4>Privacy-safe school analytics</h4><span>Minimum ${ops.analytics.privacyThreshold} learners</span></div><p>Small cohorts are suppressed automatically so dashboards do not identify individual learners.</p>${ops.analytics.metrics.map((metric) => { const suppressed = metric.status === "Suppressed" || metric.cohortSize < ops.analytics.privacyThreshold; return `<div class="analytics-row"><div><strong>${escapeHtml(metric.label)}</strong><small>${suppressed ? `Not shown—fewer than ${ops.analytics.privacyThreshold} learners` : `${metric.cohortSize} learners in cohort`}</small></div><span>${suppressed ? "—" : escapeHtml(metric.value)}</span></div>`; }).join("")}<button class="secondary-action" type="button" data-refresh-analytics>Refresh school analytics</button></article>
+    </div>
+  </section>`;
+}
+
 function renderSchoolAdmin() {
   const school = selectedSchoolRecord();
   const board = selectedCommunityBoard();
@@ -971,6 +1017,8 @@ function renderSchoolAdmin() {
       ${statCard("Pending approvals", board.pending.length, "clipboard-check", "gold")}
       ${renderSchoolCustomization()}
       ${renderEnrollmentCenter()}
+      ${renderSchoolSuccessCenter()}
+      ${renderInterventionCenter()}
       <section class="panel instance-panel">
         <div class="section-heading"><h3>Campus Tenant</h3><span>${school.status}</span></div>
         <div class="instance-card">
@@ -1372,7 +1420,7 @@ function renderProductionReadiness() {
           </div>
           <form id="onboarding-user-form" class="mini-form">
             <input id="onboarding-user-name" placeholder="Invite user name" />
-            <select id="onboarding-user-role"><option>Teacher</option><option>Parent</option><option>Student</option><option>Admin</option></select>
+            <select id="onboarding-user-role" aria-label="Invite user role"><option>Teacher</option><option>Parent</option><option>Student</option><option>Admin</option></select>
             <button class="secondary-action" type="submit">${icon("plus")} Invite</button>
           </form>
         </article>
@@ -1410,23 +1458,40 @@ function renderProductionReadiness() {
 function renderOperationalCommandCenter() {
   const ops = productionReadiness;
   const storagePercent = Math.round((ops.storage.usedGb / ops.storage.quotaGb) * 100);
+  const operationTabs = [["tenants", "Tenants & domains"], ["security", "Security & backups"], ["notifications", "Notifications"], ["services", "Connected services"], ["jobs", "Jobs & recovery"], ["monitoring", "Monitoring"], ["launch", "Launch & review"]];
+  const panelAttributes = (id) => `id="operations-panel-${id}" role="tabpanel" aria-labelledby="operations-tab-${id}"`;
   return `<div class="operations-command-center">
     <div class="section-heading"><div><p class="eyebrow">Production readiness</p><h3>Platform Operations Center</h3></div><span>${ops.monitors.every((item) => item.status === "Operational") ? "All systems operational" : "Attention required"}</span></div>
-    <div class="operations-tabs" role="tablist">${[["tenants", "Tenants & domains"], ["security", "Security & backups"], ["notifications", "Notifications"], ["monitoring", "Monitoring"]].map(([id, label]) => `<button type="button" role="tab" aria-selected="${state.activeOperationsTab === id}" class="${state.activeOperationsTab === id ? "active" : ""}" data-operations-tab="${id}">${label}</button>`).join("")}</div>
-    ${state.activeOperationsTab === "tenants" ? `<div class="operations-grid">
+    <div class="operations-tabs" role="tablist" aria-label="Platform operations">${operationTabs.map(([id, label]) => `<button type="button" role="tab" id="operations-tab-${id}" aria-controls="operations-panel-${id}" aria-selected="${state.activeOperationsTab === id}" tabindex="${state.activeOperationsTab === id ? "0" : "-1"}" class="${state.activeOperationsTab === id ? "active" : ""}" data-operations-tab="${id}">${label}</button>`).join("")}</div>
+    ${state.activeOperationsTab === "tenants" ? `<div class="operations-grid" ${panelAttributes("tenants")}>
       <article class="operations-card"><div class="section-heading"><h4>Tenant isolation</h4><span>${ops.tenantIsolation.status}</span></div><p>${ops.tenantIsolation.strategy}</p><div class="operations-metric"><strong>${tenantStates.flatMap((item) => item.districts).flatMap((item) => item.schools).length}</strong><span>school databases</span></div><button class="secondary-action" type="button" data-run-isolation-test>${icon("shield-check")} Test isolation</button></article>
       <article class="operations-card"><div class="section-heading"><h4>Tenant media storage</h4><span>${storagePercent}% used</span></div>${progress(storagePercent)}<p>${ops.storage.usedGb} GB of ${ops.storage.quotaGb} GB • file validation active • compression and thumbnails: ${ops.storage.compression}</p><button class="secondary-action" type="button" data-optimize-storage>${icon("database")} Optimize media</button></article>
       <article class="operations-card domain-operations"><div class="section-heading"><h4>Domains & SSL</h4><span>${ops.domains.filter((item) => item.ssl === "Active").length}/${ops.domains.length} active</span></div>${ops.domains.map((domain) => `<div class="domain-row"><div><strong>${escapeHtml(domain.domain)}</strong><small>${domain.dns} • SSL ${domain.ssl}</small></div><button class="text-button" type="button" data-verify-domain="${domain.schoolId}">Verify</button></div>`).join("")}</article>
       <article class="operations-card"><div class="section-heading"><h4>Plans & billing</h4><span>${ops.billing.status}</span></div><div class="operations-metric"><strong>$${ops.billing.monthlyEstimate}</strong><span>estimated monthly</span></div><p>${ops.billing.schools} schools on ${ops.billing.plan}. No premium classroom paywall.</p></article>
     </div>` : ""}
-    ${state.activeOperationsTab === "security" ? `<div class="operations-grid">
+    ${state.activeOperationsTab === "security" ? `<div class="operations-grid" ${panelAttributes("security")}>
       <article class="operations-card"><div class="section-heading"><h4>Authentication</h4><span>${ops.security.mfaRequired ? "MFA required" : "MFA optional"}</span></div><label class="toggle-row"><input type="checkbox" data-security-setting="mfaRequired" ${ops.security.mfaRequired ? "checked" : ""}/><span>Require MFA for administrators</span></label><label class="toggle-row"><input type="checkbox" data-security-setting="loginAlerts" ${ops.security.loginAlerts ? "checked" : ""}/><span>Send new-login alerts</span></label><label class="setting-field"><span>Idle session timeout</span><select data-session-timeout><option value="30" ${ops.security.sessionTimeoutMinutes === 30 ? "selected" : ""}>30 minutes</option><option value="60" ${ops.security.sessionTimeoutMinutes === 60 ? "selected" : ""}>60 minutes</option><option value="480" ${ops.security.sessionTimeoutMinutes === 480 ? "selected" : ""}>8 hours</option></select></label></article>
       <article class="operations-card"><div class="section-heading"><h4>Active sessions</h4><span>${ops.security.activeSessions.length}</span></div>${ops.security.activeSessions.map((session) => `<div class="session-row"><div><strong>${escapeHtml(session.user)}</strong><small>${escapeHtml(session.device)} • ${escapeHtml(session.location)} • ${session.lastActive}</small></div>${session.current ? `<span>Current</span>` : `<button class="text-button" data-revoke-session="${session.id}">Revoke</button>`}</div>`).join("")}</article>
-      <article class="operations-card"><div class="section-heading"><h4>Backups & recovery</h4><span>${ops.backups.encrypted ? "Encrypted" : "Review"}</span></div><p>${ops.backups.schedule} • ${ops.backups.retentionDays}-day retention</p><p>Last backup: ${ops.backups.lastBackup}<br/>Restore drill: ${ops.backups.lastRestoreTest}</p><div class="inline-actions"><button class="secondary-action" type="button" data-create-backup>Create backup</button><button class="secondary-action" type="button" data-test-restore>Test restore</button></div></article>
+      <article class="operations-card"><div class="section-heading"><h4>Backups & recovery</h4><span>${ops.backups.encrypted ? "Encrypted" : "Review"}</span></div><p>${ops.backups.schedule} • ${ops.backups.retentionDays}-day retention • RPO ${ops.backups.rpoHours}h / RTO ${ops.backups.rtoHours}h</p><p>Last backup: ${ops.backups.lastBackup}<br/>Restore drill: ${ops.backups.lastRestoreTest}<br/>Offsite copy: ${ops.backups.offsiteStatus}</p><div class="inline-actions"><button class="secondary-action" type="button" data-create-backup>Create backup</button><button class="secondary-action" type="button" data-test-restore>Test restore</button></div></article>
       <article class="operations-card"><div class="section-heading"><h4>Accessibility assurance</h4><span>${ops.accessibility.score}/100</span></div><p>${ops.accessibility.wcagTarget} • ${ops.accessibility.issues} open issues • ${ops.accessibility.languages.join(" + ")}</p><button class="secondary-action" type="button" data-run-accessibility-audit>${icon("check")} Run accessibility audit</button></article>
     </div>` : ""}
-    ${state.activeOperationsTab === "notifications" ? `<div class="operations-grid"><article class="operations-card notification-template-card"><div class="section-heading"><h4>Notification templates</h4><span>${ops.notifications.provider}</span></div>${ops.notifications.templates.map((template) => `<div class="template-row"><div><strong>${escapeHtml(template.name)}</strong><small>${template.channels.join(" + ")} • ${template.status}</small></div><button class="text-button" type="button" data-send-template="${template.id}">Send test</button></div>`).join("")}<form id="notification-template-form" class="mini-form"><input id="notification-template-name" placeholder="New template name" required/><select id="notification-template-channel"><option>Email</option><option>SMS</option><option>Push</option></select><button class="secondary-action" type="submit">Add template</button></form></article><article class="operations-card"><h4>Consent & opt-outs</h4><div class="operations-metric"><strong>${ops.notifications.optOuts}</strong><span>channel opt-outs honored</span></div><p>Emergency notices remain available while routine communications respect family preferences.</p></article></div>` : ""}
-    ${state.activeOperationsTab === "monitoring" ? `<div class="operations-grid"><article class="operations-card monitor-card"><div class="section-heading"><h4>Live service health</h4><button class="text-button" type="button" data-run-monitors>Run checks</button></div>${ops.monitors.map((monitor) => `<div class="monitor-row"><span class="health-dot ${monitor.status.toLowerCase()}"></span><div><strong>${monitor.service}</strong><small>${monitor.latency} ms • ${monitor.uptime} uptime</small></div><em>${monitor.status}</em></div>`).join("")}</article><article class="operations-card"><h4>Installable applications</h4><p>EduConnect supports installation, offline lesson access, queued submissions, and background synchronization.</p><button class="secondary-action" type="button" data-install-app>${icon("smartphone")} ${state.pwaInstalled ? "App installed" : "Install EduConnect"}</button></article></div>` : ""}
+    ${state.activeOperationsTab === "notifications" ? `<div class="operations-grid" ${panelAttributes("notifications")}><article class="operations-card notification-template-card"><div class="section-heading"><h4>Notification templates</h4><span>${ops.notifications.provider}</span></div>${ops.notifications.templates.map((template) => `<div class="template-row"><div><strong>${escapeHtml(template.name)}</strong><small>${template.channels.join(" + ")} • ${template.status}</small></div><button class="text-button" type="button" data-send-template="${template.id}">Send test</button></div>`).join("")}<form id="notification-template-form" class="mini-form"><input id="notification-template-name" placeholder="New template name" required/><select id="notification-template-channel"><option>Email</option><option>SMS</option><option>Push</option></select><button class="secondary-action" type="submit">Add template</button></form></article><article class="operations-card"><h4>Consent & opt-outs</h4><div class="operations-metric"><strong>${ops.notifications.optOuts}</strong><span>channel opt-outs honored</span></div><p>Emergency notices remain available while routine communications respect family preferences.</p></article></div>` : ""}
+    ${state.activeOperationsTab === "services" ? `<div class="operations-grid" ${panelAttributes("services")}>
+      <article class="operations-card span-full"><div class="section-heading"><div><h4>Production service providers</h4><p>Credentials stay in the deployment environment and are never saved in a browser snapshot.</p></div><span>${ops.providers.filter((item) => item.status === "Connected").length}/${ops.providers.length} connected</span></div><div class="service-readiness-grid">${ops.providers.map((provider) => `<div class="service-readiness-row"><div><strong>${escapeHtml(provider.name)}</strong><small>${escapeHtml(provider.purpose)}</small></div><span class="readiness-status">${escapeHtml(provider.status)}</span><button class="text-button" type="button" data-test-provider="${provider.id}">Test setup</button><em>${escapeHtml(provider.lastTest)}</em></div>`).join("")}</div></article>
+      <article class="operations-card span-full"><div class="section-heading"><div><h4>SIS, identity, and classroom connections</h4><p>OneRoster CSV works without credentials. Hosted connections remain inactive until their school-owned credentials are configured.</p></div><span>${ops.integrations.length} adapters</span></div><div class="integration-operations-grid">${ops.integrations.map((integration) => `<div class="integration-operation-card"><div><strong>${escapeHtml(integration.name)}</strong><small>${escapeHtml(integration.category)} • ${escapeHtml(integration.direction)}</small></div><span>${escapeHtml(integration.status)}</span><p>Last sync: ${escapeHtml(integration.lastSync)} • ${integration.records} records</p><div class="inline-actions"><button class="secondary-action" type="button" data-test-integration="${integration.id}">Test</button><button class="primary-action" type="button" data-sync-integration="${integration.id}">Sync now</button></div></div>`).join("")}</div></article>
+    </div>` : ""}
+    ${state.activeOperationsTab === "jobs" ? `<div class="operations-grid" ${panelAttributes("jobs")}>
+      <article class="operations-card span-full"><div class="section-heading"><div><h4>Background work</h4><p>Long-running media, delivery, SIS, analytics, and recovery work is queued and retryable.</p></div><span>${ops.jobs.filter((job) => job.status === "Queued").length} queued</span></div><div class="job-list">${ops.jobs.map((job) => `<div class="job-row"><div><strong>${escapeHtml(job.name)}</strong><small>${escapeHtml(job.schedule)} • Last run: ${escapeHtml(job.lastRun)}</small></div><span>${escapeHtml(job.status)}</span><div class="job-progress">${progress(job.progress)}</div><button class="text-button" type="button" data-run-job="${job.id}">Run now</button></div>`).join("")}</div></article>
+      <article class="operations-card"><div class="section-heading"><h4>Relational data platform</h4><span>${ops.dataPlatform.status}</span></div><p>${ops.dataPlatform.engine} • ${ops.dataPlatform.tenantPolicy}</p><p>${ops.dataPlatform.migration}</p><button class="secondary-action" type="button" data-test-provider="database">Test database setup</button></article>
+      <article class="operations-card"><div class="section-heading"><h4>Recovery objectives</h4><span>${ops.backups.offsiteStatus}</span></div><div class="operations-metric"><strong>${ops.backups.rtoHours}h</strong><span>restore target</span></div><p>Maximum target data loss: ${ops.backups.rpoHours} hours. Offsite copy runs after the nightly encrypted backup.</p></article>
+    </div>` : ""}
+    ${state.activeOperationsTab === "monitoring" ? `<div class="operations-grid" ${panelAttributes("monitoring")}><article class="operations-card monitor-card"><div class="section-heading"><h4>Live service health</h4><button class="text-button" type="button" data-run-monitors>Run checks</button></div>${ops.monitors.map((monitor) => `<div class="monitor-row"><span class="health-dot ${monitor.status.toLowerCase()}"></span><div><strong>${monitor.service}</strong><small>${monitor.latency} ms • ${monitor.uptime} uptime</small></div><em>${monitor.status}</em></div>`).join("")}</article><article class="operations-card"><h4>Installable applications</h4><p>EduConnect supports installation, offline lesson access, queued submissions, and background synchronization.</p><button class="secondary-action" type="button" data-install-app>${icon("smartphone")} ${state.pwaInstalled ? "App installed" : "Install EduConnect"}</button></article><article class="operations-card"><div class="section-heading"><h4>Privacy-safe analytics</h4><span>Minimum cohort ${ops.analytics.privacyThreshold}</span></div>${ops.analytics.metrics.map((metric) => `<div class="analytics-row"><div><strong>${escapeHtml(metric.label)}</strong><small>${metric.status === "Suppressed" || metric.cohortSize < ops.analytics.privacyThreshold ? `Not shown—fewer than ${ops.analytics.privacyThreshold} learners` : `${metric.cohortSize} learners`}</small></div><span>${metric.status === "Suppressed" || metric.cohortSize < ops.analytics.privacyThreshold ? "—" : escapeHtml(metric.value)}</span></div>`).join("")}<button class="secondary-action" type="button" data-refresh-analytics>Refresh aggregates</button></article><article class="operations-card"><div class="section-heading"><h4>Observability</h4><span>${ops.observability.lastIncident}</span></div><p>Structured logs, client error capture, performance tracking, and notification delivery alerts are enabled.</p><p>Alert destination: ${ops.observability.alertDestination}</p></article></div>` : ""}
+    ${state.activeOperationsTab === "launch" ? `<div class="operations-grid" ${panelAttributes("launch")}>
+      <article class="operations-card"><div class="section-heading"><h4>Safe sandbox school</h4><span>${ops.sandbox.status}</span></div><p>${escapeHtml(ops.sandbox.name)} uses synthetic content only and excludes real students, grades, messages, files, and credentials.</p>${ops.sandbox.tenantId ? `<p>Tenant: ${escapeHtml(ops.sandbox.tenantId)} • Expires ${escapeHtml(ops.sandbox.expiresOn)}</p>` : ""}<button class="primary-action" type="button" data-create-sandbox>${ops.sandbox.tenantId ? "Reset sandbox" : "Create sandbox"}</button></article>
+      <article class="operations-card"><div class="section-heading"><h4>Pilot school plan</h4><span>${ops.pilot.status}</span></div><p>${ops.pilot.dataPolicy}</p>${ops.pilot.checkpoints.map((checkpoint) => `<label class="checklist-row"><input type="checkbox" data-pilot-checkpoint="${escapeHtml(checkpoint)}" ${ops.pilot.completed.includes(checkpoint) ? "checked" : ""}/><span class="custom-check">${ops.pilot.completed.includes(checkpoint) ? icon("check") : ""}</span><span><strong>${escapeHtml(checkpoint)}</strong></span></label>`).join("")}</article>
+      <article class="operations-card"><div class="section-heading"><h4>Independent security review</h4><span>${ops.securityReview.status}</span></div><p>${escapeHtml(ops.securityReview.reviewer)}. The package includes configuration, authentication, authorization, upload, recovery, and dependency review scopes.</p><p>Last export: ${escapeHtml(ops.securityReview.lastExport)}</p><button class="secondary-action" type="button" data-export-security-review>Generate review package</button></article>
+      <article class="operations-card"><div class="section-heading"><h4>Launch boundary</h4><span>External coordination</span></div><p>Provider credentials, a participating pilot school, and an independent reviewer must be supplied by authorized people before these items can be marked complete.</p><button class="secondary-action" type="button" data-run-launch-check>Run launch check</button></article>
+    </div>` : ""}
   </div>`;
 }
 
@@ -1958,6 +2023,7 @@ function renderTeacher() {
       ${renderTeacherPlanningCalendar()}
       ${renderNotificationAutomation()}
       ${renderStandardsGradebook()}
+      ${renderInterventionCenter({ compact: true })}
       ${renderTeacherLessonStudio()}
       <section class="panel class-panel">
         <div class="section-heading">
@@ -2380,6 +2446,93 @@ function replyToStudent(student) {
   goToRole("messages", `Reply draft started for ${student}.`);
 }
 
+async function performPlatformAction(action, payload = {}, simulate = () => ({})) {
+  let result;
+  if (state.apiMode === "live-api") {
+    result = await runServerPlatformAction(action, payload);
+    if (result.snapshot) applyDemoSnapshot(result.snapshot);
+    else applyDemoSnapshot({
+      ...(result.productionReadiness ? { productionReadiness: result.productionReadiness } : {}),
+      ...(result.tenantStates ? { tenantStates: result.tenantStates } : {}),
+      ...(result.schoolDesigns ? { schoolDesigns: result.schoolDesigns } : {}),
+      ...(result.lmsLessons ? { lmsLessons: result.lmsLessons } : {}),
+      ...(result.lmsAssignments ? { lmsAssignments: result.lmsAssignments } : {}),
+      ...(result.curriculumCourses ? { curriculumCourses: result.curriculumCourses } : {}),
+    });
+  } else result = await simulate();
+  return result || {};
+}
+
+function localSandboxClone() {
+  const source = selectedSchoolRecord();
+  const district = selectedDistrictRecord();
+  const existing = district.schools.find((school) => school.id === productionReadiness.sandbox.tenantId);
+  const expiresOn = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  if (existing) {
+    Object.assign(existing, { status: "Active", expiresOn, students: 12, staff: 4, sandbox: true });
+    Object.assign(productionReadiness.sandbox, { status: "Reset with synthetic content", expiresOn, createdAt: "Just now" });
+    return { sandbox: productionReadiness.sandbox };
+  }
+  const id = `sandbox-${Date.now()}`;
+  const sandbox = {
+    ...structuredClone(source),
+    id,
+    name: productionReadiness.sandbox.name,
+    subdomain: `sandbox-${Date.now().toString().slice(-6)}`,
+    customDomain: "",
+    students: 12,
+    staff: 4,
+    status: "Active",
+    sandbox: true,
+    sandboxOf: source.id,
+    expiresOn,
+    loginMessage: "Welcome to a synthetic EduConnect training school.",
+  };
+  district.schools.push(sandbox);
+  schoolDesigns[id] = { ...structuredClone(selectedSchoolDesign()), crest: "Safe Test School", voice: "Synthetic learning and training workspace" };
+  Object.assign(productionReadiness.sandbox, { status: "Active", tenantId: id, sourceSchoolId: source.id, expiresOn, createdAt: "Just now" });
+  return { sandbox: productionReadiness.sandbox };
+}
+
+function localAcademicRollover({ name, startsOn, endsOn, copyLessons, copyGradebook }) {
+  const activeYear = productionReadiness.academicYears.find((year) => year.status === "Active");
+  const id = name.replace(/[^0-9]+/g, "-").replace(/^-|-$/g, "") || `year-${Date.now()}`;
+  const existing = productionReadiness.academicYears.find((year) => year.id === id || year.name === name);
+  if (existing) return { year: existing, idempotent: true };
+  if (activeYear) Object.assign(activeYear, { status: "Archived", archivedAt: "Just now" });
+  const nextYear = { id, name, startsOn, endsOn, status: "Active", archivedAt: "" };
+  productionReadiness.academicYears.push(nextYear);
+  if (copyLessons) {
+    const schoolId = selectedSchoolRecord().id;
+    const nextLessons = lmsLessons.filter((item) => !item.schoolId || item.schoolId === schoolId).map((item) => ({ ...structuredClone(item), id: `${item.id}-${id}`, schoolId, academicYearId: id, status: "Draft", title: `${item.title} (${name})` }));
+    const nextAssignments = lmsAssignments.filter((item) => !item.schoolId || item.schoolId === schoolId).map((item) => ({ ...structuredClone(item), id: `${item.id}-${id}`, schoolId, academicYearId: id, status: "Draft", title: `${item.title} (${name})` }));
+    lmsLessons.push(...nextLessons);
+    lmsAssignments.push(...nextAssignments);
+  }
+  if (copyGradebook) productionReadiness.gradebooks[selectedSchoolRecord().id] = structuredClone(activeSchoolGradebook());
+  return { year: nextYear, idempotent: false };
+}
+
+function downloadSecurityReviewPackage() {
+  const payload = {
+    generatedAt: new Date().toISOString(),
+    application: "EduConnect",
+    reviewStatus: productionReadiness.securityReview.status,
+    scope: productionReadiness.securityReview.scope,
+    tenantIsolation: productionReadiness.tenantIsolation,
+    security: { ...productionReadiness.security, activeSessions: [] },
+    backups: productionReadiness.backups,
+    providers: productionReadiness.providers.map(({ requirements, ...provider }) => ({ ...provider, credentialFields: requirements.length })),
+    note: "This package excludes credentials, personal data, student records, and session identifiers.",
+  };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `educonnect-security-review-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function bindLandingEvents() {
   document.querySelector("#landing-login-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -2645,8 +2798,8 @@ function bindEvents() {
           id: `delivery-${Date.now()}-${channel}`,
           channel,
           audience: "Launch test group",
-          status: "Delivered",
-          detail: `${channel} test generated from Launch Control`,
+          status: "Simulated",
+          detail: `${channel} test validated locally; external delivery requires a connected provider`,
         });
       });
     }
@@ -2658,6 +2811,198 @@ function bindEvents() {
   document.querySelectorAll("[data-operations-tab]").forEach((button) => button.addEventListener("click", () => {
     state.activeOperationsTab = button.dataset.operationsTab;
     render();
+  }));
+
+  document.querySelector("[role='tablist'][aria-label='Platform operations']")?.addEventListener("keydown", (event) => {
+    const tabs = Array.from(event.currentTarget.querySelectorAll("[role='tab']"));
+    const index = tabs.indexOf(document.activeElement);
+    if (index < 0 || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : event.key === "ArrowRight" ? (index + 1) % tabs.length : (index - 1 + tabs.length) % tabs.length;
+    state.activeOperationsTab = tabs[nextIndex].dataset.operationsTab;
+    render();
+    requestAnimationFrame(() => document.querySelector(`#operations-tab-${state.activeOperationsTab}`)?.focus());
+  });
+
+  document.querySelectorAll("[data-test-provider]").forEach((button) => button.addEventListener("click", async () => {
+    const provider = productionReadiness.providers.find((item) => item.id === button.dataset.testProvider);
+    if (!provider) return;
+    try {
+      const response = await performPlatformAction("test-provider", { providerId: provider.id }, () => {
+        provider.status = provider.requirements.length ? (provider.id === "malware" ? "Fallback active" : "Needs credentials") : "Connected";
+        provider.lastTest = provider.requirements.length ? "Deployment credentials required" : "Connected • Just now";
+        return { provider };
+      });
+      if (response.provider) Object.assign(provider, response.provider);
+      addAudit(`Tested ${provider.name} provider readiness`);
+      announce(provider.status === "Connected" ? `${provider.name} is connected.` : `${provider.name} is ready for deployment credentials.`);
+    } catch (error) { announce(error.message); }
+  }));
+
+  document.querySelectorAll("[data-test-integration]").forEach((button) => button.addEventListener("click", async () => {
+    const integration = productionReadiness.integrations.find((item) => item.id === button.dataset.testIntegration);
+    if (!integration) return;
+    try {
+      const response = await performPlatformAction("test-integration", { integrationId: integration.id, schoolId: selectedSchoolRecord().id }, () => {
+        integration.status = integration.requirements.length ? "Needs credentials" : "Ready";
+        integration.lastSync = integration.requirements.length ? "Credentials required" : "Connection test passed • Just now";
+        return { integration };
+      });
+      if (response.integration) Object.assign(integration, response.integration);
+      announce(integration.status === "Connected" || integration.status === "Ready" ? `${integration.name} is ready.` : `${integration.name} needs school-owned credentials.`);
+    } catch (error) { announce(error.message); }
+  }));
+
+  document.querySelectorAll("[data-sync-integration]").forEach((button) => button.addEventListener("click", async () => {
+    const integration = productionReadiness.integrations.find((item) => item.id === button.dataset.syncIntegration);
+    if (!integration) return;
+    try {
+      const response = await performPlatformAction("sync-integration", { integrationId: integration.id, schoolId: selectedSchoolRecord().id }, () => {
+        if (integration.requirements.length) return { blocked: true, integration };
+        Object.assign(integration, { status: "Synced", lastSync: "Just now", records: rosterRecords.length });
+        return { integration };
+      });
+      if (response.integration) Object.assign(integration, response.integration);
+      if (response.blocked || integration.status === "Needs credentials") announce(`${integration.name} sync is waiting for school-owned credentials.`);
+      else {
+        addAudit(`Completed ${integration.name} synchronization`);
+        announce(`${integration.name} synchronized successfully.`);
+      }
+    } catch (error) { announce(error.message); }
+  }));
+
+  document.querySelectorAll("[data-run-job]").forEach((button) => button.addEventListener("click", async () => {
+    const job = productionReadiness.jobs.find((item) => item.id === button.dataset.runJob);
+    if (!job) return;
+    try {
+      const response = await performPlatformAction("run-job", { jobId: job.id }, () => {
+        if (job.id === "backup-copy" && productionReadiness.backups.offsiteStatus !== "Connected") return { blocked: true, job };
+        Object.assign(job, { status: "Completed", progress: 100, lastRun: "Just now" });
+        return { job };
+      });
+      if (response.job) Object.assign(job, response.job);
+      announce(response.blocked || job.status === "Blocked" ? `${job.name} is blocked until its provider is connected.` : `${job.name} completed.`);
+    } catch (error) { announce(error.message); }
+  }));
+
+  document.querySelector("[data-create-sandbox]")?.addEventListener("click", async () => {
+    try {
+      const response = await performPlatformAction("create-sandbox", { sourceSchoolId: selectedSchoolRecord().id, name: productionReadiness.sandbox.name, expiresInDays: 30 }, localSandboxClone);
+      if (response.sandbox) Object.assign(productionReadiness.sandbox, response.sandbox);
+      addAudit("Created or reset synthetic sandbox school", selectedDistrictRecord().name);
+      announce(`${productionReadiness.sandbox.name} is ready with synthetic data only.`);
+    } catch (error) { announce(error.message); }
+  });
+
+  document.querySelectorAll("[data-pilot-checkpoint]").forEach((input) => input.addEventListener("change", async () => {
+    const checkpoint = input.dataset.pilotCheckpoint;
+    productionReadiness.pilot.completed = input.checked ? [...new Set([...productionReadiness.pilot.completed, checkpoint])] : productionReadiness.pilot.completed.filter((item) => item !== checkpoint);
+    productionReadiness.pilot.status = productionReadiness.pilot.completed.length === productionReadiness.pilot.checkpoints.length ? "Ready for outcome review" : productionReadiness.pilot.completed.length ? "In progress" : "Planning";
+    try { await performPlatformAction("update-pilot", { checkpoint, completed: input.checked }); } catch (error) { announce(error.message); return; }
+    announce("Pilot readiness checkpoint updated.");
+  }));
+
+  document.querySelector("[data-export-security-review]")?.addEventListener("click", async () => {
+    try {
+      await performPlatformAction("generate-security-review", {}, () => {
+        Object.assign(productionReadiness.securityReview, { status: "Ready for independent review", lastExport: "Just now" });
+      });
+      productionReadiness.securityReview.lastExport = "Just now";
+      downloadSecurityReviewPackage();
+      addAudit("Generated privacy-safe independent security review package");
+      announce("Security review package generated without credentials or student data.");
+    } catch (error) { announce(error.message); }
+  });
+
+  document.querySelector("[data-run-launch-check]")?.addEventListener("click", () => {
+    const pendingProviders = productionReadiness.providers.filter((item) => item.status !== "Connected" && item.id !== "malware").length;
+    const pendingPilot = productionReadiness.pilot.checkpoints.length - productionReadiness.pilot.completed.length;
+    announce(`${pendingProviders} provider setups and ${pendingPilot} pilot checkpoints still need authorized external input.`);
+  });
+
+  document.querySelectorAll("[data-refresh-analytics]").forEach((button) => button.addEventListener("click", async () => {
+    try {
+      const response = await performPlatformAction("refresh-analytics", { schoolId: selectedSchoolRecord().id }, () => {
+        const threshold = productionReadiness.analytics.privacyThreshold;
+        const learners = selectedSchoolRecord().students;
+        productionReadiness.analytics.metrics = [
+          { label: "Active learners", value: learners, cohortSize: learners, status: learners < threshold ? "Suppressed" : "Published" },
+          { label: "Assignment completion", value: `${Math.round((lmsSubmissions.filter((item) => item.status === "Submitted" || item.status === "Returned").length / Math.max(1, rosterRecords.length)) * 100)}%`, cohortSize: rosterRecords.length, status: rosterRecords.length < threshold ? "Suppressed" : "Published" },
+          { label: "Interventions on track", value: `${Math.round((productionReadiness.interventions.filter((item) => item.status === "Monitoring").length / Math.max(1, productionReadiness.interventions.length)) * 100)}%`, cohortSize: productionReadiness.interventions.length, status: productionReadiness.interventions.length < threshold ? "Suppressed" : "Published" },
+        ];
+        productionReadiness.analytics.lastRefresh = "Just now";
+        productionReadiness.analytics.suppressedGroups = productionReadiness.analytics.metrics.filter((item) => item.status === "Suppressed").length;
+        return { analytics: productionReadiness.analytics };
+      });
+      if (response.analytics) Object.assign(productionReadiness.analytics, response.analytics);
+      addAudit("Refreshed privacy-safe aggregate analytics");
+      announce("Analytics refreshed; small cohorts remain hidden.");
+    } catch (error) { announce(error.message); }
+  }));
+
+  document.querySelector("[data-preview-rollover]")?.addEventListener("click", () => {
+    const name = document.querySelector("#rollover-name")?.value.trim();
+    state.academicRolloverPreview = `${curriculumCourses.length} course shells, ${lmsLessons.length} lessons, and ${lmsAssignments.length} assignments can be copied into ${name || "the new year"}; submissions and grades will stay archived.`;
+    announce("Academic-year rollover preview is ready.");
+  });
+
+  document.querySelector("#academic-rollover-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const payload = {
+      schoolId: selectedSchoolRecord().id,
+      name: document.querySelector("#rollover-name").value.trim(),
+      startsOn: document.querySelector("#rollover-start").value,
+      endsOn: document.querySelector("#rollover-end").value,
+      copyLessons: document.querySelector("#rollover-copy-lessons").checked,
+      copyGradebook: document.querySelector("#rollover-copy-gradebook").checked,
+    };
+    try {
+      const response = await performPlatformAction("academic-year-rollover", payload, () => localAcademicRollover(payload));
+      state.academicRolloverPreview = null;
+      addAudit(`Completed academic-year rollover to ${payload.name}`, selectedSchoolRecord().name);
+      announce(response.idempotent ? `${payload.name} already exists; no records were duplicated.` : `${payload.name} was created and prior student work remains archived.`);
+    } catch (error) { announce(error.message); }
+  });
+
+  document.querySelector("#intervention-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const studentId = document.querySelector("#intervention-student").value;
+    const student = rosterRecords.find((record) => record.id === studentId);
+    const intervention = {
+      id: `intervention-${Date.now()}`,
+      schoolId: selectedSchoolRecord().id,
+      studentId,
+      student: student?.student || "Learner",
+      area: document.querySelector("#intervention-area").value.trim(),
+      tier: document.querySelector("#intervention-tier").value,
+      owner: document.querySelector("#intervention-owner").value.trim(),
+      nextReview: document.querySelector("#intervention-review").value,
+      notes: document.querySelector("#intervention-notes").value.trim(),
+      status: "Monitoring",
+    };
+    try {
+      const response = await performPlatformAction("create-intervention", { intervention }, () => {
+        productionReadiness.interventions.unshift(intervention);
+        return { intervention };
+      });
+      if (response.intervention && !productionReadiness.interventions.some((item) => item.id === response.intervention.id)) productionReadiness.interventions.unshift(response.intervention);
+      addAudit("Created a student intervention plan", selectedSchoolRecord().name);
+      announce(`Support plan created for ${intervention.student}.`);
+    } catch (error) { announce(error.message); }
+  });
+
+  document.querySelectorAll("[data-complete-intervention]").forEach((button) => button.addEventListener("click", async () => {
+    const intervention = productionReadiness.interventions.find((item) => item.id === button.dataset.completeIntervention);
+    if (!intervention) return;
+    try {
+      const response = await performPlatformAction("complete-intervention", { interventionId: intervention.id }, () => {
+        Object.assign(intervention, { status: "Completed", completedAt: "Just now" });
+        return { intervention };
+      });
+      if (response.intervention) Object.assign(intervention, response.intervention);
+      addAudit("Completed a student intervention plan", selectedSchoolRecord().name);
+      announce("Support plan marked complete.");
+    } catch (error) { announce(error.message); }
   }));
 
   document.querySelector("[data-run-isolation-test]")?.addEventListener("click", () => {
@@ -2742,8 +3087,8 @@ function bindEvents() {
     if (state.apiMode === "live-api") {
       try { await scheduleServerNotification({ channel: template.channels[0], audience: "Test recipients", template: template.name }); } catch (error) { announce(error.message); return; }
     }
-    notificationDeliveryLog.unshift({ id: `template-delivery-${Date.now()}`, channel: template.channels.join(" + "), audience: "Test recipients", status: "Delivered", detail: template.name });
-    announce(`${template.name} test delivered.`);
+    notificationDeliveryLog.unshift({ id: `template-delivery-${Date.now()}`, channel: template.channels.join(" + "), audience: "Test recipients", status: state.apiMode === "live-api" ? "Scheduled" : "Simulated", detail: template.name });
+    announce(`${template.name} test queued.`);
   }));
 
   document.querySelector("[data-run-monitors]")?.addEventListener("click", async () => {
@@ -2816,9 +3161,12 @@ function bindEvents() {
     render();
   });
 
-  document.querySelector("[data-send-weekly-summary]")?.addEventListener("click", () => {
-    notificationDeliveryLog.unshift({ id: `weekly-${Date.now()}`, channel: "Email", audience: activeUser().label, status: "Delivered", detail: "Weekly family progress summary" });
-    announce("Weekly family summary sent.");
+  document.querySelector("[data-send-weekly-summary]")?.addEventListener("click", async () => {
+    if (state.apiMode === "live-api") {
+      try { await scheduleServerNotification({ channel: "Email", audience: activeUser().label, template: "Weekly family progress summary" }); } catch (error) { announce(error.message); return; }
+    }
+    notificationDeliveryLog.unshift({ id: `weekly-${Date.now()}`, channel: "Email", audience: activeUser().label, status: state.apiMode === "live-api" ? "Scheduled" : "Simulated", detail: "Weekly family progress summary" });
+    announce("Weekly family summary queued.");
   });
 
   document.querySelectorAll("[data-security-check]").forEach((input) => {

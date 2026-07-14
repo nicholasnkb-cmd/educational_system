@@ -1,0 +1,37 @@
+name: Process education background jobs
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: education-background-jobs
+  cancel-in-progress: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    env:
+      EDU_STATE_ADMIN_PASSWORD: ${{ secrets.EDU_STATE_ADMIN_PASSWORD }}
+    steps:
+      - name: Run due operational work
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$EDU_STATE_ADMIN_PASSWORD"
+          login=$(curl --fail --silent --show-error --max-time 30 \
+            -H 'Content-Type: application/json' \
+            --data "$(jq -nc --arg p 'state-admin' --arg s "$EDU_STATE_ADMIN_PASSWORD" '{profileId:$p,password:$s}')" \
+            https://api.educationalsystem.fieldserviceit.com/api/login)
+          token=$(jq -er '.token' <<<"$login")
+          for job in notification-delivery media-optimization sis-sync analytics-rollup backup-copy; do
+            curl --fail --silent --show-error --max-time 60 \
+              -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
+              --data "$(jq -nc --arg action 'run-job' --arg jobId "$job" '{action:$action,jobId:$jobId}')" \
+              https://api.educationalsystem.fieldserviceit.com/api/platform/actions \
+              | jq -e '.ok == true' >/dev/null
+          done

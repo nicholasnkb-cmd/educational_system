@@ -166,3 +166,10 @@ export function scheduleServerNotification({ channel, audience, template, schedu
 export function getServerOperationsStatus() {
   return requestServer("/api/operations/status", { method: "GET" });
 }
+
+export function runServerPlatformAction(action, payload = {}) {
+  return requestServer("/api/platform/actions", {
+    method: "POST",
+    body: JSON.stringify({ action, ...payload }),
+  });
+}

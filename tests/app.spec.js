@@ -6,6 +6,7 @@ test.beforeEach(async ({ page }) => {
 
 async function loginAs(page, profileId = "state-admin", workspace = "") {
   await page.goto("/");
+  await expect(page).toHaveTitle(/The right school view for every person/);
   await expect(page.getByRole("heading", { name: "Learning, families, and schools—connected." })).toBeVisible();
   await page.getByLabel("School email or username").fill(profileId);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();

@@ -7,6 +7,7 @@ import {
   gradebookSubmissions,
   auditLogs,
   lmsAssignments,
+  lmsLessons,
   lmsFiles,
   lmsNotifications,
   realtimeEvents,
@@ -34,6 +35,7 @@ const initialSnapshot = structuredClone({
   gradebookSubmissions,
   auditLogs,
   lmsAssignments,
+  lmsLessons,
   lmsFiles,
   lmsNotifications,
   realtimeEvents,
@@ -77,6 +79,7 @@ export function getDemoSnapshot() {
     gradebookSubmissions,
     auditLogs,
     lmsAssignments,
+    lmsLessons,
     lmsFiles,
     lmsNotifications,
     realtimeEvents,
@@ -103,6 +106,7 @@ export function applyDemoSnapshot(snapshot) {
   if (snapshot.gradebookSubmissions) replaceArray(gradebookSubmissions, snapshot.gradebookSubmissions);
   if (snapshot.auditLogs) replaceArray(auditLogs, snapshot.auditLogs);
   if (snapshot.lmsAssignments) replaceArray(lmsAssignments, snapshot.lmsAssignments);
+  if (snapshot.lmsLessons) replaceArray(lmsLessons, snapshot.lmsLessons);
   if (snapshot.lmsFiles) replaceArray(lmsFiles, snapshot.lmsFiles);
   if (snapshot.lmsNotifications) replaceArray(lmsNotifications, snapshot.lmsNotifications);
   if (snapshot.realtimeEvents) replaceArray(realtimeEvents, snapshot.realtimeEvents);
@@ -139,6 +143,7 @@ export function resetDemoState() {
   replaceArray(gradebookSubmissions, initialSnapshot.gradebookSubmissions);
   replaceArray(auditLogs, initialSnapshot.auditLogs);
   replaceArray(lmsAssignments, initialSnapshot.lmsAssignments);
+  replaceArray(lmsLessons, initialSnapshot.lmsLessons);
   replaceArray(lmsFiles, initialSnapshot.lmsFiles);
   replaceArray(lmsNotifications, initialSnapshot.lmsNotifications);
   replaceArray(realtimeEvents, initialSnapshot.realtimeEvents);

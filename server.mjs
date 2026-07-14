@@ -1179,10 +1179,20 @@ async function handleApi(req, res, pathname) {
     requireSession(req, true);
     await ensureDataFile();
     await mkdir(backupDir, { recursive: true });
-    const name = `educonnect-backup-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-    const core = { schemaVersion: 2, createdAt: new Date().toISOString(), snapshot: await loadSnapshot(), accounts: await loadAccounts() };
+    const createdAt = new Date().toISOString();
+    const name = `educonnect-backup-${createdAt.replace(/[:.]/g, "-")}.json`;
+    const backupSnapshot = await loadSnapshot();
+    backupSnapshot.productionReadiness ||= structuredClone(productionReadiness);
+    backupSnapshot.productionReadiness.backups ||= structuredClone(productionReadiness.backups);
+    backupSnapshot.productionReadiness.backups.lastBackup = createdAt;
+    const core = { schemaVersion: 2, createdAt, snapshot: backupSnapshot, accounts: await loadAccounts() };
     const checksum = createHash("sha256").update(JSON.stringify(core)).digest("hex");
     await writeFile(join(backupDir, name), JSON.stringify({ ...core, checksum }, null, 2));
+    const currentSnapshot = await loadSnapshot();
+    currentSnapshot.productionReadiness ||= structuredClone(productionReadiness);
+    currentSnapshot.productionReadiness.backups ||= structuredClone(productionReadiness.backups);
+    currentSnapshot.productionReadiness.backups.lastBackup = createdAt;
+    await saveSnapshot(currentSnapshot);
     sendJson(res, 201, { ok: true, backup: name, schemaVersion: core.schemaVersion, checksum });
     return true;
   }
@@ -1202,7 +1212,13 @@ async function handleApi(req, res, pathname) {
     const core = restored.snapshot ? { schemaVersion: restored.schemaVersion, createdAt: restored.createdAt, snapshot: restored.snapshot, accounts: restored.accounts } : null;
     const checksumVerified = core && typeof restored.checksum === "string" ? createHash("sha256").update(JSON.stringify(core)).digest("hex") === restored.checksum : null;
     const valid = Boolean(snapshot.state && Array.isArray(snapshot.userProfiles) && (checksumVerified !== false) && (!restored.snapshot || Array.isArray(restored.accounts)));
-    sendJson(res, valid ? 200 : 422, { ok: valid, backup: name, schemaVersion: restored.schemaVersion || 1, checksumVerified, result: valid ? "Restore validation passed" : "Backup snapshot is invalid", testedAt: new Date().toISOString() });
+    const testedAt = new Date().toISOString();
+    const currentSnapshot = await loadSnapshot();
+    currentSnapshot.productionReadiness ||= structuredClone(productionReadiness);
+    currentSnapshot.productionReadiness.backups ||= structuredClone(productionReadiness.backups);
+    currentSnapshot.productionReadiness.backups.lastRestoreTest = `${valid ? "Passed" : "Failed"} • ${testedAt}`;
+    await saveSnapshot(currentSnapshot);
+    sendJson(res, valid ? 200 : 422, { ok: valid, backup: name, schemaVersion: restored.schemaVersion || 1, checksumVerified, result: valid ? "Restore validation passed" : "Backup snapshot is invalid", testedAt });
     return true;
   }
 

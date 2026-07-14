@@ -23,6 +23,10 @@ function apiBase() {
   );
 }
 
+export function serverFileDownloadUrl(fileId) {
+  return `${apiBase()}/api/files/${encodeURIComponent(fileId)}/download`;
+}
+
 function authHeaders() {
   const token = localStorage.getItem("educonnect-session-token");
   return token ? { Authorization: `Bearer ${token}` } : {};

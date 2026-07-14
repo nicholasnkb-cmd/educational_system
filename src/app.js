@@ -56,6 +56,9 @@ import {
   deadlines,
   lmsAssignments,
   lmsLessons,
+  lmsSubmissions,
+  questionBank,
+  curriculumCourses,
   lmsFiles,
   lmsAccounts,
   lmsNotifications,
@@ -89,15 +92,25 @@ import {
   persistDemoState,
   resetDemoState,
 } from "./storage.js";
-import { getServerSession, loginServerProfile, sendServerNotificationTest, uploadServerFile } from "./mockApi.js";
+import { getServerSession, loginServerProfile, sendServerNotificationTest, serverFileDownloadUrl, uploadServerFile } from "./mockApi.js";
 import { initializeErrorReporting } from "./errorReporting.js";
 
 initializeErrorReporting();
 
 const app = document.querySelector("#app");
 let authenticatedProfile = null;
+let impersonatingAdminProfile = null;
 let landingError = "";
 let landingBusy = false;
+
+const translations = {
+  English: { settings: "Settings", notifications: "Notifications", lessons: "Lessons", assignments: "Assignments", progress: "My Progress", saveDraft: "Save draft", submit: "Submit assignment" },
+  Spanish: { settings: "Configuración", notifications: "Notificaciones", lessons: "Lecciones", assignments: "Tareas", progress: "Mi progreso", saveDraft: "Guardar borrador", submit: "Entregar tarea" },
+};
+
+function t(key) {
+  return translations[state.language]?.[key] || translations.English[key] || key;
+}
 
 const tourSteps = [
   { title: "Choose a role", body: "Use the demo login panel to switch between state, district, school, teacher, parent, and student access.", role: "state-admin" },
@@ -190,7 +203,7 @@ function safeExternalUrl(value) {
 
 function lessonBlock(type, index = 0) {
   const id = `block-${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`;
-  if (type === "quiz") return { id, type, title: "Knowledge check", question: "", questionType: "Multiple choice", options: ["", "", "", ""], correctAnswer: 0, feedback: "", points: 5, required: true };
+  if (type === "quiz") return { id, type, title: "Knowledge check", question: "", questionType: "Multiple choice", options: ["", "", "", ""], pairs: [{ left: "", right: "" }, { left: "", right: "" }], correctAnswer: 0, feedback: "", points: 5, required: true, timeLimit: 0, maxAttempts: 2, randomize: false, showAnswers: true };
   if (type === "media") return { id, type, mediaType: "Video", title: "Learning media", url: "", caption: "" };
   return { id, type: "text", title: "Lesson section", body: "" };
 }
@@ -324,10 +337,35 @@ function signInProfile(profile, messagePrefix = "Signed in as") {
   setActiveRole(landing || "student");
 }
 
+function impersonateProfile(profileId) {
+  if (!can("global-access")) return;
+  const profile = userProfiles.find((item) => item.id === profileId);
+  if (!profile || profile.id === activeUser().id) return;
+  impersonatingAdminProfile = { ...authenticatedProfile };
+  state.impersonatingFrom = authenticatedProfile.id;
+  authenticatedProfile = { ...profile };
+  state.currentUser = profile.id;
+  state.toast = `Previewing the application as ${profile.label}.`;
+  addAudit(`Started role preview as ${profile.label}`, selectedSchoolRecord().name, impersonatingAdminProfile.label);
+  setActiveRole(profile.landing || allowedRoleIds(profile)[0] || "student");
+}
+
+function stopImpersonating() {
+  if (!impersonatingAdminProfile) return;
+  authenticatedProfile = impersonatingAdminProfile;
+  impersonatingAdminProfile = null;
+  state.currentUser = authenticatedProfile.id;
+  state.impersonatingFrom = "";
+  state.toast = "Returned to Global Admin.";
+  setActiveRole("state-admin");
+}
+
 function signOut() {
   const label = activeUser().label;
   localStorage.removeItem("educonnect-session-token");
   authenticatedProfile = null;
+  impersonatingAdminProfile = null;
+  state.impersonatingFrom = "";
   state.toast = "";
   state.searchTerm = "";
   landingError = "";
@@ -378,6 +416,7 @@ function setActiveRole(roleId, pushRoute = true) {
     history.pushState(null, "", `#${roleId}`);
   }
   render();
+  requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
 }
 
 function goToRole(roleId, message = "") {
@@ -554,6 +593,11 @@ function applyDesignFromForm() {
   school.plan = document.querySelector("#school-plan")?.value.trim() || school.plan;
   school.theme = document.querySelector("#school-theme")?.value.trim() || school.theme;
   school.workHours = document.querySelector("#school-work-hours")?.value.trim() || school.workHours;
+  school.customDomain = document.querySelector("#school-custom-domain")?.value.trim().toLowerCase() || "";
+  school.loginMessage = document.querySelector("#school-login-message")?.value.trim() || "Welcome to your school learning portal.";
+  school.storageQuota = Number(document.querySelector("#school-storage-quota")?.value || 25);
+  school.parentPortalEnabled = document.querySelector("#school-parent-portal")?.checked ?? true;
+  school.modules = Array.from(document.querySelectorAll("[data-school-module]:checked"), (input) => input.value);
   schoolDesigns[school.id] = {
     ...selectedSchoolDesign(),
     logo: document.querySelector("#design-logo").value.trim() || initials(school.name).slice(0, 1),
@@ -578,9 +622,10 @@ function render() {
   const school = selectedSchoolRecord();
   const design = selectedSchoolDesign();
   app.innerHTML = `
-    <div class="app ${state.compactMode ? "compact-mode" : ""} ${state.highContrast ? "high-contrast" : ""}" style="${designStyle(design)}">
+    <div class="app ${state.compactMode ? "compact-mode" : ""} ${state.highContrast ? "high-contrast" : ""} ${state.fontScale === "Large" ? "font-large" : state.fontScale === "Extra large" ? "font-extra-large" : ""} ${state.dyslexiaFriendly ? "dyslexia-friendly" : ""} ${state.reducedMotion ? "reduced-motion" : ""}" style="${designStyle(design)}">
       ${renderSidebar(role, design)}
       <main class="workspace workspace-${state.role}">
+        ${impersonatingAdminProfile ? `<section class="impersonation-banner" role="status"><span>${icon("eye")} Previewing as <strong>${escapeHtml(activeUser().label)}</strong> (${escapeHtml(activeUser().role)})</span><button type="button" data-stop-impersonating>Return to Global Admin</button></section>` : ""}
         ${renderTenantBar(school, design)}
         ${renderTopbar(role)}
         ${renderTour()}
@@ -627,7 +672,7 @@ function renderUtilityPanels() {
     ${state.toast ? `<div class="toast" role="status"><span>${escapeHtml(state.toast)}</span><button class="icon-button" aria-label="Dismiss message" data-dismiss-toast>${icon("x")}</button></div>` : ""}
     ${state.notificationsOpen ? `
       <aside class="utility-panel" aria-label="Notifications">
-        <div class="section-heading"><h3>Notifications</h3><button class="icon-button" aria-label="Close notifications" data-close-panel>${icon("x")}</button></div>
+        <div class="section-heading"><h3>${t("notifications")}</h3><button class="icon-button" aria-label="Close notifications" data-close-panel>${icon("x")}</button></div>
         <div class="utility-actions">
           <button class="secondary-action" data-mark-notifications>${icon("check")} Mark all read</button>
           <button class="secondary-action" data-simulate-live>${icon("refresh-cw")} Simulate live update</button>
@@ -643,9 +688,20 @@ function renderUtilityPanels() {
     ` : ""}
     ${state.settingsOpen ? `
       <aside class="utility-panel" aria-label="Settings">
-        <div class="section-heading"><h3>Settings</h3><button class="icon-button" aria-label="Close settings" data-close-panel>${icon("x")}</button></div>
+        <div class="section-heading"><h3>${t("settings")}</h3><button class="icon-button" aria-label="Close settings" data-close-panel>${icon("x")}</button></div>
+        <label class="setting-field"><span>Language</span><select data-setting-select="language"><option ${state.language === "English" ? "selected" : ""}>English</option><option ${state.language === "Spanish" ? "selected" : ""}>Spanish</option></select></label>
+        <label class="setting-field"><span>Text size</span><select data-setting-select="fontScale"><option ${state.fontScale === "Normal" ? "selected" : ""}>Normal</option><option ${state.fontScale === "Large" ? "selected" : ""}>Large</option><option ${state.fontScale === "Extra large" ? "selected" : ""}>Extra large</option></select></label>
         <label class="toggle-row"><input type="checkbox" data-toggle-setting="compactMode" ${state.compactMode ? "checked" : ""} /><span>Compact dashboard density</span></label>
         <label class="toggle-row"><input type="checkbox" data-toggle-setting="highContrast" ${state.highContrast ? "checked" : ""} /><span>High contrast panels</span></label>
+        <label class="toggle-row"><input type="checkbox" data-toggle-setting="dyslexiaFriendly" ${state.dyslexiaFriendly ? "checked" : ""} /><span>Dyslexia-friendly type</span></label>
+        <label class="toggle-row"><input type="checkbox" data-toggle-setting="reducedMotion" ${state.reducedMotion ? "checked" : ""} /><span>Reduce motion</span></label>
+        <div class="notification-preferences"><strong>Notification preferences</strong>
+          <label class="toggle-row"><input type="checkbox" data-notification-preference="email" ${state.notificationPreferences.email ? "checked" : ""} /><span>Email</span></label>
+          <label class="toggle-row"><input type="checkbox" data-notification-preference="sms" ${state.notificationPreferences.sms ? "checked" : ""} /><span>SMS</span></label>
+          <label class="toggle-row"><input type="checkbox" data-notification-preference="push" ${state.notificationPreferences.push ? "checked" : ""} /><span>Push notifications</span></label>
+          <label class="setting-field"><span>Remind me before due dates</span><select data-notification-days><option value="1" ${state.notificationPreferences.dueDays === 1 ? "selected" : ""}>1 day</option><option value="2" ${state.notificationPreferences.dueDays === 2 ? "selected" : ""}>2 days</option><option value="7" ${state.notificationPreferences.dueDays === 7 ? "selected" : ""}>1 week</option></select></label>
+          <button class="secondary-action" type="button" data-send-preference-test>${icon("bell")} Send test notification</button>
+        </div>
         <button class="secondary-action" data-export-demo>${icon("download")} Export JSON File</button>
         <label class="secondary-action import-action">${icon("file-text")} Import JSON File<input type="file" id="import-demo-state" accept="application/json" /></label>
       </aside>
@@ -843,7 +899,7 @@ function renderSchoolCustomization() {
         <div class="brand-preview-card school-brand-preview" style="${designStyle(design)}">
           <div class="brand-preview-top">
             ${renderSchoolLogo(design, "brand-preview-logo")}
-            <div><strong>${escapeHtml(design.crest)}</strong><span>${escapeHtml(school.subdomain)}.educonnect.local</span></div>
+            <div><strong>${escapeHtml(design.crest)}</strong><span>${escapeHtml(school.customDomain || `${school.subdomain}.educonnect.local`)}</span></div>
           </div>
           <div><span class="preview-school-type">${escapeHtml(school.category)} • ${escapeHtml(school.plan)}</span><h4>${escapeHtml(school.name)}</h4><p>${escapeHtml(design.voice)}</p></div>
           <div class="preview-color-row" aria-label="Current school colors"><span style="background:${design.primary}" title="Primary"></span><span style="background:${design.accent}" title="Accent"></span><span style="background:${design.highlight}" title="Highlight"></span><span style="background:${design.background}" title="Background"></span></div>
@@ -857,6 +913,11 @@ function renderSchoolCustomization() {
           <label><span>Plan name</span><input id="school-plan" value="${escapeHtml(school.plan)}" /></label>
           <label><span>Theme name</span><input id="school-theme" value="${escapeHtml(school.theme)}" /></label>
           <label class="span-2"><span>School work hours</span><input id="school-work-hours" value="${escapeHtml(school.workHours)}" /></label>
+          <label class="span-2"><span>Custom domain</span><input type="text" id="school-custom-domain" value="${escapeHtml(school.customDomain || "")}" placeholder="learn.yourschool.org" /></label>
+          <label class="span-2"><span>Login welcome message</span><textarea id="school-login-message" placeholder="Welcome students and families...">${escapeHtml(school.loginMessage || "Welcome to your school learning portal.")}</textarea></label>
+          <label><span>Storage quota (GB)</span><input type="number" id="school-storage-quota" min="1" max="500" value="${school.storageQuota || 25}" /></label>
+          <label class="toggle-field"><input type="checkbox" id="school-parent-portal" ${school.parentPortalEnabled !== false ? "checked" : ""} /><span>Enable family portal</span></label>
+          <fieldset class="module-selector span-2"><legend>Enabled modules</legend>${["LMS", "Assignments", "Quizzes", "Messages", "Community", "Parent portal"].map((module) => `<label><input type="checkbox" data-school-module value="${module}" ${(school.modules || ["LMS", "Assignments", "Quizzes", "Messages", "Community", "Parent portal"]).includes(module) ? "checked" : ""} /><span>${module}</span></label>`).join("")}</fieldset>
           <div class="form-section-heading span-2"><strong>Logo and voice</strong><span>Use a short mark or an image URL</span></div>
           <label><span>Logo mark</span><input id="design-logo" maxlength="3" value="${escapeHtml(design.logo)}" /></label>
           <label><span>Crest / logo name</span><input id="design-crest" value="${escapeHtml(design.crest)}" /></label>
@@ -1154,6 +1215,7 @@ function renderRoleControlCenter() {
         ${userProfiles.map((profile) => `
           <article class="user-role-card">
             <div><strong>${profile.label}</strong><small>${profile.role} • ${profile.scope || "global"} scope • lands on ${profile.landing}</small></div>
+            ${can("global-access") && profile.id !== activeUser().id ? `<button class="secondary-action impersonate-action" type="button" data-impersonate-profile="${profile.id}">${icon("eye")} Preview as this user</button>` : ""}
             <div class="permission-chip-list">
               ${permissionCatalog.map(([id, label]) => `
                 <label class="permission-chip ${profile.permissions.includes(id) ? "active" : ""}">
@@ -1399,15 +1461,21 @@ function renderLessonBlockEditor(block, index, total) {
       <div class="lesson-block-heading"><div><span class="block-type-icon">${icon("clipboard-check")}</span><div><strong>Quiz</strong><small>Auto-graded knowledge check</small></div></div>${moveControls}</div>
       <div class="lesson-block-fields">
         <label><span>Quiz title</span><input value="${escapeHtml(block.title)}" data-block-field="${block.id}:title" /></label>
-        <label><span>Question type</span><select data-block-field="${block.id}:questionType"><option ${block.questionType === "Multiple choice" ? "selected" : ""}>Multiple choice</option><option ${block.questionType === "True or false" ? "selected" : ""}>True or false</option><option ${block.questionType === "Short answer" ? "selected" : ""}>Short answer</option></select></label>
+        <label><span>Question type</span><select data-block-field="${block.id}:questionType"><option ${block.questionType === "Multiple choice" ? "selected" : ""}>Multiple choice</option><option ${block.questionType === "True or false" ? "selected" : ""}>True or false</option><option ${block.questionType === "Short answer" ? "selected" : ""}>Short answer</option><option ${block.questionType === "Fill in the blank" ? "selected" : ""}>Fill in the blank</option><option ${block.questionType === "Matching" ? "selected" : ""}>Matching</option></select></label>
         <label class="span-2"><span>Question</span><textarea data-block-field="${block.id}:question" placeholder="What should students understand?">${escapeHtml(block.question)}</textarea></label>
         <div class="quiz-option-editor span-2">
-          ${block.questionType === "Short answer"
+          ${block.questionType === "Matching"
+            ? `<div class="matching-pair-editor">${(block.pairs || []).map((pair, pairIndex) => `<label><span>Prompt ${pairIndex + 1}</span><input value="${escapeHtml(pair.left)}" data-match-pair="${block.id}:${pairIndex}:left" /></label><label><span>Match ${pairIndex + 1}</span><input value="${escapeHtml(pair.right)}" data-match-pair="${block.id}:${pairIndex}:right" /></label>`).join("")}</div>`
+            : ["Short answer", "Fill in the blank"].includes(block.questionType)
             ? `<label><span>Accepted answer</span><input aria-label="Accepted short answer" value="${escapeHtml(block.options[0] || "")}" data-quiz-option="${block.id}:0" /></label>`
             : block.options.map((option, optionIndex) => `<label class="quiz-option ${block.questionType === "True or false" && optionIndex > 1 ? "hidden-option" : ""}"><input type="radio" name="correct-${block.id}" value="${optionIndex}" data-correct-answer="${block.id}" ${Number(block.correctAnswer) === optionIndex ? "checked" : ""} /><span>Correct</span><input aria-label="Answer option ${optionIndex + 1}" value="${escapeHtml(option)}" data-quiz-option="${block.id}:${optionIndex}" /></label>`).join("")}
         </div>
         <label><span>Points</span><input type="number" min="1" max="100" value="${block.points}" data-block-field="${block.id}:points" /></label>
         <label class="toggle-field"><input type="checkbox" data-block-field="${block.id}:required" ${block.required ? "checked" : ""} /><span>Required question</span></label>
+        <label><span>Time limit (minutes)</span><input type="number" min="0" max="180" value="${block.timeLimit || 0}" data-block-field="${block.id}:timeLimit" /></label>
+        <label><span>Maximum attempts</span><input type="number" min="1" max="10" value="${block.maxAttempts || 1}" data-block-field="${block.id}:maxAttempts" /></label>
+        <label class="toggle-field"><input type="checkbox" data-block-field="${block.id}:randomize" ${block.randomize ? "checked" : ""} /><span>Randomize answer choices</span></label>
+        <label class="toggle-field"><input type="checkbox" data-block-field="${block.id}:showAnswers" ${block.showAnswers !== false ? "checked" : ""} /><span>Show feedback after submission</span></label>
         <label class="span-2"><span>Answer feedback</span><textarea data-block-field="${block.id}:feedback" placeholder="Explain the correct answer.">${escapeHtml(block.feedback)}</textarea></label>
       </div>
     </article>`;
@@ -1418,6 +1486,7 @@ function renderLessonBlockEditor(block, index, total) {
         <label><span>Media title</span><input value="${escapeHtml(block.title)}" data-block-field="${block.id}:title" /></label>
         <label><span>Media type</span><select data-block-field="${block.id}:mediaType">${["Video", "Image", "Audio", "Document", "Link"].map((type) => `<option ${block.mediaType === type ? "selected" : ""}>${type}</option>`).join("")}</select></label>
         <label class="span-2"><span>Media URL</span><input type="url" value="${escapeHtml(block.url)}" data-block-field="${block.id}:url" placeholder="https://..." /></label>
+        <label class="span-2 lesson-file-upload"><span>Or upload media</span><input type="file" data-lesson-media-upload="${block.id}" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx" /><small>${block.file ? `${escapeHtml(block.file.name)} • ${escapeHtml(block.file.status || "Ready")}` : "Images, video, audio, PDF, Word, or PowerPoint up to 5 MB"}</small></label>
         <label class="span-2"><span>Caption or instructions</span><textarea data-block-field="${block.id}:caption">${escapeHtml(block.caption)}</textarea></label>
       </div>
     </article>`;
@@ -1450,6 +1519,7 @@ function renderLessonBuilder() {
           <label class="toggle-field"><input type="checkbox" data-lesson-field="requireOrder" ${draft.requireOrder ? "checked" : ""} /><span>Require blocks in order</span></label>
         </div>
         <div class="lesson-block-toolbar"><div><strong>Lesson blocks</strong><small>Add and reorder learning content.</small></div><div class="inline-actions"><button class="secondary-action" type="button" data-add-lesson-block="text">${icon("file-text")} Content</button><button class="secondary-action" type="button" data-add-lesson-block="media">${icon("video")} Media</button><button class="secondary-action" type="button" data-add-lesson-block="quiz">${icon("clipboard-check")} Quiz</button></div></div>
+        <div class="question-bank-bar"><div><strong>Question bank</strong><small>Reuse standards-aligned questions.</small></div><select id="question-bank-select" aria-label="Question bank item">${questionBank.map((item) => `<option value="${item.id}">${escapeHtml(item.subject)} • ${escapeHtml(item.question)}</option>`).join("")}</select><button class="secondary-action" type="button" data-add-bank-question>${icon("plus")} Add question</button></div>
         <div class="lesson-block-list">${draft.blocks.map((block, index) => renderLessonBlockEditor(block, index, draft.blocks.length)).join("")}</div>
         <div class="lesson-publish-bar"><div><strong>${draft.blocks.length} blocks</strong><span>Changes are saved when you choose an action.</span></div><div class="inline-actions"><button class="secondary-action" type="submit" data-lesson-status="Draft">Save draft</button><button class="primary-action" type="submit" data-lesson-status="Published">${icon("check")} Publish lesson</button></div></div>
       </form>
@@ -1462,6 +1532,10 @@ function renderTeacherLessonStudio() {
 }
 
 function renderLessonMedia(block) {
+  if (block.file) {
+    const downloadUrl = block.file.id?.startsWith("upload-") && state.apiMode === "live-api" ? serverFileDownloadUrl(block.file.id) : block.file.dataUrl || "#";
+    return `<a class="lesson-media-link" href="${escapeHtml(downloadUrl)}" ${downloadUrl === "#" ? "" : "target=\"_blank\" rel=\"noreferrer\""}>${icon("paperclip")}<span><strong>${escapeHtml(block.file.name)}</strong><small>${escapeHtml(block.caption || block.file.type || "Lesson attachment")}</small></span>${icon("download")}</a>`;
+  }
   const url = safeExternalUrl(block.url);
   if (!url) return `<div class="lesson-media-placeholder">${icon("paperclip")}<span>Media link has not been added yet.</span></div>`;
   if (block.mediaType === "Image") return `<figure class="student-lesson-media"><img src="${url}" alt="${escapeHtml(block.caption || block.title)}" /><figcaption>${escapeHtml(block.caption)}</figcaption></figure>`;
@@ -1470,30 +1544,133 @@ function renderLessonMedia(block) {
   return `<a class="lesson-media-link" href="${url}" target="_blank" rel="noreferrer">${icon(block.mediaType === "Video" ? "play" : "paperclip")}<span><strong>${escapeHtml(block.title)}</strong><small>${escapeHtml(block.caption || `Open ${block.mediaType.toLowerCase()}`)}</small></span>${icon("chevron-right")}</a>`;
 }
 
+function renderStudentQuizAnswers(block) {
+  if (["Short answer", "Fill in the blank"].includes(block.questionType)) {
+    return `<label class="short-answer-field"><span>Your answer</span><input name="quiz-${block.id}" ${block.required ? "required" : ""} /></label>`;
+  }
+  if (block.questionType === "Matching") {
+    const pairs = (block.pairs || []).filter((pair) => pair.left.trim() && pair.right.trim());
+    const choices = block.randomize ? [...pairs].reverse() : pairs;
+    return pairs.map((pair, pairIndex) => `<label class="matching-answer"><span>${escapeHtml(pair.left)}</span><select name="quiz-${block.id}-${pairIndex}" ${block.required ? "required" : ""}><option value="">Choose a match</option>${choices.map((choice) => `<option value="${escapeHtml(choice.right)}">${escapeHtml(choice.right)}</option>`).join("")}</select></label>`).join("");
+  }
+  let choices = block.options.map((option, optionIndex) => ({ option, optionIndex })).filter(({ option }) => option.trim());
+  if (block.randomize) choices = [...choices].reverse();
+  return choices.map(({ option, optionIndex }) => `<label><input type="radio" name="quiz-${block.id}" value="${optionIndex}" ${block.required ? "required" : ""} /><span>${escapeHtml(option)}</span></label>`).join("");
+}
+
+function lessonProgressPercent(lesson) {
+  const record = state.lessonProgress?.[lesson.id] || {};
+  const completed = new Set(record.completedBlocks || []);
+  lesson.blocks.filter((block) => block.type === "quiz" && record.completed).forEach((block) => completed.add(block.id));
+  return lesson.blocks.length ? Math.round((completed.size / lesson.blocks.length) * 100) : 0;
+}
+
 function renderStudentLessons() {
   const lessons = lmsLessons.filter((lesson) => lesson.status === "Published");
   const active = lessons.find((lesson) => lesson.id === state.activeStudentLessonId) || lessons[0];
   const progressRecord = active ? state.lessonProgress?.[active.id] : null;
   return `
     <section class="panel student-lessons-panel">
-      <div class="section-heading"><div><p class="eyebrow">My classroom</p><h3>Lessons</h3></div><span>${lessons.length} available</span></div>
+      <div class="section-heading"><div><p class="eyebrow">My classroom</p><h3>${t("lessons")}</h3></div><span>${lessons.length} available</span></div>
       <div class="student-lesson-layout">
         <div class="student-lesson-list">
-          ${lessons.map((lesson) => `<button class="student-lesson-card ${active?.id === lesson.id ? "active" : ""}" type="button" data-open-student-lesson="${lesson.id}"><span>${icon("book-open")}</span><div><strong>${escapeHtml(lesson.title)}</strong><small>${escapeHtml(lesson.subject)} • ${lesson.estimatedMinutes} min • ${lesson.points} points</small></div><em>${state.lessonProgress?.[lesson.id]?.completed ? "Completed" : "Open"}</em></button>`).join("")}
+          ${lessons.map((lesson) => `<button class="student-lesson-card ${active?.id === lesson.id ? "active" : ""}" type="button" data-open-student-lesson="${lesson.id}"><span>${icon("book-open")}</span><div><strong>${escapeHtml(lesson.title)}</strong><small>${escapeHtml(lesson.subject)} • ${lesson.estimatedMinutes} min • ${lesson.points} points</small>${progress(lessonProgressPercent(lesson))}</div><em>${lessonProgressPercent(lesson)}%</em></button>`).join("")}
         </div>
         ${active ? `<article class="student-lesson-view">
-          <div class="student-lesson-hero"><span>${escapeHtml(active.subject)}</span><h4>${escapeHtml(active.title)}</h4><p>${escapeHtml(active.summary)}</p><div><small>Due ${active.dueDate || "anytime"}</small><small>${active.allowLate ? "Late work allowed" : "Firm deadline"}</small><small>${active.requireOrder ? "Complete in order" : "Flexible order"}</small></div></div>
+          <div class="student-lesson-hero"><span>${escapeHtml(active.subject)}</span><h4>${escapeHtml(active.title)}</h4><p>${escapeHtml(active.summary)}</p><div><small>Due ${active.dueDate || "anytime"}</small><small>${active.allowLate ? "Late work allowed" : "Firm deadline"}</small><small>${active.requireOrder ? "Complete in order" : "Flexible order"}</small></div><div class="student-lesson-tools"><button type="button" data-bookmark-lesson="${active.id}">${icon(state.bookmarkedLessons?.includes(active.id) ? "star" : "book-open")} ${state.bookmarkedLessons?.includes(active.id) ? "Bookmarked" : "Bookmark"}</button><button type="button" data-read-lesson="${active.id}">${icon("play")} Read aloud</button></div></div>
           <form class="student-lesson-content" data-submit-lesson="${active.id}">
             ${active.blocks.map((block, index) => {
-              if (block.type === "text") return `<section class="student-content-block"><span class="block-number">${index + 1}</span><div><h5>${escapeHtml(block.title)}</h5><p>${escapeHtml(block.body).replace(/\n/g, "<br />")}</p></div></section>`;
-              if (block.type === "media") return `<section class="student-content-block"><span class="block-number">${index + 1}</span><div><h5>${escapeHtml(block.title)}</h5>${renderLessonMedia(block)}</div></section>`;
-              return `<fieldset class="student-quiz-block"><legend><span class="block-number">${index + 1}</span><span><strong>${escapeHtml(block.title)}</strong><small>${block.points} points${block.required ? " • Required" : ""}</small></span></legend><p>${escapeHtml(block.question)}</p><div class="student-answer-list">${block.questionType === "Short answer" ? `<label class="short-answer-field"><span>Your answer</span><input name="quiz-${block.id}" ${block.required ? "required" : ""} /></label>` : block.options.map((option, optionIndex) => ({ option, optionIndex })).filter(({ option }) => option.trim()).map(({ option, optionIndex }) => `<label><input type="radio" name="quiz-${block.id}" value="${optionIndex}" ${block.required ? "required" : ""} /><span>${escapeHtml(option)}</span></label>`).join("")}</div>${progressRecord ? `<div class="quiz-feedback ${progressRecord.answers?.[block.id]?.correct ? "correct" : "incorrect"}">${progressRecord.answers?.[block.id]?.correct ? icon("check") : icon("alert-triangle")} ${escapeHtml(progressRecord.answers?.[block.id]?.correct ? block.feedback || "Correct." : "Review this question and try again.")}</div>` : ""}</fieldset>`;
+              if (block.type === "text") return `<section class="student-content-block"><span class="block-number">${index + 1}</span><div><h5>${escapeHtml(block.title)}</h5><p>${escapeHtml(block.body).replace(/\n/g, "<br />")}</p><button class="text-button" type="button" data-complete-lesson-block="${active.id}:${block.id}">${progressRecord?.completedBlocks?.includes(block.id) ? icon("check") + " Completed" : "Mark section complete"}</button></div></section>`;
+              if (block.type === "media") return `<section class="student-content-block"><span class="block-number">${index + 1}</span><div><h5>${escapeHtml(block.title)}</h5>${renderLessonMedia(block)}<button class="text-button" type="button" data-complete-lesson-block="${active.id}:${block.id}">${progressRecord?.completedBlocks?.includes(block.id) ? icon("check") + " Completed" : "Mark media complete"}</button></div></section>`;
+              return `<fieldset class="student-quiz-block"><legend><span class="block-number">${index + 1}</span><span><strong>${escapeHtml(block.title)}</strong><small>${block.points} points${block.required ? " • Required" : ""}${block.timeLimit ? ` • ${block.timeLimit} min` : ""} • ${block.maxAttempts || 1} attempt${(block.maxAttempts || 1) === 1 ? "" : "s"}</small></span></legend><p>${escapeHtml(block.question)}</p><div class="student-answer-list">${renderStudentQuizAnswers(block)}</div>${progressRecord && block.showAnswers !== false ? `<div class="quiz-feedback ${progressRecord.answers?.[block.id]?.correct ? "correct" : "incorrect"}">${progressRecord.answers?.[block.id]?.correct ? icon("check") : icon("alert-triangle")} ${escapeHtml(progressRecord.answers?.[block.id]?.correct ? block.feedback || "Correct." : "Review this question and try again.")}</div>` : ""}</fieldset>`;
             }).join("")}
-            <div class="student-lesson-submit"><div>${progressRecord ? `<strong>${progressRecord.score}%</strong><span>Latest score</span>` : `<strong>${active.points}</strong><span>points available</span>`}</div><button class="primary-action" type="submit">${icon("check")} ${progressRecord ? "Submit again" : "Complete lesson"}</button></div>
+            <label class="student-lesson-notes"><span>Private notes</span><textarea data-lesson-note="${active.id}" placeholder="Write notes or questions to revisit...">${escapeHtml(state.studentNotes?.[active.id] || "")}</textarea><button class="secondary-action" type="button" data-save-lesson-note="${active.id}">Save notes</button></label>
+            <div class="student-lesson-submit"><div>${progressRecord ? `<strong>${progressRecord.score}%</strong><span>Latest score • Attempt ${progressRecord.attempts || 1}</span>` : `<strong>${active.points}</strong><span>points available</span>`}</div><div class="inline-actions">${progressRecord?.certificate ? `<button class="secondary-action" type="button" data-download-certificate="${active.id}">${icon("award")} Certificate</button>` : ""}<button class="primary-action" type="submit">${icon("check")} ${progressRecord ? "Submit again" : "Complete lesson"}</button></div></div>
           </form>
         </article>` : `<div class="empty-state">No published lessons are available yet.</div>`}
       </div>
     </section>`;
+}
+
+function learnerProfileId() {
+  return activeUser().role === "Student" ? activeUser().id : "student";
+}
+
+function submissionFor(assignmentId, create = false) {
+  let submission = lmsSubmissions.find((item) => item.assignmentId === assignmentId && item.studentId === learnerProfileId());
+  if (!submission && create) {
+    submission = { id: `work-${assignmentId}-${Date.now()}`, assignmentId, studentId: learnerProfileId(), student: activeUser().role === "Student" ? activeUser().label : "Demo Learner", response: "", attachments: [], status: "Not started", attempt: 1, submittedAt: "", score: null, feedback: "", returnedAt: "" };
+    lmsSubmissions.unshift(submission);
+  }
+  return submission;
+}
+
+function renderStudentAssignments() {
+  const assignments = lmsAssignments.filter((item) => (item.status || "Published") === "Published");
+  const active = assignments.find((item) => item.id === state.activeAssignmentId) || assignments[0];
+  const work = active ? submissionFor(active.id) : null;
+  const missing = assignments.filter((item) => !submissionFor(item.id) || ["Not started", "Draft"].includes(submissionFor(item.id)?.status)).length;
+  return `<section class="panel student-assignments-panel">
+    <div class="section-heading"><div><p class="eyebrow">${t("assignments")}</p><h3>Submit Your Work</h3></div><span>${missing} need attention</span></div>
+    <div class="student-assignment-layout">
+      <div class="student-assignment-list">${assignments.map((assignment) => {
+        const submission = submissionFor(assignment.id);
+        return `<button type="button" class="student-assignment-card ${active?.id === assignment.id ? "active" : ""}" data-open-assignment="${assignment.id}"><span>${icon("file-text")}</span><div><strong>${escapeHtml(assignment.title)}</strong><small>${escapeHtml(assignment.className || "All classes")} • Due ${escapeHtml(assignment.dueDate || assignment.lockDate)}</small></div><em>${submission?.status || "Not started"}</em></button>`;
+      }).join("")}</div>
+      ${active ? `<form class="student-assignment-work" data-assignment-work="${active.id}">
+        <div class="assignment-detail-heading"><div><span>${escapeHtml(active.type)}</span><h4>${escapeHtml(active.title)}</h4><p>${escapeHtml(active.instructions || "Complete the assignment and submit your work.")}</p></div><strong>${active.points || 100} pts</strong></div>
+        <div class="assignment-requirements"><span>${active.allowResubmit ? "Resubmissions allowed" : "One submission"}</span><span>Up to ${active.maxAttempts || 1} attempts</span><span>${escapeHtml(active.rubric)}</span></div>
+        ${work?.status === "Returned" ? `<div class="returned-feedback"><strong>${work.score}% • Returned</strong><p>${escapeHtml(work.feedback || "Review the teacher feedback and resubmit when ready.")}</p></div>` : ""}
+        <label><span>Written response</span><textarea id="student-assignment-response" placeholder="Write or paste your response here...">${escapeHtml(work?.response || "")}</textarea></label>
+        <label class="assignment-upload"><span>Attach files</span><input type="file" data-assignment-file="${active.id}" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.txt" /><small>Up to 5 MB per file</small></label>
+        <div class="submission-attachments">${(work?.attachments || []).map((file) => `<span>${icon("paperclip")} ${escapeHtml(file.name)} <button type="button" data-remove-assignment-file="${active.id}:${file.id}" aria-label="Remove ${escapeHtml(file.name)}">${icon("x")}</button></span>`).join("") || `<small>No files attached.</small>`}</div>
+        <div class="assignment-submit-actions"><span>Attempt ${work?.attempt || 1} of ${active.maxAttempts || 1}</span><div class="inline-actions"><button class="secondary-action" type="submit" data-work-status="Draft">${t("saveDraft")}</button><button class="primary-action" type="submit" data-work-status="Submitted">${icon("send")} ${t("submit")}</button></div></div>
+      </form>` : `<div class="empty-state">No published assignments.</div>`}
+    </div>
+  </section>`;
+}
+
+function renderStudentProgressHub() {
+  const published = lmsLessons.filter((lesson) => lesson.status === "Published");
+  const completed = published.filter((lesson) => state.lessonProgress?.[lesson.id]?.completed);
+  const scores = completed.map((lesson) => state.lessonProgress[lesson.id].score);
+  const average = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0;
+  const missing = lmsAssignments.filter((assignment) => !["Submitted", "Returned"].includes(submissionFor(assignment.id)?.status)).length;
+  return `<section class="panel student-progress-hub"><div class="section-heading"><div><p class="eyebrow">Learning overview</p><h3>My Progress</h3></div><span>Resumes automatically</span></div><div class="student-progress-grid"><article><strong>${completed.length}/${published.length}</strong><span>Lessons completed</span>${progress(published.length ? Math.round((completed.length / published.length) * 100) : 0)}</article><article><strong>${average}%</strong><span>Average quiz score</span>${progress(average)}</article><article class="${missing ? "needs-attention" : ""}"><strong>${missing}</strong><span>Missing or draft assignments</span></article><article><strong>${state.bookmarkedLessons?.length || 0}</strong><span>Bookmarked lessons</span></article><article><strong>${completed.filter((lesson) => state.lessonProgress[lesson.id].certificate).length}</strong><span>Certificates earned</span></article></div></section>`;
+}
+
+function renderTeacherLearningOperations() {
+  const submitted = lmsSubmissions.filter((item) => item.status === "Submitted");
+  const returned = lmsSubmissions.filter((item) => item.status === "Returned");
+  return `<section class="panel teacher-operations-panel">
+    <div class="section-heading"><div><p class="eyebrow">Teacher command center</p><h3>Learning Operations</h3></div><span>${submitted.length} ready to grade</span></div>
+    <div class="teacher-operation-stats"><span><strong>${lmsLessons.filter((item) => item.status === "Draft").length}</strong> lesson drafts</span><span><strong>${lmsAssignments.filter((item) => item.status === "Published").length}</strong> live assignments</span><span><strong>${submitted.length}</strong> grading queue</span><span><strong>${returned.length}</strong> returned</span></div>
+    <div class="grading-inbox"><div class="section-heading"><h4>Submission Inbox</h4><span>Score, comment, return</span></div>${submitted.length ? submitted.map((submission) => {
+      const assignment = lmsAssignments.find((item) => item.id === submission.assignmentId);
+      return `<form class="grading-inbox-row" data-return-submission="${submission.id}"><div><strong>${escapeHtml(submission.student)}</strong><small>${escapeHtml(assignment?.title || submission.assignmentId)} • Attempt ${submission.attempt}</small><p>${escapeHtml(submission.response || "Attachment submission")}</p></div><label><span>Score</span><input type="number" min="0" max="100" value="${submission.score ?? ""}" required data-grade-score /></label><label><span>Feedback</span><textarea required data-grade-feedback>${escapeHtml(submission.feedback || "")}</textarea></label><button class="primary-action" type="submit">${icon("check")} Return</button></form>`;
+    }).join("") : `<div class="empty-state">No submissions are waiting for review.</div>`}</div>
+  </section>`;
+}
+
+function renderCurriculumPlanner() {
+  return `<section class="panel curriculum-planner-panel">
+    <div class="section-heading"><div><p class="eyebrow">Curriculum map</p><h3>Courses and Units</h3></div><span>${curriculumCourses.length} courses</span></div>
+    <form class="curriculum-create-form" id="course-create-form"><input id="course-title" placeholder="New course title" required /><select id="course-subject"><option>English Language Arts</option><option>Math</option><option>Science</option><option>Social Studies</option><option>Art</option><option>Technology</option></select><input id="course-grade" placeholder="Grade" required /><button class="secondary-action" type="submit">${icon("plus")} Add course</button></form>
+    <div class="curriculum-course-list">${curriculumCourses.map((course) => `<article class="curriculum-course"><div class="curriculum-course-heading"><div><span>${escapeHtml(course.subject)} • Grade ${escapeHtml(course.grade)}</span><h4>${escapeHtml(course.title)}</h4><small>${course.standards.join(" • ") || "Standards can be added"}</small></div><form data-add-unit="${course.id}"><input aria-label="New unit for ${escapeHtml(course.title)}" placeholder="New unit title" required /><button class="text-button" type="submit">${icon("plus")} Add unit</button></form></div><div class="curriculum-unit-list">${course.units.map((unit) => `<section><div><strong>${escapeHtml(unit.title)}</strong><small>${escapeHtml(unit.description || "Curriculum unit")}</small></div><span>${unit.lessonIds.length} lessons</span><span>${unit.assignmentIds.length} assignments</span><form data-link-curriculum="${course.id}:${unit.id}"><select aria-label="Content to add to ${escapeHtml(unit.title)}"><optgroup label="Lessons">${lmsLessons.map((lesson) => `<option value="lesson:${lesson.id}">${escapeHtml(lesson.title)}</option>`).join("")}</optgroup><optgroup label="Assignments">${lmsAssignments.map((assignment) => `<option value="assignment:${assignment.id}">${escapeHtml(assignment.title)}</option>`).join("")}</optgroup></select><button class="text-button" type="submit">Link content</button></form></section>`).join("")}</div></article>`).join("")}</div>
+  </section>`;
+}
+
+function renderTeacherPlanningCalendar() {
+  const items = [
+    ...lmsLessons.filter((item) => item.dueDate).map((item) => ({ title: item.title, date: item.dueDate, kind: "Lesson", status: item.status })),
+    ...lmsAssignments.filter((item) => item.dueDate).map((item) => ({ title: item.title, date: item.dueDate, kind: "Assignment", status: item.status })),
+  ].sort((a, b) => a.date.localeCompare(b.date));
+  return `<section class="panel teacher-calendar-panel"><div class="section-heading"><div><p class="eyebrow">Instruction plan</p><h3>Teaching Calendar</h3></div><span>${items.length} scheduled</span></div><div class="teaching-calendar-list">${items.map((item) => `<article><time>${escapeHtml(item.date)}</time><div><strong>${escapeHtml(item.title)}</strong><small>${item.kind} • ${item.status}</small></div></article>`).join("") || `<div class="empty-state">Add a due date to a lesson or assignment to place it here.</div>`}</div></section>`;
+}
+
+function renderNotificationAutomation() {
+  const channels = Object.entries(state.notificationPreferences).filter(([key, value]) => ["email", "sms", "push"].includes(key) && value).map(([key]) => key.toUpperCase());
+  return `<section class="panel notification-automation-panel"><div class="section-heading"><div><p class="eyebrow">Family communication</p><h3>Automated Reminders</h3></div><span>${channels.join(" + ") || "Dashboard only"}</span></div><p>Due-date reminders are scheduled ${state.notificationPreferences.dueDays} day${state.notificationPreferences.dueDays === 1 ? "" : "s"} ahead using each person's preferences.</p><button class="secondary-action" type="button" data-send-class-reminder>${icon("send")} Send class reminder now</button><div class="delivery-summary">${notificationDeliveryLog.slice(0, 3).map((item) => `<span><strong>${escapeHtml(item.channel)}</strong> ${escapeHtml(item.status)}</span>`).join("")}</div></section>`;
 }
 
 function renderAdvancedLms() {
@@ -1635,6 +1812,8 @@ function renderStudent() {
       </div>
       ${statCard("Daily streak", "5 days", "trending-up", "blue")}
       ${statCard("Books read", "12", "book-open", "teal")}
+      ${renderStudentProgressHub()}
+      ${renderStudentAssignments()}
       ${renderStudentLessons()}
       <section class="panel missions-panel">
         <div class="section-heading"><div><p class="eyebrow">Today</p><h3>My Missions</h3></div><button class="text-button" data-action="All available missions are already shown for this learner.">See all ${icon("chevron-right")}</button></div>
@@ -1714,6 +1893,9 @@ function renderTeacher() {
       ${statCard("Average grade", school.avgGrade, "trending-up", "blue")}
       ${statCard("Attendance", school.attendance, "calendar-days", "teal")}
       ${statCard("Messages", school.messages, "mail", "gold")}
+      ${renderTeacherLearningOperations()}
+      ${renderTeacherPlanningCalendar()}
+      ${renderNotificationAutomation()}
       ${renderTeacherLessonStudio()}
       <section class="panel class-panel">
         <div class="section-heading">
@@ -1728,14 +1910,20 @@ function renderTeacher() {
           <label><span>Title</span><input id="assignment-title" placeholder="Example: Reading Checkpoint" required /></label>
           <label><span>Class</span><select id="assignment-class">${teacherClasses.map((item) => `<option>${item.name}</option>`).join("")}</select></label>
           <label><span>Type</span><select id="assignment-type"><option>Automated quiz</option><option>Writing task</option><option>Project</option><option>Reading response</option></select></label>
-          <label><span>Lock date</span><input id="assignment-lock" value="Next Friday, 8:00 PM" /></label>
+          <label><span>Due date</span><input type="date" id="assignment-due" value="2026-10-30" /></label>
+          <label class="span-2"><span>Instructions</span><textarea id="assignment-instructions" placeholder="What should students submit?"></textarea></label>
+          <label><span>Points</span><input type="number" id="assignment-points" min="1" max="1000" value="100" /></label>
+          <label><span>Maximum attempts</span><input type="number" id="assignment-attempts" min="1" max="10" value="2" /></label>
+          <label class="toggle-field span-2"><input type="checkbox" id="assignment-resubmit" checked /><span>Allow resubmissions after feedback</span></label>
           <button class="primary-action" type="submit" ${permissionAttrs("teacher-tools", "Only teachers and administrators can create assignments.")}>${icon("plus")} Add Assignment</button>
         </form>
+        <div class="quick-assignment-list">${lmsAssignments.slice(0, 5).map((assignment) => `<article><strong>${escapeHtml(assignment.title)}</strong><span>${escapeHtml(assignment.className || "All classes")} • ${assignment.status || "Published"}</span></article>`).join("")}</div>
       </section>
       <section class="panel activity-panel">
         <div class="section-heading"><h3>Recent Student Activity</h3><button class="icon-button" aria-label="Refresh activity" data-refresh-activity>${icon("refresh-cw")}</button></div>
         ${activityFeed.map(([student, action, time, course]) => `<article class="activity-row"><div class="avatar">${initials(student)}</div><div><p><strong>${student}</strong> ${action}</p><span>${time} | ${course}</span></div><button class="icon-button" aria-label="Reply to ${student}" data-reply-student="${student}">${icon("pen-line")}</button></article>`).join("")}
       </section>
+      ${renderCurriculumPlanner()}
       <section class="panel grading-card"><h3>Grading To-Do</h3>${progress(68)}<p>18 submissions left across 3 classes.</p><button class="secondary-action" data-open-role="lms">${icon("clipboard-check")} Open Grading Hub</button></section>
       ${permissionNotice("teacher-tools", "Teacher tools are read-only for this signed-in role.")}
       <section class="panel roster-panel">
@@ -1975,31 +2163,26 @@ function createDemoAssignment() {
   goToRole("lms", `${title} was created in the LMS grading suite.`);
 }
 
-function createAssignmentRecord({ title, className, type, lockDate }) {
+function createAssignmentRecord({ title, className, type, lockDate, dueDate = "", instructions = "Complete the assignment and submit your work.", points = 100, maxAttempts = 1, allowResubmit = false }) {
   const id = `${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
   lmsAssignments.unshift({
     id,
     title,
+    className,
     type,
+    instructions,
+    dueDate,
+    points,
+    status: "Published",
+    allowResubmit,
+    maxAttempts,
+    attachments: [],
     rubric: "Auto rubric draft",
     analytics: 0,
     lockDate: lockDate || "Next Friday, 8:00 PM",
     exception: "None",
   });
-  const firstStudent = rosterRecords.find((record) => className === "All classes" || record.className === className) || rosterRecords[0];
-  if (firstStudent) {
-    gradebookSubmissions.unshift({
-      id: `sub-${Date.now()}`,
-      student: firstStudent.student,
-      assignment: title,
-      status: "Needs review",
-      score: 0,
-      rubric: [["Completion", 0], ["Accuracy", 0], ["Explanation", 0]],
-      comment: "New assignment created. Awaiting student work.",
-    });
-    state.selectedSubmissionId = gradebookSubmissions[0].id;
-  }
-  pushNotification("Action", `${title} is ready to publish`, className, "Teacher inbox");
+  pushNotification("FYI", `${title} published`, className, "Student inbox");
   pushRealtimeEvent("LMS", `${title} created`, `${type} assigned to ${className}.`);
   addAudit(`Created assignment ${title}`, selectedSchoolRecord().name);
 }
@@ -2022,7 +2205,12 @@ function saveLesson(status) {
     announce("Add at least one content, media, or quiz block.");
     return;
   }
-  const invalidQuiz = draft.blocks.find((block) => block.type === "quiz" && (!block.question.trim() || (block.questionType === "Short answer" ? !block.options[0]?.trim() : block.options.filter((option) => option.trim()).length < 2)));
+  const invalidQuiz = draft.blocks.find((block) => block.type === "quiz" && (
+    !block.question.trim()
+    || (["Short answer", "Fill in the blank"].includes(block.questionType) && !block.options[0]?.trim())
+    || (block.questionType === "Matching" && (block.pairs || []).filter((pair) => pair.left.trim() && pair.right.trim()).length < 2)
+    || (!["Short answer", "Fill in the blank", "Matching"].includes(block.questionType) && block.options.filter((option) => option.trim()).length < 2)
+  ));
   if (invalidQuiz) {
     announce("Each quiz needs a question and at least two answer choices.");
     return;
@@ -2058,23 +2246,38 @@ function submitStudentLesson(lessonId, form) {
   const lesson = lmsLessons.find((item) => item.id === lessonId && item.status === "Published");
   if (!lesson) return;
   const quizBlocks = lesson.blocks.filter((block) => block.type === "quiz");
+  const currentProgress = state.lessonProgress?.[lesson.id];
+  const allowedAttempts = Math.min(...quizBlocks.map((block) => Number(block.maxAttempts) || 1), 10);
+  if ((currentProgress?.attempts || 0) >= allowedAttempts) {
+    announce(`Maximum attempts reached for ${lesson.title}.`);
+    return;
+  }
   const answers = {};
   let earned = 0;
   let available = 0;
   const formData = new FormData(form);
   quizBlocks.forEach((block) => {
     const rawAnswer = formData.get(`quiz-${block.id}`);
-    const selected = block.questionType === "Short answer" ? String(rawAnswer || "").trim() : rawAnswer === null ? -1 : Number(rawAnswer);
-    const correct = block.questionType === "Short answer"
-      ? selected.toLowerCase() === String(block.options[0] || "").trim().toLowerCase()
-      : selected === Number(block.correctAnswer);
+    let selected;
+    let correct;
+    if (["Short answer", "Fill in the blank"].includes(block.questionType)) {
+      selected = String(rawAnswer || "").trim();
+      correct = selected.toLowerCase() === String(block.options[0] || "").trim().toLowerCase();
+    } else if (block.questionType === "Matching") {
+      const pairs = (block.pairs || []).filter((pair) => pair.left.trim() && pair.right.trim());
+      selected = pairs.map((pair, pairIndex) => String(formData.get(`quiz-${block.id}-${pairIndex}`) || ""));
+      correct = pairs.every((pair, pairIndex) => selected[pairIndex] === pair.right);
+    } else {
+      selected = rawAnswer === null ? -1 : Number(rawAnswer);
+      correct = selected === Number(block.correctAnswer);
+    }
     answers[block.id] = { selected, correct };
     available += Number(block.points) || 0;
     if (correct) earned += Number(block.points) || 0;
   });
   const score = available ? Math.round((earned / available) * 100) : 100;
   state.lessonProgress ||= {};
-  state.lessonProgress[lesson.id] = { completed: true, score, earned, available, answers, submittedAt: "Just now" };
+  state.lessonProgress[lesson.id] = { completed: true, score, earned, available, answers, attempts: (currentProgress?.attempts || 0) + 1, submittedAt: "Just now", certificate: score >= 70 };
   activityFeed.unshift([activeUser().label, `completed ${lesson.title} with ${score}%`, "Just now", lesson.className]);
   pushRealtimeEvent("LMS", `${activeUser().label} completed a lesson`, `${lesson.title}: ${score}% quiz score.`);
   announce(`${lesson.title} completed with a ${score}% quiz score.`);
@@ -2178,6 +2381,9 @@ function bindEvents() {
     goToRole("school-admin", "School Customization opened.");
     requestAnimationFrame(() => document.querySelector("#school-customization")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }));
+
+  document.querySelectorAll("[data-impersonate-profile]").forEach((button) => button.addEventListener("click", () => impersonateProfile(button.dataset.impersonateProfile)));
+  document.querySelector("[data-stop-impersonating]")?.addEventListener("click", stopImpersonating);
 
   document.querySelector("[data-start-tour]")?.addEventListener("click", () => {
     state.tourOpen = true;
@@ -2392,6 +2598,26 @@ function bindEvents() {
     });
   });
 
+  document.querySelectorAll("[data-setting-select]").forEach((input) => input.addEventListener("change", () => {
+    state[input.dataset.settingSelect] = input.value;
+    render();
+  }));
+
+  document.querySelectorAll("[data-notification-preference]").forEach((input) => input.addEventListener("change", () => {
+    state.notificationPreferences[input.dataset.notificationPreference] = input.checked;
+    render();
+  }));
+
+  document.querySelector("[data-notification-days]")?.addEventListener("change", (event) => {
+    state.notificationPreferences.dueDays = Number(event.target.value);
+    render();
+  });
+
+  document.querySelector("[data-send-preference-test]")?.addEventListener("click", () => {
+    pushNotification("FYI", "Your notification preferences are working", activeUser().label, "Preference test");
+    announce("Test notification added to your notification tray.");
+  });
+
   document.querySelector("[data-export-demo]")?.addEventListener("click", async () => {
     const payload = JSON.stringify(getDemoSnapshot(), null, 2);
     const blob = new Blob([payload], { type: "application/json" });
@@ -2441,7 +2667,12 @@ function bindEvents() {
       title,
       className,
       type: document.querySelector("#assignment-type").value,
-      lockDate: document.querySelector("#assignment-lock").value.trim(),
+      lockDate: document.querySelector("#assignment-due").value,
+      dueDate: document.querySelector("#assignment-due").value,
+      instructions: document.querySelector("#assignment-instructions").value.trim(),
+      points: Number(document.querySelector("#assignment-points").value),
+      maxAttempts: Number(document.querySelector("#assignment-attempts").value),
+      allowResubmit: document.querySelector("#assignment-resubmit").checked,
     });
     announce(`${title} added to ${className}.`);
   });
@@ -2499,6 +2730,15 @@ function bindEvents() {
         block.correctAnswer = 0;
         render();
       }
+      if (field === "questionType" && input.value === "Fill in the blank") {
+        block.options = ["", "", "", ""];
+        block.correctAnswer = 0;
+        render();
+      }
+      if (field === "questionType" && input.value === "Matching") {
+        block.pairs = block.pairs?.length ? block.pairs : [{ left: "", right: "" }, { left: "", right: "" }];
+        render();
+      }
     };
     input.addEventListener("change", update);
     input.addEventListener("input", update);
@@ -2508,6 +2748,49 @@ function bindEvents() {
     const [blockId, optionIndex] = input.dataset.quizOption.split(":");
     const block = state.lessonDraft?.blocks.find((item) => item.id === blockId);
     if (block) block.options[Number(optionIndex)] = input.value;
+  }));
+
+  document.querySelectorAll("[data-match-pair]").forEach((input) => input.addEventListener("input", () => {
+    const [blockId, pairIndex, side] = input.dataset.matchPair.split(":");
+    const block = state.lessonDraft?.blocks.find((item) => item.id === blockId);
+    if (block?.pairs?.[Number(pairIndex)]) block.pairs[Number(pairIndex)][side] = input.value;
+  }));
+
+  document.querySelector("[data-add-bank-question]")?.addEventListener("click", () => {
+    const item = questionBank.find((question) => question.id === document.querySelector("#question-bank-select")?.value);
+    if (!item || !state.lessonDraft) return;
+    state.lessonDraft.blocks.push({ ...structuredClone(item), id: `block-bank-${Date.now()}`, type: "quiz", title: `${item.subject} check`, required: true, timeLimit: 0, maxAttempts: 2, randomize: false, showAnswers: true, pairs: item.pairs || [{ left: "", right: "" }, { left: "", right: "" }] });
+    render();
+  });
+
+  document.querySelectorAll("[data-lesson-media-upload]").forEach((input) => input.addEventListener("change", async () => {
+    const file = input.files?.[0];
+    const block = state.lessonDraft?.blocks.find((item) => item.id === input.dataset.lessonMediaUpload);
+    if (!file || !block) return;
+    if (file.size > 5 * 1024 * 1024) {
+      announce("Lesson media must be 5 MB or smaller.");
+      return;
+    }
+    try {
+      let uploaded;
+      if (state.apiMode === "live-api") {
+        uploaded = (await uploadServerFile(file, "Lesson Media")).file;
+      } else {
+        const dataUrl = file.size <= 750 * 1024 ? await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(file);
+        }) : "";
+        uploaded = { id: `lesson-file-${Date.now()}`, name: file.name, type: file.type, size: `${Math.max(1, Math.round(file.size / 1024))} KB`, status: dataUrl ? "Ready" : "Metadata saved; upload on publish", dataUrl };
+      }
+      block.file = uploaded;
+      block.mediaType = file.type.startsWith("image/") ? "Image" : file.type.startsWith("video/") ? "Video" : file.type.startsWith("audio/") ? "Audio" : "Document";
+      if (!fileUploads.some((item) => item.id === uploaded.id)) fileUploads.unshift(uploaded);
+      announce(`${file.name} attached to the lesson.`);
+    } catch {
+      announce(`Could not upload ${file.name}.`);
+    }
   }));
 
   document.querySelectorAll("[data-correct-answer]").forEach((input) => input.addEventListener("change", () => {
@@ -2552,6 +2835,164 @@ function bindEvents() {
   document.querySelector("[data-submit-lesson]")?.addEventListener("submit", (event) => {
     event.preventDefault();
     submitStudentLesson(event.currentTarget.dataset.submitLesson, event.currentTarget);
+  });
+
+  document.querySelectorAll("[data-complete-lesson-block]").forEach((button) => button.addEventListener("click", () => {
+    const [lessonId, blockId] = button.dataset.completeLessonBlock.split(":");
+    state.lessonProgress ||= {};
+    const record = state.lessonProgress[lessonId] ||= { completed: false, score: 0, earned: 0, available: 0, answers: {}, attempts: 0, completedBlocks: [] };
+    record.completedBlocks = [...new Set([...(record.completedBlocks || []), blockId])];
+    announce("Lesson progress saved. You can resume here later.");
+  }));
+
+  document.querySelectorAll("[data-bookmark-lesson]").forEach((button) => button.addEventListener("click", () => {
+    const lessonId = button.dataset.bookmarkLesson;
+    state.bookmarkedLessons ||= [];
+    state.bookmarkedLessons = state.bookmarkedLessons.includes(lessonId) ? state.bookmarkedLessons.filter((id) => id !== lessonId) : [...state.bookmarkedLessons, lessonId];
+    announce(state.bookmarkedLessons.includes(lessonId) ? "Lesson bookmarked." : "Bookmark removed.");
+  }));
+
+  document.querySelectorAll("[data-save-lesson-note]").forEach((button) => button.addEventListener("click", () => {
+    const lessonId = button.dataset.saveLessonNote;
+    state.studentNotes ||= {};
+    state.studentNotes[lessonId] = document.querySelector(`[data-lesson-note="${lessonId}"]`)?.value.trim() || "";
+    announce("Private lesson notes saved.");
+  }));
+
+  document.querySelectorAll("[data-read-lesson]").forEach((button) => button.addEventListener("click", () => {
+    const lesson = lmsLessons.find((item) => item.id === button.dataset.readLesson);
+    if (!lesson || !("speechSynthesis" in window)) {
+      announce("Read aloud is not available in this browser.");
+      return;
+    }
+    speechSynthesis.cancel();
+    speechSynthesis.speak(new SpeechSynthesisUtterance([lesson.title, lesson.summary, ...lesson.blocks.filter((block) => block.type === "text").map((block) => `${block.title}. ${block.body}`)].join(". ")));
+    state.toast = "Reading lesson aloud.";
+    render();
+  }));
+
+  document.querySelectorAll("[data-download-certificate]").forEach((button) => button.addEventListener("click", () => {
+    const lesson = lmsLessons.find((item) => item.id === button.dataset.downloadCertificate);
+    const record = state.lessonProgress?.[button.dataset.downloadCertificate];
+    if (!lesson || !record?.certificate) return;
+    const blob = new Blob([`EduConnect Certificate of Completion\n\n${activeUser().label}\n${lesson.title}\nScore: ${record.score}%\n${selectedSchoolRecord().name}`], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${lesson.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-certificate.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+    addAudit(`Downloaded certificate for ${lesson.title}`, activeUser().label);
+    announce("Certificate downloaded.");
+  }));
+
+  document.querySelectorAll("[data-open-assignment]").forEach((button) => button.addEventListener("click", () => {
+    state.activeAssignmentId = button.dataset.openAssignment;
+    render();
+  }));
+
+  document.querySelector("[data-assignment-work]")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const assignment = lmsAssignments.find((item) => item.id === event.currentTarget.dataset.assignmentWork);
+    const submission = submissionFor(assignment?.id, true);
+    if (!assignment || !submission) return;
+    const nextStatus = event.submitter?.dataset.workStatus || "Draft";
+    if (nextStatus === "Submitted" && submission.status === "Returned" && submission.attempt >= (assignment.maxAttempts || 1)) {
+      announce("Maximum assignment attempts reached.");
+      return;
+    }
+    submission.response = document.querySelector("#student-assignment-response")?.value.trim() || "";
+    if (nextStatus === "Submitted" && !submission.response && !submission.attachments.length) {
+      announce("Add a written response or attachment before submitting.");
+      return;
+    }
+    if (nextStatus === "Submitted" && submission.status === "Returned") submission.attempt += 1;
+    submission.status = nextStatus;
+    submission.submittedAt = nextStatus === "Submitted" ? "Just now" : submission.submittedAt;
+    if (nextStatus === "Submitted") {
+      pushNotification("Action", `${submission.student} submitted ${assignment.title}`, assignment.className, "Teacher inbox");
+      pushRealtimeEvent("LMS", `${assignment.title} submitted`, `${submission.student} sent attempt ${submission.attempt}.`);
+    }
+    addAudit(`${nextStatus === "Submitted" ? "Submitted" : "Saved draft for"} ${assignment.title}`, submission.student);
+    announce(`${assignment.title} ${nextStatus === "Submitted" ? "submitted" : "draft saved"}.`);
+  });
+
+  document.querySelector("[data-assignment-file]")?.addEventListener("change", async (event) => {
+    const assignmentId = event.target.dataset.assignmentFile;
+    const submission = submissionFor(assignmentId, true);
+    for (const file of Array.from(event.target.files || [])) {
+      if (file.size > 5 * 1024 * 1024) continue;
+      try {
+        const uploaded = state.apiMode === "live-api" ? (await uploadServerFile(file, "Assignment Submission")).file : { id: `assignment-file-${Date.now()}-${Math.random().toString(16).slice(2)}`, name: file.name, type: file.type, size: `${Math.max(1, Math.round(file.size / 1024))} KB`, status: "Ready" };
+        submission.attachments.push(uploaded);
+        if (!fileUploads.some((item) => item.id === uploaded.id)) fileUploads.unshift(uploaded);
+      } catch {}
+    }
+    announce("Assignment attachments updated.");
+  });
+
+  document.querySelectorAll("[data-remove-assignment-file]").forEach((button) => button.addEventListener("click", () => {
+    const [assignmentId, fileId] = button.dataset.removeAssignmentFile.split(":");
+    const submission = submissionFor(assignmentId);
+    if (submission) submission.attachments = submission.attachments.filter((file) => file.id !== fileId);
+    announce("Attachment removed.");
+  }));
+
+  document.querySelectorAll("[data-return-submission]").forEach((form) => form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const submission = lmsSubmissions.find((item) => item.id === form.dataset.returnSubmission);
+    const assignment = lmsAssignments.find((item) => item.id === submission?.assignmentId);
+    if (!submission || !assignment) return;
+    submission.score = Number(form.querySelector("[data-grade-score]").value);
+    submission.feedback = form.querySelector("[data-grade-feedback]").value.trim();
+    submission.status = "Returned";
+    submission.returnedAt = "Just now";
+    let gradeRecord = gradebookSubmissions.find((item) => item.assignment === assignment.title && item.student === submission.student);
+    if (!gradeRecord) {
+      gradeRecord = { id: `grade-${Date.now()}`, student: submission.student, assignment: assignment.title, status: "Reviewed", score: submission.score, rubric: [["Completion", 4], ["Accuracy", 4], ["Explanation", 4]], comment: submission.feedback };
+      gradebookSubmissions.unshift(gradeRecord);
+    } else Object.assign(gradeRecord, { status: "Reviewed", score: submission.score, comment: submission.feedback });
+    pushNotification("FYI", `${assignment.title} was graded`, submission.student, "Student inbox");
+    addAudit(`Returned graded assignment ${assignment.title}`, submission.student);
+    announce(`${assignment.title} returned to ${submission.student}.`);
+  }));
+
+  document.querySelector("#course-create-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const title = document.querySelector("#course-title").value.trim();
+    curriculumCourses.push({ id: `course-${Date.now()}`, title, subject: document.querySelector("#course-subject").value, grade: document.querySelector("#course-grade").value.trim(), className: teacherClasses[0].name, standards: [], units: [] });
+    addAudit(`Created curriculum course ${title}`);
+    announce(`${title} added to the curriculum map.`);
+  });
+
+  document.querySelectorAll("[data-add-unit]").forEach((form) => form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const course = curriculumCourses.find((item) => item.id === form.dataset.addUnit);
+    const input = form.querySelector("input");
+    if (!course || !input.value.trim()) return;
+    course.units.push({ id: `unit-${Date.now()}`, title: input.value.trim(), description: "New curriculum unit", lessonIds: [], assignmentIds: [] });
+    announce(`${input.value.trim()} added to ${course.title}.`);
+  }));
+
+  document.querySelectorAll("[data-link-curriculum]").forEach((form) => form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const [courseId, unitId] = form.dataset.linkCurriculum.split(":");
+    const course = curriculumCourses.find((item) => item.id === courseId);
+    const unit = course?.units.find((item) => item.id === unitId);
+    const [type, id] = form.querySelector("select").value.split(":");
+    if (!unit) return;
+    const target = type === "lesson" ? unit.lessonIds : unit.assignmentIds;
+    if (!target.includes(id)) target.push(id);
+    addAudit(`Linked ${type} to ${course.title}: ${unit.title}`);
+    announce(`Content linked to ${unit.title}.`);
+  }));
+
+  document.querySelector("[data-send-class-reminder]")?.addEventListener("click", () => {
+    const channels = ["email", "sms", "push"].filter((channel) => state.notificationPreferences[channel]);
+    (channels.length ? channels : ["dashboard"]).forEach((channel) => notificationDeliveryLog.unshift({ id: `reminder-${Date.now()}-${channel}`, channel: channel.toUpperCase(), audience: state.selectedClass === "All" ? "All active classes" : state.selectedClass, status: "Delivered", detail: `Assignment reminder sent by ${activeUser().label}` }));
+    pushNotification("FYI", "Class assignment reminder sent", state.selectedClass === "All" ? "All active classes" : state.selectedClass, channels.join(" + ") || "Dashboard");
+    addAudit("Sent class assignment reminder");
+    announce("Class reminder sent using the selected notification channels.");
   });
 
   document.querySelector("[data-continue-adventure]")?.addEventListener("click", continueAdventure);

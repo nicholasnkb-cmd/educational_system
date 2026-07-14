@@ -104,6 +104,8 @@ let impersonatingAdminProfile = null;
 let landingError = "";
 let landingBusy = false;
 let deferredInstallPrompt = null;
+let generalMenuOpener = null;
+let pendingMenuFocus = null;
 
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();
@@ -173,10 +175,6 @@ const lucideIcons = {
 
 function icon(name) {
   return `<i class="app-icon" data-lucide="${name}" data-icon="${name}" aria-hidden="true"></i>`;
-}
-
-function asset(path) {
-  return `${import.meta.env.BASE_URL}${path.replace(/^\/+/, "")}`;
 }
 
 function initials(name) {
@@ -397,6 +395,176 @@ function permissionNotice(permission, body) {
   return can(permission) ? "" : `<div class="permission-note">${icon("lock")} ${body}</div>`;
 }
 
+const generalMenuCatalog = [
+  {
+    id: "administration",
+    label: "Administration",
+    icon: "shield-check",
+    items: [
+      { id: "state-overview", label: "State overview", role: "state-admin", icon: "map" },
+      { id: "role-control-center", label: "Role Control Center", role: "state-admin", icon: "users", permission: "manage-users" },
+      { id: "unified-school-os", label: "Unified School Operating System", role: "state-admin", icon: "layers" },
+      { id: "district-oversight", label: "District oversight", role: "state-admin", icon: "building-2" },
+      { id: "compliance-dashboard", label: "Privacy & compliance", role: "state-admin", icon: "lock", permission: "view-compliance" },
+      { id: "audit-trail", label: "State audit trail", role: "state-admin", icon: "file-text" },
+      { id: "statewide-calendar", label: "Statewide calendar", role: "state-admin", icon: "calendar-days" },
+      { id: "governance-chain", label: "Governance chain", role: "state-admin", icon: "layers" },
+      { id: "realtime-operations", label: "Realtime operations", role: "state-admin", icon: "refresh-cw" },
+      { id: "launch-control", label: "Launch Control", role: "state-admin", icon: "rocket", permission: "manage-tenants" },
+      { id: "district-overview", label: "District overview", role: "district-admin", icon: "building-2" },
+      { id: "district-scope", label: "District scope", role: "district-admin", icon: "map" },
+      { id: "district-schools", label: "Schools in this district", role: "district-admin", icon: "graduation-cap" },
+      { id: "district-unified-school-os", label: "District operating system", role: "district-admin", target: "unified-school-os", icon: "layers" },
+      { id: "district-realtime-operations", label: "District realtime operations", role: "district-admin", target: "realtime-operations", icon: "refresh-cw" },
+      { id: "district-audit-trail", label: "District audit trail", role: "district-admin", target: "audit-trail", icon: "file-text" },
+      { id: "school-overview", label: "School overview", role: "school-admin", icon: "shield-check" },
+      { id: "school-customization", label: "School customization", role: "school-admin", icon: "settings", permission: "manage-users" },
+      { id: "enrollment-center", label: "Enrollment Center", role: "school-admin", icon: "users" },
+      { id: "school-success-center", label: "Academic year & privacy", role: "school-admin", icon: "calendar-days" },
+      { id: "intervention-center", label: "Intervention Center", role: "school-admin", icon: "trending-up" },
+      { id: "campus-tenant", label: "Campus tenant", role: "school-admin", icon: "database" },
+      { id: "school-operations", label: "School operations", role: "school-admin", icon: "layers" },
+      { id: "school-compliance", label: "School privacy & compliance", role: "school-admin", target: "compliance-dashboard", icon: "lock", permission: "view-compliance" },
+      { id: "school-realtime-operations", label: "School realtime operations", role: "school-admin", target: "realtime-operations", icon: "refresh-cw" },
+    ],
+  },
+  {
+    id: "teaching-learning",
+    label: "Teaching & learning",
+    icon: "book-open",
+    items: [
+      { id: "lms-overview", label: "LMS overview & offline pack", role: "lms", icon: "book-open" },
+      { id: "lesson-library", label: "Lesson Library", role: "lms", icon: "book-open" },
+      { id: "background-services", label: "Background services", role: "lms", icon: "refresh-cw" },
+      { id: "simple-classroom", label: "Simple classroom experience", role: "lms", icon: "sparkles" },
+      { id: "zero-cost-core", label: "Zero-cost core", role: "lms", icon: "award" },
+      { id: "advanced-grading", label: "Advanced grading", role: "lms", icon: "clipboard-check" },
+      { id: "gradebook-detail", label: "Gradebook detail", role: "lms", icon: "file-text" },
+      { id: "deadline-controls", label: "Deadline controls", role: "lms", icon: "clock" },
+      { id: "account-context", label: "Account context", role: "lms", icon: "users" },
+      { id: "paperless-workflow", label: "Paperless workflow", role: "lms", icon: "send" },
+      { id: "lms-guardrails", label: "Automated guardrails", role: "lms", icon: "shield-check" },
+      { id: "offline-learning", label: "Offline learning", role: "lms", icon: "smartphone" },
+      { id: "learning-privacy", label: "Learning privacy", role: "lms", icon: "lock" },
+      { id: "teacher-overview", label: "Teacher overview & create lesson", role: "teacher", icon: "graduation-cap", permission: "teacher-tools" },
+      { id: "learning-operations", label: "Learning Operations & grading", role: "teacher", icon: "clipboard-check", permission: "teacher-tools" },
+      { id: "teaching-calendar", label: "Teaching calendar", role: "teacher", icon: "calendar-days", permission: "teacher-tools" },
+      { id: "automated-reminders", label: "Automated reminders", role: "teacher", icon: "bell", permission: "teacher-tools" },
+      { id: "standards-gradebook", label: "Standards gradebook", role: "teacher", icon: "file-text", permission: "teacher-tools" },
+      { id: "teacher-intervention-center", label: "Teacher intervention center", role: "teacher", target: "intervention-center", icon: "trending-up", permission: "teacher-tools" },
+      { id: "create-lesson", label: "Create a lesson", role: "teacher", action: "create-lesson", icon: "plus", permission: "teacher-tools" },
+      { id: "lesson-studio", label: "Lesson Studio library", role: "teacher", icon: "pen-line", permission: "teacher-tools" },
+      { id: "active-classes", label: "Active classes", role: "teacher", icon: "users", permission: "teacher-tools" },
+      { id: "quick-assignment", label: "Quick assignment", role: "teacher", icon: "plus", permission: "teacher-tools" },
+      { id: "student-activity", label: "Recent student activity", role: "teacher", icon: "refresh-cw", permission: "teacher-tools" },
+      { id: "curriculum-planner", label: "Courses & units", role: "teacher", icon: "map", permission: "teacher-tools" },
+      { id: "grading-todo", label: "Grading to-do", role: "teacher", icon: "clipboard-check", permission: "teacher-tools" },
+      { id: "teacher-roster", label: "Roster & enrollments", role: "teacher", icon: "users", permission: "teacher-tools" },
+      { id: "student-overview", label: "Student home", role: "student", icon: "sparkles", permission: "student-missions" },
+      { id: "student-progress", label: "My Progress", role: "student", icon: "trending-up", permission: "student-missions" },
+      { id: "student-assignments", label: "Submit my work", role: "student", icon: "send", permission: "student-missions" },
+      { id: "student-lessons", label: "My lessons, quizzes & media", role: "student", icon: "book-open", permission: "student-missions" },
+      { id: "student-missions", label: "My Missions", role: "student", icon: "rocket", permission: "student-missions" },
+      { id: "student-awards", label: "Awards", role: "student", icon: "award", permission: "student-missions" },
+      { id: "parent-overview", label: "Family home", role: "parent", icon: "users" },
+      { id: "family-summary", label: "Weekly family summary", role: "parent", icon: "file-text" },
+      { id: "teacher-note", label: "Teacher note", role: "parent", icon: "message-circle" },
+      { id: "family-deadlines", label: "Upcoming deadlines", role: "parent", icon: "clock" },
+      { id: "mobile-parent", label: "Mobile parent tools", role: "parent", icon: "smartphone" },
+      { id: "subject-snapshot", label: "Subject snapshot", role: "parent", icon: "trending-up" },
+    ],
+  },
+  {
+    id: "communication",
+    label: "Communication",
+    icon: "message-circle",
+    items: [
+      { id: "messages-overview", label: "Conversation inbox", role: "messages", target: "conversation-list", icon: "message-circle", permission: "message" },
+      { id: "chat-panel", label: "Active chat & video call", role: "messages", icon: "video", permission: "message" },
+      { id: "communication-hours", label: "Communication hours", role: "messages", icon: "clock", permission: "message" },
+      { id: "emergency-override", label: "Emergency override", role: "messages", icon: "alert-triangle", permission: "emergency" },
+      { id: "community-overview", label: "Community overview", role: "community", icon: "megaphone", anyPermissions: ["submit-post", "approve-posts"] },
+      { id: "community-create-post", label: "Create community post", role: "community", icon: "pen-line", anyPermissions: ["submit-post", "approve-posts"] },
+      { id: "community-approvers", label: "Assigned approvers", role: "community", icon: "users", anyPermissions: ["approve-posts", "manage-users"] },
+      { id: "community-approval-queue", label: "Approval queue", role: "community", icon: "shield-check", permission: "approve-posts" },
+      { id: "community-published", label: "Published community board", role: "community", icon: "megaphone", anyPermissions: ["submit-post", "approve-posts"] },
+      { id: "community-rules", label: "Posting rules", role: "community", icon: "lock", anyPermissions: ["submit-post", "approve-posts"] },
+      { id: "community-workflow", label: "Approval workflow rules", role: "community", icon: "layers", permission: "approve-posts" },
+    ],
+  },
+  {
+    id: "platform-operations",
+    label: "Platform operations",
+    icon: "database",
+    items: [
+      { id: "login-gateway", label: "Login gateway", role: "state-admin", icon: "lock", permission: "manage-tenants" },
+      { id: "database-blueprint", label: "Database blueprint", role: "state-admin", icon: "database", permission: "manage-tenants" },
+      { id: "admin-onboarding", label: "Admin onboarding", role: "state-admin", icon: "users", permission: "manage-tenants" },
+      { id: "platform-file-uploads", label: "File uploads", role: "state-admin", icon: "paperclip", permission: "manage-tenants" },
+      { id: "notification-delivery", label: "Notification delivery", role: "state-admin", icon: "bell", permission: "manage-tenants" },
+      { id: "security-checklist", label: "Privacy & security checklist", role: "state-admin", icon: "shield-check", permission: "manage-tenants" },
+      { id: "deployment-pipeline", label: "Deployment pipeline", role: "state-admin", icon: "rocket", permission: "manage-tenants" },
+      { id: "operations-tenants", label: "Tenants & domains", role: "state-admin", target: "platform-operations-center", tab: "tenants", icon: "building-2", permission: "manage-tenants" },
+      { id: "operations-security", label: "Security & backups", role: "state-admin", target: "platform-operations-center", tab: "security", icon: "lock", permission: "manage-tenants" },
+      { id: "operations-notifications", label: "Notification operations", role: "state-admin", target: "platform-operations-center", tab: "notifications", icon: "bell", permission: "manage-tenants" },
+      { id: "operations-services", label: "Connected services & SIS", role: "state-admin", target: "platform-operations-center", tab: "services", icon: "layers", permission: "manage-tenants" },
+      { id: "operations-jobs", label: "Jobs & recovery", role: "state-admin", target: "platform-operations-center", tab: "jobs", icon: "refresh-cw", permission: "manage-tenants" },
+      { id: "operations-monitoring", label: "Monitoring & analytics", role: "state-admin", target: "platform-operations-center", tab: "monitoring", icon: "trending-up", permission: "manage-tenants" },
+      { id: "operations-launch", label: "Launch & review", role: "state-admin", target: "platform-operations-center", tab: "launch", icon: "rocket", permission: "manage-tenants" },
+    ],
+  },
+  {
+    id: "account",
+    label: "Account & help",
+    icon: "settings",
+    items: [
+      { id: "account-dashboard", label: "My dashboard", action: "dashboard", icon: "layers" },
+      { id: "account-search", label: "Global search", action: "search", icon: "search" },
+      { id: "account-notifications", label: "Notifications", action: "notifications", icon: "bell" },
+      { id: "account-settings", label: "Settings, accessibility & data", action: "settings", icon: "settings" },
+      { id: "account-tour", label: "Guided walkthrough", action: "tour", icon: "play", permission: "global-access" },
+      { id: "account-sign-out", label: "Sign out", action: "sign-out", icon: "x" },
+    ],
+  },
+];
+
+function menuItemAllowed(item) {
+  const allowedRoles = allowedRoleIds();
+  if (item.role && !allowedRoles.includes(item.role)) return false;
+  if (item.permission && !can(item.permission)) return false;
+  if (item.anyPermissions && !item.anyPermissions.some((permission) => can(permission))) return false;
+  return true;
+}
+
+function generalMenuGroups() {
+  const workspaces = visibleRoles().map((role) => ({
+    id: `workspace-${role.id}`,
+    label: role.label,
+    role: role.id,
+    icon: role.icon,
+    workspace: true,
+  }));
+  return [
+    { id: "workspaces", label: "Workspaces", icon: "layers", items: workspaces },
+    ...generalMenuCatalog,
+  ].map((group) => ({ ...group, items: group.items.filter(menuItemAllowed) })).filter((group) => group.items.length);
+}
+
+function findMenuDestination(roleId, functionId) {
+  if (!roleId || !functionId) return null;
+  return generalMenuGroups().flatMap((group) => group.items).find((item) => item.role === roleId && item.id === functionId && !item.workspace) || null;
+}
+
+function hashRoute() {
+  const requested = window.location.hash.replace(/^#/, "");
+  const [rawRole, rawFunction = ""] = requested.split("/");
+  const role = rawRole === "platform" ? "state-admin" : rawRole;
+  return {
+    role: roles.some((item) => item.id === role) ? role : "",
+    functionId: rawFunction,
+  };
+}
+
 function validateDemoSnapshot(snapshot) {
   const errors = [];
   if (!snapshot || typeof snapshot !== "object") errors.push("File must contain a JSON object.");
@@ -407,31 +575,50 @@ function validateDemoSnapshot(snapshot) {
   return errors;
 }
 
-function hashRole() {
-  const requested = window.location.hash.replace("#", "");
-  if (requested === "platform") return "state-admin";
-  return roles.some((role) => role.id === requested) ? requested : "";
+function focusMenuDestination(destination) {
+  if (!destination) return;
+  const target = document.querySelector(`#${CSS.escape(destination.target || destination.id)}`);
+  if (!target) return;
+  target.scrollIntoView({ behavior: state.reducedMotion ? "auto" : "smooth", block: "start" });
+  const focusTarget = target.querySelector("h2, h3, h4") || target;
+  if (!focusTarget.hasAttribute("tabindex")) focusTarget.setAttribute("tabindex", "-1");
+  focusTarget.focus({ preventScroll: true });
 }
 
-function setActiveRole(roleId, pushRoute = true) {
+function setActiveRole(roleId, pushRoute = true, functionId = "") {
   if (roleId === "platform") roleId = "state-admin";
   if (!roles.some((role) => role.id === roleId) || !allowedRoleIds().includes(roleId)) {
-    if (authenticatedProfile) state.toast = "That workspace is not available for your role.";
+    if (authenticatedProfile) {
+      state.toast = "That workspace is not available for your role.";
+      const fallbackRole = allowedRoleIds().includes(state.role) ? state.role : activeUser().landing;
+      history.replaceState(null, "", `#${fallbackRole}`);
+      render();
+    }
     return;
   }
+  const destination = functionId ? findMenuDestination(roleId, functionId) : null;
+  if (functionId && !destination) {
+    functionId = "";
+    state.toast = "That function is not available for your role.";
+  }
+  if (destination?.tab) state.activeOperationsTab = destination.tab;
   state.role = roleId;
   state.notificationsOpen = false;
   state.settingsOpen = false;
-  if (pushRoute && window.location.hash !== `#${roleId}`) {
-    history.pushState(null, "", `#${roleId}`);
+  pendingMenuFocus = destination ? { roleId, functionId: destination.id } : null;
+  const nextHash = functionId ? `#${roleId}/${functionId}` : `#${roleId}`;
+  if (pushRoute && window.location.hash !== nextHash) {
+    history.pushState(null, "", nextHash);
+  } else if (!pushRoute && window.location.hash !== nextHash) {
+    history.replaceState(null, "", nextHash);
   }
   render();
-  requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
+  if (!destination) requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "auto" }));
 }
 
-function goToRole(roleId, message = "") {
+function goToRole(roleId, message = "", functionId = "") {
   if (message) state.toast = message;
-  setActiveRole(roleId);
+  setActiveRole(roleId, true, functionId);
 }
 
 function enhanceIcons() {
@@ -644,7 +831,7 @@ function render() {
   const design = selectedSchoolDesign();
   app.innerHTML = `
     <div class="app ${state.compactMode ? "compact-mode" : ""} ${state.highContrast ? "high-contrast" : ""} ${state.fontScale === "Large" ? "font-large" : state.fontScale === "Extra large" ? "font-extra-large" : ""} ${state.dyslexiaFriendly ? "dyslexia-friendly" : ""} ${state.reducedMotion ? "reduced-motion" : ""}" style="${designStyle(design)}">
-      ${renderSidebar(role, design)}
+      ${renderSidebar(design)}
       <main id="app-main" class="workspace workspace-${state.role}">
         ${impersonatingAdminProfile ? `<section class="impersonation-banner" role="status"><span>${icon("eye")} Previewing as <strong>${escapeHtml(activeUser().label)}</strong> (${escapeHtml(activeUser().role)})</span><button type="button" data-stop-impersonating>Return to Global Admin</button></section>` : ""}
         ${renderTenantBar(school, design)}
@@ -671,6 +858,11 @@ function render() {
   requestAnimationFrame(() => {
     const selector = focusId ? `#${CSS.escape(focusId)}` : focusData ? `[data-${focusData[0].replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}="${CSS.escape(focusData[1])}"]` : "";
     if (selector) document.querySelector(selector)?.focus({ preventScroll: true });
+    if (pendingMenuFocus) {
+      const destination = findMenuDestination(pendingMenuFocus.roleId, pendingMenuFocus.functionId);
+      pendingMenuFocus = null;
+      focusMenuDestination(destination);
+    }
   });
 }
 
@@ -731,6 +923,7 @@ function renderUtilityPanels() {
         <label class="secondary-action import-action">${icon("file-text")} Import JSON File<input type="file" id="import-demo-state" accept="application/json" /></label>
       </aside>
     ` : ""}
+    ${renderGeneralMenuDialog()}
   `;
 }
 
@@ -755,28 +948,81 @@ function renderTenantBar(school, design) {
   `;
 }
 
-function renderSidebar(activeRole, design) {
+function menuItemHref(item) {
+  if (item.action) return `#${item.id}`;
+  if (item.workspace) return `#${item.role}`;
+  return `#${item.role}/${item.id}`;
+}
+
+function renderGeneralMenu(surface = "sidebar") {
+  const route = hashRoute();
+  const groups = generalMenuGroups();
+  return `
+    <nav class="general-menu general-menu-${surface}" aria-label="${surface === "dialog" ? "All available functions" : "General menu"}">
+      ${surface === "sidebar" ? `<div class="general-menu-intro"><p class="eyebrow">General menu</p><strong>All available functions</strong></div>` : ""}
+      <div class="general-menu-groups">
+        ${groups.map((group) => {
+          const containsCurrentRole = group.items.some((item) => item.role === state.role);
+          const containsCurrentFunction = group.items.some((item) => item.role === route.role && item.id === route.functionId);
+          const open = surface === "dialog"
+            ? group.id === "workspaces" || containsCurrentFunction
+            : group.id === "workspaces" || containsCurrentRole;
+          return `<details class="general-menu-group" ${open ? "open" : ""}>
+            <summary>${icon(group.icon)}<span>${group.label}</span><small>${group.items.length}</small></summary>
+            <div class="general-menu-links">
+              ${group.items.map((item) => {
+                const isCurrent = item.workspace
+                  ? route.role === item.role && !route.functionId
+                  : Boolean(item.role && route.role === item.role && route.functionId === item.id);
+                const roleLabel = item.role ? roles.find((role) => role.id === item.role)?.label : "Account";
+                const attributes = item.action
+                  ? `data-menu-action="${item.action}"`
+                  : item.workspace
+                    ? `data-menu-workspace="${item.role}"`
+                    : `data-menu-role="${item.role}" data-menu-function="${item.id}" data-menu-target="${item.target || item.id}" ${item.tab ? `data-menu-tab="${item.tab}"` : ""}`;
+                return `<a class="general-menu-link ${isCurrent ? "active" : ""}" href="${menuItemHref(item)}" ${attributes} ${isCurrent ? `aria-current="${item.workspace ? "page" : "location"}"` : ""}>
+                  ${icon(item.icon)}
+                  <span><strong>${item.label}</strong><small>${item.workspace ? "Workspace" : roleLabel}</small></span>
+                </a>`;
+              }).join("")}
+            </div>
+          </details>`;
+        }).join("")}
+      </div>
+    </nav>
+  `;
+}
+
+function renderGeneralMenuDialog() {
+  return `
+    <dialog class="general-menu-dialog" id="general-menu-dialog" aria-labelledby="general-menu-dialog-title">
+      <div class="general-menu-dialog-header">
+        <div><p class="eyebrow">Navigate EduConnect</p><h2 id="general-menu-dialog-title">General menu</h2><p>Every function available to your account, in one place.</p></div>
+        <button class="icon-button" type="button" data-close-general-menu aria-label="Close general menu">${icon("x")}</button>
+      </div>
+      ${renderGeneralMenu("dialog")}
+    </dialog>
+  `;
+}
+
+function renderSidebar(design) {
   return `
     <aside class="sidebar">
       <div class="brand-row">
         ${renderSchoolLogo(design, "brand-mark")}
         <div><h1>${design.crest}</h1><p>${design.voice}</p></div>
       </div>
-      <nav class="role-nav" aria-label="Portal views">
-        ${visibleRoles().map((role) => `<a class="nav-item ${state.role === role.id ? "active" : ""}" href="#${role.id}" data-role="${role.id}" ${state.role === role.id ? "aria-current=\"page\"" : ""}>${icon(role.icon)}<span>${role.label}</span></a>`).join("")}
-      </nav>
-      <div class="reference-card">
-        <img src="${asset(activeRole.image)}" alt="" />
-        <div><strong>Stitch reference</strong><span>Visual source</span></div>
-      </div>
+      ${renderGeneralMenu()}
     </aside>
   `;
 }
 
 function renderMobileNav() {
+  const quickRoleIds = [...new Set([state.role, "messages", "community"])].filter((roleId) => allowedRoleIds().includes(roleId));
   return `
     <nav class="mobile-role-nav" aria-label="Mobile portal views">
-      ${visibleRoles().map((role) => `<a class="mobile-nav-item ${state.role === role.id ? "active" : ""}" href="#${role.id}" data-role="${role.id}" ${state.role === role.id ? "aria-current=\"page\"" : ""}>${icon(role.icon)}<span>${role.label}</span></a>`).join("")}
+      ${quickRoleIds.map((roleId) => roles.find((role) => role.id === roleId)).filter(Boolean).map((role) => `<a class="mobile-nav-item ${state.role === role.id ? "active" : ""}" href="#${role.id}" data-role="${role.id}" ${state.role === role.id ? "aria-current=\"page\"" : ""}>${icon(role.icon)}<span>${role.label}</span></a>`).join("")}
+      <button class="mobile-nav-item" type="button" data-open-general-menu aria-haspopup="dialog" aria-controls="general-menu-dialog" aria-expanded="false">${icon("layers")}<span>Menu</span></button>
     </nav>
   `;
 }
@@ -787,6 +1033,7 @@ function renderTopbar(role) {
     <header class="topbar">
       <div><p class="eyebrow">${role.label} workspace</p><h2>${title}</h2></div>
       <div class="topbar-actions">
+        <button class="secondary-action general-menu-trigger" type="button" data-open-general-menu aria-haspopup="dialog" aria-controls="general-menu-dialog" aria-expanded="false">${icon("layers")} General menu</button>
         <label class="searchbox">${icon("search")}<input id="global-search" value="${escapeHtml(state.searchTerm)}" placeholder="${t("search")}" /></label>
         ${can("manage-users") && allowedRoleIds().includes("state-admin") ? `<button class="secondary-action role-controls-action" data-role-controls type="button">${icon("users")} Role controls</button>` : ""}
         ${can("manage-users") && allowedRoleIds().includes("school-admin") ? `<button class="secondary-action school-customization-action" data-school-customization type="button">${icon("settings")} School design</button>` : ""}
@@ -806,7 +1053,7 @@ function renderStateAdmin() {
   const allSchools = allDistricts.flatMap((item) => item.schools);
   const activeSchools = allSchools.filter((school) => school.status === "Active").length;
   return `
-    <section class="dashboard-grid platform-grid">
+    <section class="dashboard-grid platform-grid" id="state-overview">
       <div class="welcome-strip platform-welcome">
         <div>
           <p class="eyebrow">State admin workspace</p>
@@ -825,7 +1072,7 @@ function renderStateAdmin() {
       ${renderRoleControlCenter()}
       ${renderUnifiedOperatingSystem()}
       ${renderRealtimePanel()}
-      <section class="panel state-management-panel">
+      <section class="panel state-management-panel" id="district-oversight">
         <div class="section-heading"><h3>District Oversight</h3><span>${stateRecord.name}</span></div>
         <div class="management-list">
           ${allDistricts.map((districtItem) => `
@@ -838,7 +1085,7 @@ function renderStateAdmin() {
         </div>
       </section>
       ${renderCompliancePanel()}
-      <section class="panel audit-panel">
+      <section class="panel audit-panel" id="audit-trail">
         <div class="section-heading"><h3>Audit Trail</h3><span>Cross-tenant accountability</span></div>
         <div class="audit-list">
           ${auditLogs.map((log) => `
@@ -850,13 +1097,13 @@ function renderStateAdmin() {
           `).join("")}
         </div>
       </section>
-      <section class="panel calendar-panel">
+      <section class="panel calendar-panel" id="statewide-calendar">
         <div class="section-heading"><h3>Statewide Calendar</h3><span>Policy, reporting, and public events</span></div>
         <div class="calendar-list">
           ${calendarEvents.map((event) => `<article class="calendar-row"><div class="calendar-date">${event.date}</div><div><strong>${event.title}</strong><small>${event.audience} • ${event.type}</small></div></article>`).join("")}
         </div>
       </section>
-      <section class="panel hierarchy-panel">
+      <section class="panel hierarchy-panel" id="governance-chain">
         <div class="section-heading"><h3>Governance Chain</h3><span>State to classroom</span></div>
         <div class="hierarchy-list">
           ${governanceLevels.map(([level, roleList], index) => `<article class="hierarchy-level"><div class="level-number">${index + 1}</div><div><h4>${level}</h4><p>${roleList.join(" • ")}</p></div></article>`).join("")}
@@ -874,7 +1121,7 @@ function renderDistrictAdmin() {
   const totalStudents = schools.reduce((sum, school) => sum + school.students, 0);
   const totalStaff = schools.reduce((sum, school) => sum + school.staff, 0);
   return `
-    <section class="dashboard-grid platform-grid">
+    <section class="dashboard-grid platform-grid" id="district-overview">
       <div class="welcome-strip platform-welcome">
         <div>
           <p class="eyebrow">District admin workspace</p>
@@ -886,14 +1133,14 @@ function renderDistrictAdmin() {
       ${statCard("Schools", schools.length, "graduation-cap", "blue")}
       ${statCard("Students", totalStudents.toLocaleString(), "users", "teal")}
       ${statCard("Staff", totalStaff.toLocaleString(), "shield-check", "gold")}
-      <section class="panel tenant-controls">
+      <section class="panel tenant-controls" id="district-scope">
         <div class="section-heading"><h3>District Scope</h3><span>${stateRecord.name}</span></div>
         <div class="tenant-selectors">
           <label><span>State</span><select id="state-filter">${tenantStates.map((item) => `<option value="${item.id}" ${state.selectedState === item.id ? "selected" : ""}>${item.name}</option>`).join("")}</select></label>
           <label><span>District</span><select id="district-filter">${stateRecord.districts.map((item) => `<option value="${item.id}" ${district.id === item.id ? "selected" : ""}>${item.name}</option>`).join("")}</select></label>
         </div>
       </section>
-      <section class="panel district-management-panel">
+      <section class="panel district-management-panel" id="district-schools">
         <div class="section-heading"><h3>Schools In This District</h3><span>${district.region}</span></div>
         <div class="management-list">
           ${schools.map((schoolItem) => `<button class="management-row ${schoolItem.id === selectedSchoolRecord().id ? "active" : ""}" data-manage-school="${schoolItem.id}"><div class="management-icon">${icon("graduation-cap")}</div><div><strong>${schoolItem.name}</strong><small>${schoolItem.category} • ${schoolItem.subdomain}.educonnect.local</small></div><span>${schoolItem.status}</span></button>`).join("")}
@@ -901,7 +1148,7 @@ function renderDistrictAdmin() {
       </section>
       ${renderUnifiedOperatingSystem()}
       ${renderRealtimePanel()}
-      <section class="panel audit-panel">
+      <section class="panel audit-panel" id="audit-trail">
         <div class="section-heading"><h3>District Audit Trail</h3><span>School and staff actions</span></div>
         <div class="audit-list">${auditLogs.map((log) => `<article class="audit-row">${icon("clipboard-check")}<div><strong>${log.event}</strong><small>${log.actor} • ${log.scope}</small></div><time>${log.time}</time></article>`).join("")}</div>
       </section>
@@ -966,7 +1213,7 @@ function renderInterventionCenter({ compact = false } = {}) {
   const school = selectedSchoolRecord();
   const interventions = productionReadiness.interventions.filter((item) => item.schoolId === school.id);
   const watchLearners = rosterRecords.filter((record) => record.status === "Watch");
-  return `<section class="panel intervention-center-panel ${compact ? "compact-intervention-center" : ""}" aria-labelledby="intervention-center-title">
+  return `<section class="panel intervention-center-panel ${compact ? "compact-intervention-center" : ""}" id="intervention-center" aria-labelledby="intervention-center-title">
     <div class="section-heading"><div><p class="eyebrow">Student support</p><h3 id="intervention-center-title">Intervention Center</h3></div><span>${interventions.filter((item) => item.status !== "Completed").length} active plans</span></div>
     <p class="panel-intro">Coordinate goals, owners, review dates, and progress checks without exposing student-level details in district or state analytics.</p>
     <div class="intervention-layout">
@@ -988,7 +1235,7 @@ function renderInterventionCenter({ compact = false } = {}) {
 function renderSchoolSuccessCenter() {
   const ops = productionReadiness;
   const currentYear = ops.academicYears.find((year) => year.status === "Active") || ops.academicYears.at(-1);
-  return `<section class="panel school-success-panel" aria-labelledby="school-success-title">
+  return `<section class="panel school-success-panel" id="school-success-center" aria-labelledby="school-success-title">
     <div class="section-heading"><div><p class="eyebrow">School continuity</p><h3 id="school-success-title">Academic Year & Privacy Center</h3></div><span>${escapeHtml(currentYear?.name || "Not configured")}</span></div>
     <div class="school-success-grid">
       <article class="success-card"><div class="section-heading"><h4>Academic-year rollover</h4><span>${escapeHtml(currentYear?.status || "Setup needed")}</span></div><p>Preview the next school year, then copy course structure and draft learning content while keeping prior grades and submissions archived.</p><form id="academic-rollover-form" class="stacked-form"><label><span>New school year</span><input id="rollover-name" value="2026–2027" required /></label><div class="date-pair"><label><span>Starts</span><input id="rollover-start" type="date" value="2026-08-01" required /></label><label><span>Ends</span><input id="rollover-end" type="date" value="2027-07-31" required /></label></div><label class="toggle-row"><input id="rollover-copy-lessons" type="checkbox" checked/><span>Copy courses, units, and lessons as drafts</span></label><label class="toggle-row"><input id="rollover-copy-gradebook" type="checkbox" checked/><span>Copy gradebook categories and standards</span></label><div class="inline-actions"><button class="secondary-action" type="button" data-preview-rollover>Preview rollover</button><button class="primary-action" type="submit">Create new year</button></div></form>${state.academicRolloverPreview ? `<div class="rollover-preview" role="status"><strong>Preview ready</strong><span>${escapeHtml(state.academicRolloverPreview)}</span></div>` : ""}<div class="year-history">${ops.academicYears.map((year) => `<div><strong>${escapeHtml(year.name)}</strong><span>${escapeHtml(year.status)}</span><small>${escapeHtml(year.startsOn)} to ${escapeHtml(year.endsOn)}</small></div>`).join("")}</div></article>
@@ -1003,7 +1250,7 @@ function renderSchoolAdmin() {
   const watchCount = rosterRecords.filter((record) => record.status === "Watch").length;
   const pendingSubmissions = gradebookSubmissions.filter((submission) => submission.status !== "Reviewed").length;
   return `
-    <section class="dashboard-grid platform-grid">
+    <section class="dashboard-grid platform-grid" id="school-overview">
       <div class="welcome-strip platform-welcome">
         <div>
           <p class="eyebrow">School admin workspace</p>
@@ -1019,7 +1266,7 @@ function renderSchoolAdmin() {
       ${renderEnrollmentCenter()}
       ${renderSchoolSuccessCenter()}
       ${renderInterventionCenter()}
-      <section class="panel instance-panel">
+      <section class="panel instance-panel" id="campus-tenant">
         <div class="section-heading"><h3>Campus Tenant</h3><span>${school.status}</span></div>
         <div class="instance-card">
           <div><span>Instance URL</span><strong>${school.subdomain}.educonnect.local</strong></div>
@@ -1030,7 +1277,7 @@ function renderSchoolAdmin() {
           <div><span>Submissions</span><strong>${pendingSubmissions} pending</strong></div>
         </div>
       </section>
-      <section class="panel permissions-panel">
+      <section class="panel permissions-panel" id="school-operations">
         <div class="section-heading"><h3>School Operations</h3><span>LMS, messages, approvals</span></div>
         <div class="permission-table">
           <button class="permission-row" data-open-role="lms"><strong>LMS</strong><span>Assignments and gradebook</span><small>${lmsAssignments.length} assignments</small></button>
@@ -1047,7 +1294,7 @@ function renderSchoolAdmin() {
 function renderEnrollmentCenter() {
   const school = selectedSchoolRecord();
   const imports = productionReadiness.enrollmentImports.filter((item) => item.schoolId === school.id);
-  return `<section class="panel enrollment-center-panel"><div class="section-heading"><div><p class="eyebrow">Roster operations</p><h3>Enrollment Center</h3></div><span>${rosterRecords.length} active learners</span></div><div class="enrollment-grid"><form id="enrollment-import-form" class="enrollment-import-card"><h4>Import roster</h4><p>Upload a OneRoster or CSV file, validate students and guardians, then stage changes before enrollment.</p><label class="upload-drop">${icon("paperclip")} Choose CSV or OneRoster file<input id="enrollment-file" type="file" accept=".csv,application/json" required/></label><select id="enrollment-role" aria-label="Import record type"><option>Students and guardians</option><option>Staff</option><option>Classes and enrollments</option></select><button class="primary-action" type="submit">Validate and import</button></form><div class="enrollment-history"><div class="section-heading"><h4>Import history</h4><span>${imports.length}</span></div>${imports.map((item) => `<article><div><strong>${escapeHtml(item.file)}</strong><small>${item.createdAt} • ${item.rows} rows</small></div><span>${item.accepted} accepted</span><em>${item.needsReview} review</em></article>`).join("") || `<div class="empty-state">No roster imports for this school.</div>`}</div></div><div class="enrollment-actions"><button class="secondary-action" type="button" data-export-roster>${icon("download")} Export OneRoster CSV</button><button class="secondary-action" type="button" data-send-enrollment-invites>${icon("send")} Send account invitations</button><span>Transfers and deactivations preserve audit history.</span></div></section>`;
+  return `<section class="panel enrollment-center-panel" id="enrollment-center"><div class="section-heading"><div><p class="eyebrow">Roster operations</p><h3>Enrollment Center</h3></div><span>${rosterRecords.length} active learners</span></div><div class="enrollment-grid"><form id="enrollment-import-form" class="enrollment-import-card"><h4>Import roster</h4><p>Upload a OneRoster or CSV file, validate students and guardians, then stage changes before enrollment.</p><label class="upload-drop">${icon("paperclip")} Choose CSV or OneRoster file<input id="enrollment-file" type="file" accept=".csv,application/json" required/></label><select id="enrollment-role" aria-label="Import record type"><option>Students and guardians</option><option>Staff</option><option>Classes and enrollments</option></select><button class="primary-action" type="submit">Validate and import</button></form><div class="enrollment-history"><div class="section-heading"><h4>Import history</h4><span>${imports.length}</span></div>${imports.map((item) => `<article><div><strong>${escapeHtml(item.file)}</strong><small>${item.createdAt} • ${item.rows} rows</small></div><span>${item.accepted} accepted</span><em>${item.needsReview} review</em></article>`).join("") || `<div class="empty-state">No roster imports for this school.</div>`}</div></div><div class="enrollment-actions"><button class="secondary-action" type="button" data-export-roster>${icon("download")} Export OneRoster CSV</button><button class="secondary-action" type="button" data-send-enrollment-invites>${icon("send")} Send account invitations</button><span>Transfers and deactivations preserve audit history.</span></div></section>`;
 }
 
 function renderPlatform() {
@@ -1303,7 +1550,7 @@ function renderRoleControlCenter() {
 
 function renderRealtimePanel() {
   return `
-    <section class="panel realtime-panel">
+    <section class="panel realtime-panel" id="realtime-operations">
       <div class="section-heading">
         <div><h3>Realtime Operations</h3><span>${state.liveUpdates ? "Live updates enabled" : "Live updates paused"}</span></div>
         <div class="inline-actions">
@@ -1340,7 +1587,7 @@ function renderUnifiedOperatingSystem() {
     { role: "community", label: "Community", iconName: "megaphone", metric: `${board.pending.length} pending`, detail: `${board.published.length} approved posts live` },
   ];
   return `
-    <section class="panel unified-os-panel">
+    <section class="panel unified-os-panel" id="unified-school-os">
       <div class="section-heading">
         <div><p class="eyebrow">One integrated system</p><h3>Unified School Operating System</h3></div>
         <span>${school.name}</span>
@@ -1390,13 +1637,13 @@ function renderProductionReadiness() {
   const doneTasks = onboardingTasks.filter((task) => task.done).length;
   const secured = securityChecklist.filter((item) => item.done).length;
   return `
-    <section class="panel production-panel">
+    <section class="panel production-panel" id="launch-control">
       <div class="section-heading">
         <div><p class="eyebrow">Production operations</p><h3>Launch Control</h3></div>
         <span>${state.gatewayMode === "demo" ? "Demo mode" : "Backend-ready mode"}</span>
       </div>
       <div class="production-grid">
-        <article class="production-card gateway-card">
+        <article class="production-card gateway-card" id="login-gateway">
           <div class="section-heading"><h4>Public Login Gateway</h4><span>${state.authProvider}</span></div>
           <label><span>Auth mode</span><select id="auth-provider"><option ${state.authProvider === "Role-based demo auth" ? "selected" : ""}>Role-based demo auth</option><option ${state.authProvider === "Supabase Auth" ? "selected" : ""}>Supabase Auth</option><option ${state.authProvider === "Firebase Auth" ? "selected" : ""}>Firebase Auth</option></select></label>
           <label><span>Backend provider</span><select id="backend-provider"><option ${state.backendProvider === "Supabase" ? "selected" : ""}>Supabase</option><option ${state.backendProvider === "Firebase" ? "selected" : ""}>Firebase</option><option ${state.backendProvider === "Custom API" ? "selected" : ""}>Custom API</option></select></label>
@@ -1406,14 +1653,14 @@ function renderProductionReadiness() {
           </div>
         </article>
 
-        <article class="production-card">
+        <article class="production-card" id="database-blueprint">
           <div class="section-heading"><h4>Database Blueprint</h4><button class="text-button" data-provision-schema>Provision mock schema</button></div>
           <div class="schema-list">
             ${databaseTables.map((table) => `<div class="schema-row"><strong>${table.name}</strong><span>${table.records} records</span><em>${table.status}</em><small>${table.detail}</small></div>`).join("")}
           </div>
         </article>
 
-        <article class="production-card">
+        <article class="production-card" id="admin-onboarding">
           <div class="section-heading"><h4>Admin Onboarding</h4><span>${doneTasks}/${onboardingTasks.length} complete</span></div>
           <div class="checklist-list">
             ${onboardingTasks.map((task) => `<label class="checklist-row"><input type="checkbox" data-onboarding-task="${task.id}" ${task.done ? "checked" : ""} /><span class="custom-check">${task.done ? icon("check") : ""}</span><span><strong>${task.label}</strong><small>${task.owner}</small></span></label>`).join("")}
@@ -1425,7 +1672,7 @@ function renderProductionReadiness() {
           </form>
         </article>
 
-        <article class="production-card">
+        <article class="production-card" id="platform-file-uploads">
           <div class="section-heading"><h4>File Uploads</h4><span>${fileUploads.length} files</span></div>
           <label class="upload-drop">${icon("paperclip")} Add assignment, PDF, image, or community file<input type="file" id="production-file-upload" multiple /></label>
           <div class="upload-list">
@@ -1433,19 +1680,19 @@ function renderProductionReadiness() {
           </div>
         </article>
 
-        <article class="production-card">
+        <article class="production-card" id="notification-delivery">
           <div class="section-heading"><h4>Notification Delivery</h4><button class="text-button" data-send-delivery-test>Send test batch</button></div>
           ${notificationDeliveryLog.map((item) => `<div class="delivery-row"><strong>${item.channel}</strong><span>${item.audience}</span><em>${item.status}</em><small>${item.detail}</small></div>`).join("")}
         </article>
 
-        <article class="production-card">
+        <article class="production-card" id="security-checklist">
           <div class="section-heading"><h4>Privacy & Security</h4><span>${secured}/${securityChecklist.length} ready</span></div>
           <div class="checklist-list">
             ${securityChecklist.map((item) => `<label class="checklist-row"><input type="checkbox" data-security-check="${item.id}" ${item.done ? "checked" : ""} /><span class="custom-check">${item.done ? icon("check") : ""}</span><span><strong>${item.label}</strong><small>${item.status}</small></span></label>`).join("")}
           </div>
         </article>
 
-        <article class="production-card deploy-card">
+        <article class="production-card deploy-card" id="deployment-pipeline">
           <div class="section-heading"><h4>Deployment Pipeline</h4><span>Hostinger live</span></div>
           ${deployPipeline.map((item) => `<div class="pipeline-row"><strong>${item.step}</strong><span>${item.detail}</span><em class="${item.status.toLowerCase()}">${item.status}</em></div>`).join("")}
         </article>
@@ -1460,7 +1707,7 @@ function renderOperationalCommandCenter() {
   const storagePercent = Math.round((ops.storage.usedGb / ops.storage.quotaGb) * 100);
   const operationTabs = [["tenants", "Tenants & domains"], ["security", "Security & backups"], ["notifications", "Notifications"], ["services", "Connected services"], ["jobs", "Jobs & recovery"], ["monitoring", "Monitoring"], ["launch", "Launch & review"]];
   const panelAttributes = (id) => `id="operations-panel-${id}" role="tabpanel" aria-labelledby="operations-tab-${id}"`;
-  return `<div class="operations-command-center">
+  return `<div class="operations-command-center" id="platform-operations-center">
     <div class="section-heading"><div><p class="eyebrow">Production readiness</p><h3>Platform Operations Center</h3></div><span>${ops.monitors.every((item) => item.status === "Operational") ? "All systems operational" : "Attention required"}</span></div>
     <div class="operations-tabs" role="tablist" aria-label="Platform operations">${operationTabs.map(([id, label]) => `<button type="button" role="tab" id="operations-tab-${id}" aria-controls="operations-panel-${id}" aria-selected="${state.activeOperationsTab === id}" tabindex="${state.activeOperationsTab === id ? "0" : "-1"}" class="${state.activeOperationsTab === id ? "active" : ""}" data-operations-tab="${id}">${label}</button>`).join("")}</div>
     ${state.activeOperationsTab === "tenants" ? `<div class="operations-grid" ${panelAttributes("tenants")}>
@@ -1497,7 +1744,7 @@ function renderOperationalCommandCenter() {
 
 function renderCompliancePanel() {
   return `
-    <section class="panel compliance-panel">
+    <section class="panel compliance-panel" id="compliance-dashboard">
       <div class="section-heading"><h3>Privacy & Compliance Dashboard</h3><span>FERPA operations</span></div>
       <div class="compliance-grid">
         ${complianceMetrics.map((item) => `
@@ -1517,7 +1764,7 @@ function renderLessonLibrary({ teacherStudio = false } = {}) {
   const published = lmsLessons.filter((lesson) => lesson.status === "Published").length;
   const drafts = lmsLessons.length - published;
   return `
-    <section class="panel lesson-library-panel ${teacherStudio ? "teacher-lesson-library" : "lms-panel"}">
+    <section class="panel lesson-library-panel ${teacherStudio ? "teacher-lesson-library" : "lms-panel"}" id="${teacherStudio ? "lesson-studio" : "lesson-library"}">
       <div class="section-heading lesson-library-heading">
         <div><p class="eyebrow">${teacherStudio ? "Teacher authoring" : "Course content"}</p><h3>Lesson Library</h3></div>
         <div class="inline-actions">
@@ -1616,7 +1863,7 @@ function renderLessonBlockEditor(block, index, total) {
 function renderLessonBuilder() {
   const draft = state.lessonDraft || newLessonDraft();
   return `
-    <section class="panel lesson-builder-panel" aria-labelledby="lesson-builder-title">
+    <section class="panel lesson-builder-panel" id="lesson-studio" aria-labelledby="lesson-builder-title">
       <div class="section-heading lesson-builder-heading"><div><p class="eyebrow">Lesson Studio</p><h3 id="lesson-builder-title">${draft.id ? "Edit lesson" : "Create a lesson"}</h3></div><button class="icon-button" type="button" data-close-lesson-builder aria-label="Close lesson builder">${icon("x")}</button></div>
       <form id="lesson-builder-form" class="lesson-builder-form">
         <div class="lesson-settings-grid">
@@ -1683,7 +1930,7 @@ function renderStudentLessons() {
   const active = lessons.find((lesson) => lesson.id === state.activeStudentLessonId) || lessons[0];
   const progressRecord = active ? state.lessonProgress?.[active.id] : null;
   return `
-    <section class="panel student-lessons-panel">
+    <section class="panel student-lessons-panel" id="student-lessons">
       <div class="section-heading"><div><p class="eyebrow">My classroom</p><h3>${t("lessons")}</h3></div><span>${lessons.length} available</span></div>
       <div class="student-lesson-layout">
         <div class="student-lesson-list">
@@ -1723,7 +1970,7 @@ function renderStudentAssignments() {
   const active = assignments.find((item) => item.id === state.activeAssignmentId) || assignments[0];
   const work = active ? submissionFor(active.id) : null;
   const missing = assignments.filter((item) => !submissionFor(item.id) || ["Not started", "Draft"].includes(submissionFor(item.id)?.status)).length;
-  return `<section class="panel student-assignments-panel">
+  return `<section class="panel student-assignments-panel" id="student-assignments">
     <div class="section-heading"><div><p class="eyebrow">${t("assignments")}</p><h3>Submit Your Work</h3></div><span>${missing} need attention</span></div>
     <div class="student-assignment-layout">
       <div class="student-assignment-list">${assignments.map((assignment) => {
@@ -1749,13 +1996,13 @@ function renderStudentProgressHub() {
   const scores = completed.map((lesson) => state.lessonProgress[lesson.id].score);
   const average = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0;
   const missing = lmsAssignments.filter((assignment) => !["Submitted", "Returned"].includes(submissionFor(assignment.id)?.status)).length;
-  return `<section class="panel student-progress-hub"><div class="section-heading"><div><p class="eyebrow">Learning overview</p><h3>My Progress</h3></div><span>Resumes automatically</span></div><div class="student-progress-grid"><article><strong>${completed.length}/${published.length}</strong><span>Lessons completed</span>${progress(published.length ? Math.round((completed.length / published.length) * 100) : 0)}</article><article><strong>${average}%</strong><span>Average quiz score</span>${progress(average)}</article><article class="${missing ? "needs-attention" : ""}"><strong>${missing}</strong><span>Missing or draft assignments</span></article><article><strong>${state.bookmarkedLessons?.length || 0}</strong><span>Bookmarked lessons</span></article><article><strong>${completed.filter((lesson) => state.lessonProgress[lesson.id].certificate).length}</strong><span>Certificates earned</span></article></div></section>`;
+  return `<section class="panel student-progress-hub" id="student-progress"><div class="section-heading"><div><p class="eyebrow">Learning overview</p><h3>My Progress</h3></div><span>Resumes automatically</span></div><div class="student-progress-grid"><article><strong>${completed.length}/${published.length}</strong><span>Lessons completed</span>${progress(published.length ? Math.round((completed.length / published.length) * 100) : 0)}</article><article><strong>${average}%</strong><span>Average quiz score</span>${progress(average)}</article><article class="${missing ? "needs-attention" : ""}"><strong>${missing}</strong><span>Missing or draft assignments</span></article><article><strong>${state.bookmarkedLessons?.length || 0}</strong><span>Bookmarked lessons</span></article><article><strong>${completed.filter((lesson) => state.lessonProgress[lesson.id].certificate).length}</strong><span>Certificates earned</span></article></div></section>`;
 }
 
 function renderTeacherLearningOperations() {
   const submitted = lmsSubmissions.filter((item) => item.status === "Submitted");
   const returned = lmsSubmissions.filter((item) => item.status === "Returned");
-  return `<section class="panel teacher-operations-panel">
+  return `<section class="panel teacher-operations-panel" id="learning-operations">
     <div class="section-heading"><div><p class="eyebrow">Teacher command center</p><h3>Learning Operations</h3></div><span>${submitted.length} ready to grade</span></div>
     <div class="teacher-operation-stats"><span><strong>${lmsLessons.filter((item) => item.status === "Draft").length}</strong> lesson drafts</span><span><strong>${lmsAssignments.filter((item) => item.status === "Published").length}</strong> live assignments</span><span><strong>${submitted.length}</strong> grading queue</span><span><strong>${returned.length}</strong> returned</span></div>
     <div class="grading-inbox"><div class="section-heading"><h4>Submission Inbox</h4><span>Score, comment, return</span></div>${submitted.length ? submitted.map((submission) => {
@@ -1766,7 +2013,7 @@ function renderTeacherLearningOperations() {
 }
 
 function renderCurriculumPlanner() {
-  return `<section class="panel curriculum-planner-panel">
+  return `<section class="panel curriculum-planner-panel" id="curriculum-planner">
     <div class="section-heading"><div><p class="eyebrow">Curriculum map</p><h3>Courses and Units</h3></div><span>${curriculumCourses.length} courses</span></div>
     <form class="curriculum-create-form" id="course-create-form"><input id="course-title" placeholder="New course title" required /><select id="course-subject"><option>English Language Arts</option><option>Math</option><option>Science</option><option>Social Studies</option><option>Art</option><option>Technology</option></select><input id="course-grade" placeholder="Grade" required /><button class="secondary-action" type="submit">${icon("plus")} Add course</button></form>
     <div class="curriculum-course-list">${curriculumCourses.map((course) => `<article class="curriculum-course"><div class="curriculum-course-heading"><div><span>${escapeHtml(course.subject)} • Grade ${escapeHtml(course.grade)}</span><h4>${escapeHtml(course.title)}</h4><small>${course.standards.join(" • ") || "Standards can be added"}</small></div><form data-add-unit="${course.id}"><input aria-label="New unit for ${escapeHtml(course.title)}" placeholder="New unit title" required /><button class="text-button" type="submit">${icon("plus")} Add unit</button></form></div><div class="curriculum-unit-list">${course.units.map((unit) => `<section><div><strong>${escapeHtml(unit.title)}</strong><small>${escapeHtml(unit.description || "Curriculum unit")}</small></div><span>${unit.lessonIds.length} lessons</span><span>${unit.assignmentIds.length} assignments</span><form data-link-curriculum="${course.id}:${unit.id}"><select aria-label="Content to add to ${escapeHtml(unit.title)}"><optgroup label="Lessons">${lmsLessons.map((lesson) => `<option value="lesson:${lesson.id}">${escapeHtml(lesson.title)}</option>`).join("")}</optgroup><optgroup label="Assignments">${lmsAssignments.map((assignment) => `<option value="assignment:${assignment.id}">${escapeHtml(assignment.title)}</option>`).join("")}</optgroup></select><button class="text-button" type="submit">Link content</button></form></section>`).join("")}</div></article>`).join("")}</div>
@@ -1778,18 +2025,18 @@ function renderTeacherPlanningCalendar() {
     ...lmsLessons.filter((item) => item.dueDate).map((item) => ({ title: item.title, date: item.dueDate, kind: "Lesson", status: item.status })),
     ...lmsAssignments.filter((item) => item.dueDate).map((item) => ({ title: item.title, date: item.dueDate, kind: "Assignment", status: item.status })),
   ].sort((a, b) => a.date.localeCompare(b.date));
-  return `<section class="panel teacher-calendar-panel"><div class="section-heading"><div><p class="eyebrow">Instruction plan</p><h3>Teaching Calendar</h3></div><span>${items.length} scheduled</span></div><div class="teaching-calendar-list">${items.map((item) => `<article><time>${escapeHtml(item.date)}</time><div><strong>${escapeHtml(item.title)}</strong><small>${item.kind} • ${item.status}</small></div></article>`).join("") || `<div class="empty-state">Add a due date to a lesson or assignment to place it here.</div>`}</div></section>`;
+  return `<section class="panel teacher-calendar-panel" id="teaching-calendar"><div class="section-heading"><div><p class="eyebrow">Instruction plan</p><h3>Teaching Calendar</h3></div><span>${items.length} scheduled</span></div><div class="teaching-calendar-list">${items.map((item) => `<article><time>${escapeHtml(item.date)}</time><div><strong>${escapeHtml(item.title)}</strong><small>${item.kind} • ${item.status}</small></div></article>`).join("") || `<div class="empty-state">Add a due date to a lesson or assignment to place it here.</div>`}</div></section>`;
 }
 
 function renderNotificationAutomation() {
   const channels = Object.entries(state.notificationPreferences).filter(([key, value]) => ["email", "sms", "push"].includes(key) && value).map(([key]) => key.toUpperCase());
-  return `<section class="panel notification-automation-panel"><div class="section-heading"><div><p class="eyebrow">Family communication</p><h3>Automated Reminders</h3></div><span>${channels.join(" + ") || "Dashboard only"}</span></div><p>Due-date reminders are scheduled ${state.notificationPreferences.dueDays} day${state.notificationPreferences.dueDays === 1 ? "" : "s"} ahead using each person's preferences.</p><button class="secondary-action" type="button" data-send-class-reminder>${icon("send")} Send class reminder now</button><div class="delivery-summary">${notificationDeliveryLog.slice(0, 3).map((item) => `<span><strong>${escapeHtml(item.channel)}</strong> ${escapeHtml(item.status)}</span>`).join("")}</div></section>`;
+  return `<section class="panel notification-automation-panel" id="automated-reminders"><div class="section-heading"><div><p class="eyebrow">Family communication</p><h3>Automated Reminders</h3></div><span>${channels.join(" + ") || "Dashboard only"}</span></div><p>Due-date reminders are scheduled ${state.notificationPreferences.dueDays} day${state.notificationPreferences.dueDays === 1 ? "" : "s"} ahead using each person's preferences.</p><button class="secondary-action" type="button" data-send-class-reminder>${icon("send")} Send class reminder now</button><div class="delivery-summary">${notificationDeliveryLog.slice(0, 3).map((item) => `<span><strong>${escapeHtml(item.channel)}</strong> ${escapeHtml(item.status)}</span>`).join("")}</div></section>`;
 }
 
 function renderStandardsGradebook() {
   const gradebook = activeSchoolGradebook();
   const weightTotal = gradebook.categories.reduce((sum, item) => sum + Number(item.weight), 0);
-  return `<section class="panel standards-gradebook-panel"><div class="section-heading"><div><p class="eyebrow">Standards and reporting</p><h3>Standards Gradebook</h3></div><span>${weightTotal === 100 ? "Weights balanced" : `${weightTotal}% total`}</span></div><div class="standards-gradebook-grid"><div><h4>Weighted categories</h4><div class="weight-list">${gradebook.categories.map((category, index) => `<label><span>${escapeHtml(category.name)}</span><input type="number" min="0" max="100" value="${category.weight}" data-gradebook-weight="${index}"/><em>%</em></label>`).join("")}</div></div><div><h4>Standards mastery</h4><div class="standards-list">${gradebook.standards.map((standard) => `<article><div><strong>${escapeHtml(standard.code)}</strong><span>${standard.mastery}% mastery</span></div>${progress(standard.mastery)}</article>`).join("")}</div></div><div class="reporting-actions"><h4>Reporting & SIS</h4><p>Generate report cards or exchange grades using ${gradebook.sisExport.format}.</p><button class="secondary-action" type="button" data-generate-report-cards>${icon("file-text")} Generate report cards</button><button class="secondary-action" type="button" data-export-sis>${icon("download")} Export to SIS</button><small>Last export: ${gradebook.sisExport.lastExport}</small></div></div></section>`;
+  return `<section class="panel standards-gradebook-panel" id="standards-gradebook"><div class="section-heading"><div><p class="eyebrow">Standards and reporting</p><h3>Standards Gradebook</h3></div><span>${weightTotal === 100 ? "Weights balanced" : `${weightTotal}% total`}</span></div><div class="standards-gradebook-grid"><div><h4>Weighted categories</h4><div class="weight-list">${gradebook.categories.map((category, index) => `<label><span>${escapeHtml(category.name)}</span><input type="number" min="0" max="100" value="${category.weight}" data-gradebook-weight="${index}"/><em>%</em></label>`).join("")}</div></div><div><h4>Standards mastery</h4><div class="standards-list">${gradebook.standards.map((standard) => `<article><div><strong>${escapeHtml(standard.code)}</strong><span>${standard.mastery}% mastery</span></div>${progress(standard.mastery)}</article>`).join("")}</div></div><div class="reporting-actions"><h4>Reporting & SIS</h4><p>Generate report cards or exchange grades using ${gradebook.sisExport.format}.</p><button class="secondary-action" type="button" data-generate-report-cards>${icon("file-text")} Generate report cards</button><button class="secondary-action" type="button" data-export-sis>${icon("download")} Export to SIS</button><small>Last export: ${gradebook.sisExport.lastExport}</small></div></div></section>`;
 }
 
 function activeSchoolGradebook() {
@@ -1805,7 +2052,7 @@ function renderAdvancedLms() {
   const quizCount = lmsLessons.reduce((total, lesson) => total + lesson.blocks.filter((block) => block.type === "quiz").length, 0);
   const publishedLessons = lmsLessons.filter((lesson) => lesson.status === "Published").length;
   return `
-    <section class="dashboard-grid lms-grid">
+    <section class="dashboard-grid lms-grid" id="lms-overview">
       <div class="welcome-strip lms-welcome">
         <div>
           <p class="eyebrow">${school.name} advanced LMS</p>
@@ -1822,17 +2069,17 @@ function renderAdvancedLms() {
       ${renderLessonLibrary()}
       ${renderBackgroundServices()}
 
-      <section class="panel lms-panel simplicity-suite">
+      <section class="panel lms-panel simplicity-suite" id="simple-classroom">
         <div class="section-heading"><h3>Simple Classroom Experience</h3><span>Clean by default</span></div>
         ${classroomStrengths.slice(0, 2).map(([title, body]) => `<article class="strength-row">${icon("check")}<div><strong>${title}</strong><small>${body}</small></div></article>`).join("")}
       </section>
 
-      <section class="panel lms-panel free-suite">
+      <section class="panel lms-panel free-suite" id="zero-cost-core">
         <div class="section-heading"><h3>Zero Cost Core</h3><span>No premium paywall</span></div>
         <div class="free-card"><strong>$0</strong><p>Schools can use classroom basics, paperless assignments, messaging, and parent summaries without hidden fees.</p></div>
       </section>
 
-      <section class="panel lms-panel grading-suite">
+      <section class="panel lms-panel grading-suite" id="advanced-grading">
         <div class="section-heading"><h3>Advanced Grading</h3><span>Automated tests + rubrics + analytics</span></div>
         <div class="assignment-list">
           ${lmsAssignments.map((item) => `
@@ -1847,7 +2094,7 @@ function renderAdvancedLms() {
 
       ${renderGradebookDetail()}
 
-      <section class="panel lms-panel deadline-suite">
+      <section class="panel lms-panel deadline-suite" id="deadline-controls">
         <div class="section-heading"><h3>Deadline Controls</h3><span>Firm locks + exceptions</span></div>
         ${lmsAssignments.map((item) => `
           <article class="deadline-control">
@@ -1857,7 +2104,7 @@ function renderAdvancedLms() {
         `).join("")}
       </section>
 
-      <section class="panel lms-panel account-suite">
+      <section class="panel lms-panel account-suite" id="account-context">
         <div class="section-heading"><h3>Account Context</h3><span>No constant log-outs</span></div>
         <div class="account-switcher">
           ${lmsAccounts.map((account) => `<button class="${activeAccount.id === account.id ? "active" : ""}" data-lms-account="${account.id}"><strong>${account.name}</strong><span>${account.context}</span></button>`).join("")}
@@ -1865,14 +2112,14 @@ function renderAdvancedLms() {
         <p class="account-note">Current context: <strong>${activeAccount.name}</strong> can switch roles without leaving ${school.name}.</p>
       </section>
 
-      <section class="panel lms-panel workflow-suite">
+      <section class="panel lms-panel workflow-suite" id="paperless-workflow">
         <div class="section-heading"><h3>Paperless Assignment Workflow</h3><span>Create to return</span></div>
         <div class="workflow-steps">
           ${["Create", "Distribute", "Collect", "Grade", "Return", "Archive"].map((step, index) => `<div><strong>${index + 1}</strong><span>${step}</span></div>`).join("")}
         </div>
       </section>
 
-      <section class="panel lms-panel guardrail-suite">
+      <section class="panel lms-panel guardrail-suite" id="lms-guardrails">
         <div class="section-heading"><h3>Automated Guardrails</h3><span>Submission and quiz controls</span></div>
         <label class="guardrail-row"><input type="checkbox" data-guardrail="lockSubmissions" ${state.guardrails.lockSubmissions ? "checked" : ""} ${can("lms") ? "" : "disabled"} /><span class="custom-check">${state.guardrails.lockSubmissions ? icon("check") : ""}</span><span>Prevent edits after submission</span></label>
         <label class="guardrail-row"><input type="checkbox" data-guardrail="hideAnswers" ${state.guardrails.hideAnswers ? "checked" : ""} ${can("lms") ? "" : "disabled"} /><span class="custom-check">${state.guardrails.hideAnswers ? icon("check") : ""}</span><span>Hide answers until quiz closes</span></label>
@@ -1880,7 +2127,7 @@ function renderAdvancedLms() {
         ${permissionNotice("lms", "LMS guardrails are managed by teachers and administrators.")}
       </section>
 
-      <section class="panel lms-panel offline-suite">
+      <section class="panel lms-panel offline-suite" id="offline-learning">
         <div class="section-heading"><h3>Offline Learning</h3><span>${state.offlinePackReady ? "Synced for low-connectivity use" : "Build a pack for offline work"}</span></div>
         <div class="offline-card">
           <div class="offline-status ${state.offlinePackReady ? "ready" : ""}">${state.offlinePackReady ? icon("check") : icon("download")}</div>
@@ -1888,7 +2135,7 @@ function renderAdvancedLms() {
         </div>
       </section>
 
-      <section class="panel lms-panel privacy-suite">
+      <section class="panel lms-panel privacy-suite" id="learning-privacy">
         <div class="section-heading"><h3>Learning Privacy</h3><span>FERPA-aware LMS</span></div>
         ${privacyControls.map((item) => `<article class="strength-row">${icon("shield-check")}<div><strong>${item.label}</strong><small>${item.detail}</small></div></article>`).join("")}
       </section>
@@ -1899,7 +2146,7 @@ function renderAdvancedLms() {
 function renderGradebookDetail() {
   const selected = gradebookSubmissions.find((item) => item.id === state.selectedSubmissionId) || gradebookSubmissions[0];
   return `
-    <section class="panel lms-panel gradebook-detail-suite">
+    <section class="panel lms-panel gradebook-detail-suite" id="gradebook-detail">
       <div class="section-heading"><h3>Gradebook Detail</h3><span>Submissions, rubric, comments</span></div>
       <div class="gradebook-layout">
         <div class="submission-list">
@@ -1926,7 +2173,7 @@ function renderStudent() {
   const school = selectedSchoolRecord();
   const points = (school.studentPoints + state.completed.length * 75).toLocaleString();
   return `
-    <section class="dashboard-grid student-grid">
+    <section class="dashboard-grid student-grid" id="student-overview">
       <div class="hero-card student-hero">
         <div>
           <span class="badge soft">${icon("star")} ${points} points</span>
@@ -1941,7 +2188,7 @@ function renderStudent() {
       ${renderStudentProgressHub()}
       ${renderStudentAssignments()}
       ${renderStudentLessons()}
-      <section class="panel missions-panel">
+      <section class="panel missions-panel" id="student-missions">
         <div class="section-heading"><div><p class="eyebrow">Today</p><h3>My Missions</h3></div><button class="text-button" data-action="All available missions are already shown for this learner.">See all ${icon("chevron-right")}</button></div>
         <div class="mission-list">
           ${missions.map((mission) => {
@@ -1960,7 +2207,7 @@ function renderStudent() {
           }).join("")}
         </div>
       </section>
-      <section class="panel awards-panel">
+      <section class="panel awards-panel" id="student-awards">
         <div class="section-heading"><h3>Awards</h3>${icon("award")}</div>
         <div class="award-grid">${["Kindness Kid", "Problem Solver", "Fast Learner", "Story Teller"].map((award) => `<div class="award-tile">${icon("sparkles")}<span>${award}</span></div>`).join("")}</div>
       </section>
@@ -1971,7 +2218,7 @@ function renderStudent() {
 function renderBackgroundServices() {
   const unread = unreadNotifications();
   return `
-    <section class="panel lms-panel background-services" aria-label="Passive background services">
+    <section class="panel lms-panel background-services" id="background-services" aria-label="Passive background services">
       <div class="section-heading">
         <div><p class="eyebrow">Passive background layer</p><h3>Background Services</h3></div>
         <span>Runs quietly behind LMS work</span>
@@ -2014,7 +2261,7 @@ function renderTeacher() {
   const visible = state.selectedClass === "All" ? teacherClasses : teacherClasses.filter((item) => item.name === state.selectedClass);
   const roster = state.rosterFilter === "All" ? rosterRecords : rosterRecords.filter((item) => item.status === state.rosterFilter);
   return `
-    <section class="dashboard-grid teacher-grid">
+    <section class="dashboard-grid teacher-grid" id="teacher-overview">
       <div class="welcome-strip"><div><p class="eyebrow">${school.name} instance</p><h2>Welcome back, Demo Teacher.</h2><p>Build lessons with rich content, quizzes, and media, then publish them directly to your students.</p></div><button class="primary-action" data-new-lesson ${permissionAttrs("teacher-tools", "Only teachers and administrators can create lessons.")}>${icon("plus")} Create lesson</button></div>
       ${statCard("Average grade", school.avgGrade, "trending-up", "blue")}
       ${statCard("Attendance", school.attendance, "calendar-days", "teal")}
@@ -2025,14 +2272,14 @@ function renderTeacher() {
       ${renderStandardsGradebook()}
       ${renderInterventionCenter({ compact: true })}
       ${renderTeacherLessonStudio()}
-      <section class="panel class-panel">
+      <section class="panel class-panel" id="active-classes">
         <div class="section-heading">
           <h3>Active Classes</h3>
           <select id="class-filter" aria-label="Filter classes"><option>All</option>${teacherClasses.map((item) => `<option ${state.selectedClass === item.name ? "selected" : ""}>${item.name}</option>`).join("")}</select>
         </div>
         <div class="class-list">${visible.map((item) => `<article class="class-card"><div><h4>${item.name}</h4><p>${item.room}</p></div><div class="class-metrics"><span>${item.grade}% grade</span><span>${item.attendance}% attendance</span><span>${item.pending} pending</span></div><button class="icon-button" aria-label="Open ${item.name} options" data-action="${item.name} class tools opened.">${icon("more-horizontal")}</button></article>`).join("")}</div>
       </section>
-      <section class="panel assignment-composer-panel">
+      <section class="panel assignment-composer-panel" id="quick-assignment">
         <div class="section-heading"><h3>Quick Assignment</h3><span>Add a simple graded task</span></div>
         <form id="assignment-form" class="assignment-form">
           <label><span>Title</span><input id="assignment-title" placeholder="Example: Reading Checkpoint" required /></label>
@@ -2047,14 +2294,14 @@ function renderTeacher() {
         </form>
         <div class="quick-assignment-list">${lmsAssignments.slice(0, 5).map((assignment) => `<article><strong>${escapeHtml(assignment.title)}</strong><span>${escapeHtml(assignment.className || "All classes")} • ${assignment.status || "Published"}</span></article>`).join("")}</div>
       </section>
-      <section class="panel activity-panel">
+      <section class="panel activity-panel" id="student-activity">
         <div class="section-heading"><h3>Recent Student Activity</h3><button class="icon-button" aria-label="Refresh activity" data-refresh-activity>${icon("refresh-cw")}</button></div>
         ${activityFeed.map(([student, action, time, course]) => `<article class="activity-row"><div class="avatar">${initials(student)}</div><div><p><strong>${student}</strong> ${action}</p><span>${time} | ${course}</span></div><button class="icon-button" aria-label="Reply to ${student}" data-reply-student="${student}">${icon("pen-line")}</button></article>`).join("")}
       </section>
       ${renderCurriculumPlanner()}
-      <section class="panel grading-card"><h3>Grading To-Do</h3>${progress(68)}<p>18 submissions left across 3 classes.</p><button class="secondary-action" data-open-role="lms">${icon("clipboard-check")} Open Grading Hub</button></section>
+      <section class="panel grading-card" id="grading-todo"><h3>Grading To-Do</h3>${progress(68)}<p>18 submissions left across 3 classes.</p><button class="secondary-action" data-open-role="lms">${icon("clipboard-check")} Open Grading Hub</button></section>
       ${permissionNotice("teacher-tools", "Teacher tools are read-only for this signed-in role.")}
-      <section class="panel roster-panel">
+      <section class="panel roster-panel" id="teacher-roster">
         <div class="section-heading">
           <h3>Roster & Enrollments</h3>
           <select id="roster-filter" aria-label="Filter roster"><option>All</option><option>Active</option><option>Watch</option></select>
@@ -2077,21 +2324,21 @@ function renderTeacher() {
 function renderParent() {
   const school = selectedSchoolRecord();
   return `
-    <section class="dashboard-grid parent-grid">
+    <section class="dashboard-grid parent-grid" id="parent-overview">
       <div class="welcome-strip parent-welcome"><div><p class="eyebrow">${school.learnerName}'s progress</p><h2>Welcome back, ${school.guardianName}.</h2><p>${school.learnerName}'s family view belongs to ${school.name}'s private instance.</p></div><button class="primary-action" data-open-role="messages">${icon("send")} Message Teacher</button></div>
       ${statCard("Current grade", "A-", "trending-up", "blue")}
       ${statCard("Attendance", "98%", "calendar-days", "teal")}
       ${statCard("Reading pace", "56%", "book-open", "gold")}
       ${renderFamilyWeeklySummary()}
-      <section class="panel teacher-note"><div class="teacher-avatar">MH</div><h3>Ms. Henderson</h3><p>"Leo is making great progress in Geometry. Keep practicing the new vocabulary cards at home."</p><button class="secondary-action" data-open-role="messages">${icon("message-circle")} Start Chat</button></section>
-      <section class="panel deadline-panel">
+      <section class="panel teacher-note" id="teacher-note"><div class="teacher-avatar">MH</div><h3>Ms. Henderson</h3><p>"Leo is making great progress in Geometry. Keep practicing the new vocabulary cards at home."</p><button class="secondary-action" data-open-role="messages">${icon("message-circle")} Start Chat</button></section>
+      <section class="panel deadline-panel" id="family-deadlines">
         <div class="section-heading"><h3>Upcoming Deadlines</h3><button class="text-button" data-open-role="platform">Calendar ${icon("chevron-right")}</button></div>
         ${deadlines.map((item) => {
           const checked = state.checkedDeadlines.includes(item.title);
           return `<label class="deadline-row ${item.urgent ? "urgent" : ""}"><input type="checkbox" data-deadline="${item.title}" ${checked ? "checked" : ""} /><span class="custom-check">${checked ? icon("check") : ""}</span><span><strong>${item.title}</strong><small>${item.meta}</small></span></label>`;
         }).join("")}
       </section>
-      <section class="panel mobile-parent-panel">
+      <section class="panel mobile-parent-panel" id="mobile-parent">
         <div class="phone-preview">
           <div class="phone-top">${school.learnerName}</div>
           <strong>${school.name}</strong>
@@ -2103,14 +2350,14 @@ function renderParent() {
           ${mobileParentActions.map((item) => `<article class="mobile-action">${icon("smartphone")}<div><strong>${item.title}</strong><small>${item.detail}</small></div></article>`).join("")}
         </div>
       </section>
-      <section class="panel subject-panel"><h3>Subject Snapshot</h3>${[["Math", 92], ["Science", 88], ["Reading", 84], ["History", 91]].map(([subject, score]) => `<div class="subject-row"><span>${subject}</span>${progress(score)}<strong>${score}%</strong></div>`).join("")}</section>
+      <section class="panel subject-panel" id="subject-snapshot"><h3>Subject Snapshot</h3>${[["Math", 92], ["Science", 88], ["Reading", 84], ["History", 91]].map(([subject, score]) => `<div class="subject-row"><span>${subject}</span>${progress(score)}<strong>${score}%</strong></div>`).join("")}</section>
     </section>
   `;
 }
 
 function renderFamilyWeeklySummary() {
   const preferences = state.notificationPreferences;
-  return `<section class="panel family-summary-panel"><div class="section-heading"><div><p class="eyebrow">Family digest</p><h3>This Week at a Glance</h3></div><span>Updated today</span></div><div class="family-summary-grid"><article><strong>4</strong><span>assignments completed</span></article><article><strong>2</strong><span>deadlines ahead</span></article><article><strong>98%</strong><span>attendance</span></article><article><strong>+6%</strong><span>reading growth</span></article></div><div class="family-summary-body"><div><h4>Teacher highlights</h4><p>Strong participation in discussion and continued progress with evidence-based writing.</p></div><div><h4>Delivery preferences</h4><span>${preferences.email ? "Email" : ""}${preferences.sms ? " • SMS" : ""}${preferences.push ? " • Push" : ""}</span><button class="text-button" type="button" data-open-family-settings>Manage preferences</button></div><button class="secondary-action" type="button" data-send-weekly-summary>${icon("send")} Send summary now</button></div></section>`;
+  return `<section class="panel family-summary-panel" id="family-summary"><div class="section-heading"><div><p class="eyebrow">Family digest</p><h3>This Week at a Glance</h3></div><span>Updated today</span></div><div class="family-summary-grid"><article><strong>4</strong><span>assignments completed</span></article><article><strong>2</strong><span>deadlines ahead</span></article><article><strong>98%</strong><span>attendance</span></article><article><strong>+6%</strong><span>reading growth</span></article></div><div class="family-summary-body"><div><h4>Teacher highlights</h4><p>Strong participation in discussion and continued progress with evidence-based writing.</p></div><div><h4>Delivery preferences</h4><span>${preferences.email ? "Email" : ""}${preferences.sms ? " • SMS" : ""}${preferences.push ? " • Push" : ""}</span><button class="text-button" type="button" data-open-family-settings>Manage preferences</button></div><button class="secondary-action" type="button" data-send-weekly-summary>${icon("send")} Send summary now</button></div></section>`;
 }
 
 function renderMessages() {
@@ -2118,20 +2365,20 @@ function renderMessages() {
   const filtered = conversations.filter((item) => item.type === state.conversationFilter);
   const active = conversations.find((item) => item.id === state.activeConversationId) || filtered[0] || conversations[0];
   return `
-    <section class="messages-shell">
-      <aside class="conversation-list">
+    <section class="messages-shell" id="messages-overview">
+      <aside class="conversation-list" id="conversation-list">
         <div class="segment-control">${["Parents", "Groups"].map((filter) => `<button class="${state.conversationFilter === filter ? "active" : ""}" data-filter="${filter}">${filter}</button>`).join("")}</div>
         ${filtered.map((conversation) => `<button class="conversation ${active.id === conversation.id ? "active" : ""}" data-conversation="${conversation.id}"><div class="avatar">${initials(conversation.name)}</div><div><strong>${conversation.name}</strong><span>${conversation.preview}</span></div>${conversation.unread ? `<em>${conversation.unread}</em>` : ""}</button>`).join("")}
-        <div class="emergency-card ${state.emergencyOverride ? "active" : ""}">
+        <div class="emergency-card ${state.emergencyOverride ? "active" : ""}" id="emergency-override">
           ${icon("alert-triangle")}
           <div><strong>Emergency Override</strong><span>${state.emergencyOverride ? "Administrator enabled for urgent safety communication." : "Available only to school administrators."}</span></div>
           <button class="secondary-action" data-toggle-emergency ${permissionAttrs("emergency", "Emergency override is admin-only.")}>${state.emergencyOverride ? "Disable" : "Enable"}</button>
         </div>
       </aside>
-      <section class="chat-panel">
+      <section class="chat-panel" id="chat-panel">
         <header class="chat-header"><div class="avatar">${initials(active.name)}</div><div><h3>${active.name}</h3><p>${active.online ? "Online now" : active.role}</p></div><div class="chat-tools"><button class="icon-button" aria-label="Start video call" data-start-call="${active.id}">${icon("video")}</button><button class="icon-button" aria-label="More chat options" data-action="Chat options opened for ${active.name}.">${icon("more-horizontal")}</button></div></header>
         ${state.activeCallName ? `<div class="call-banner">${icon("video")} <strong>Live call with ${state.activeCallName}</strong><button class="text-button" data-end-call>End call</button></div>` : ""}
-        <div class="work-hours-banner ${state.workHoursOpen || state.emergencyOverride ? "open" : "closed"}">
+        <div class="work-hours-banner ${state.workHoursOpen || state.emergencyOverride ? "open" : "closed"}" id="communication-hours">
           ${icon(state.workHoursOpen || state.emergencyOverride ? "check" : "x")}
           <div><strong>${state.emergencyOverride ? "Emergency override active" : state.workHoursOpen ? "Communication window open" : "After-hours messaging paused"}</strong><span>${school.workHours}. ${state.emergencyOverride ? "Urgent administrator-approved messages can be sent now." : state.workHoursOpen ? "Parents and teachers can message now." : school.afterHours}</span></div>
           <button class="text-button" data-toggle-hours>${state.workHoursOpen ? "Simulate after hours" : "Open work hours"}</button>
@@ -2147,8 +2394,9 @@ function renderCommunityBoard() {
   const school = selectedSchoolRecord();
   const board = selectedCommunityBoard();
   const assignedApprover = activeApprover(board);
+  const canManageApprovers = can("approve-posts") || can("manage-users");
   return `
-    <section class="dashboard-grid community-grid">
+    <section class="dashboard-grid community-grid" id="community-overview">
       <div class="welcome-strip community-welcome">
         <div>
           <p class="eyebrow">${school.name} community board</p>
@@ -2158,7 +2406,7 @@ function renderCommunityBoard() {
         <span class="approval-badge">${board.pending.length} awaiting approval</span>
       </div>
 
-      <section class="panel board-composer">
+      <section class="panel board-composer" id="community-create-post">
         <div class="section-heading"><h3>Create Post</h3><span>Parent or teacher submission</span></div>
         <form id="board-form" class="board-form">
           <label><span>Author</span><input id="board-author" value="Demo Guardian" /></label>
@@ -2173,7 +2421,7 @@ function renderCommunityBoard() {
         </form>
       </section>
 
-      <section class="panel approver-panel">
+      ${canManageApprovers ? `<section class="panel approver-panel" id="community-approvers">
         <div class="section-heading"><h3>Assigned Post Approvers</h3>${icon("shield-check")}</div>
         <div class="approver-list">
           ${board.approvers.map((approver) => `
@@ -2189,23 +2437,23 @@ function renderCommunityBoard() {
           <select id="new-approver-title"><option>Principal</option><option>Assistant Principal</option><option>Dean of Students</option><option>Department Chair</option></select>
           <button class="secondary-action" type="submit">${icon("plus")} Assign</button>
         </form>
-      </section>
+      </section>` : ""}
 
-      <section class="panel approval-queue">
+      ${can("approve-posts") ? `<section class="panel approval-queue" id="community-approval-queue">
         <div class="section-heading"><h3>Administrator Approval Queue</h3>${icon("shield-check")}</div>
         <div class="queue-list">
           ${board.pending.length ? board.pending.map((post) => renderPendingPost(post)).join("") : `<div class="empty-state">No posts waiting for approval.</div>`}
         </div>
-      </section>
+      </section>` : ""}
 
-      <section class="panel published-board">
+      <section class="panel published-board" id="community-published">
         <div class="section-heading"><h3>Published Community Board</h3><span>${board.published.length} approved</span></div>
         <div class="post-list">
           ${board.published.map((post) => renderPublishedPost(post)).join("")}
         </div>
       </section>
 
-      <section class="panel board-policy">
+      <section class="panel board-policy" id="community-rules">
         <h3>Posting Rules</h3>
         <ul>
           <li>Parents and teachers can submit posts and media.</li>
@@ -2217,10 +2465,10 @@ function renderCommunityBoard() {
         ${permissionNotice("approve-posts", "Only administrators can approve or reject community posts.")}
       </section>
 
-      <section class="panel workflow-rules-panel">
+      ${can("approve-posts") ? `<section class="panel workflow-rules-panel" id="community-workflow">
         <div class="section-heading"><h3>Approval Workflow Rules</h3>${icon("shield-check")}</div>
         ${approvalRules.map(([rule, detail]) => `<article class="rule-row"><strong>${rule}</strong><span>${detail}</span></article>`).join("")}
-      </section>
+      </section>` : ""}
     </section>
   `;
 }
@@ -2328,8 +2576,8 @@ function openLessonBuilder(lessonId = "") {
   const lesson = lmsLessons.find((item) => item.id === lessonId);
   state.lessonDraft = newLessonDraft(lesson);
   state.lessonBuilderOpen = true;
-  if (state.role !== "teacher") goToRole("teacher", lesson ? `${lesson.title} opened in Lesson Studio.` : "Lesson Studio opened.");
-  else render();
+  if (state.role !== "teacher") goToRole("teacher", lesson ? `${lesson.title} opened in Lesson Studio.` : "Lesson Studio opened.", "lesson-studio");
+  else setActiveRole("teacher", true, "lesson-studio");
 }
 
 function saveLesson(status) {
@@ -2567,6 +2815,62 @@ function bindLandingEvents() {
   });
 }
 
+function closeGeneralMenu(restoreFocus = true) {
+  const dialog = document.querySelector("#general-menu-dialog");
+  const opener = generalMenuOpener;
+  generalMenuOpener = null;
+  document.querySelectorAll("[data-open-general-menu]").forEach((button) => button.setAttribute("aria-expanded", "false"));
+  if (dialog?.open) dialog.close();
+  if (restoreFocus && opener?.isConnected) requestAnimationFrame(() => opener.focus());
+}
+
+function openGeneralMenu(button) {
+  const dialog = document.querySelector("#general-menu-dialog");
+  if (!dialog) return;
+  generalMenuOpener = button;
+  document.querySelectorAll("[data-open-general-menu]").forEach((trigger) => trigger.setAttribute("aria-expanded", "true"));
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.setAttribute("open", "");
+  requestAnimationFrame(() => {
+    const current = dialog.querySelector("[aria-current]");
+    (current || dialog.querySelector(".general-menu-link") || dialog.querySelector("[data-close-general-menu]"))?.focus();
+  });
+}
+
+function handleGeneralMenuAction(action) {
+  closeGeneralMenu(false);
+  if (action === "dashboard") {
+    goToRole(activeUser().landing, "Your dashboard opened.");
+    return;
+  }
+  if (action === "search") {
+    requestAnimationFrame(() => document.querySelector("#global-search")?.focus());
+    return;
+  }
+  if (action === "notifications" || action === "settings") {
+    state.notificationsOpen = action === "notifications";
+    state.settingsOpen = action === "settings";
+    render();
+    requestAnimationFrame(() => {
+      const heading = document.querySelector(`.utility-panel[aria-label="${action === "notifications" ? "Notifications" : "Settings"}"] h3`);
+      heading?.setAttribute("tabindex", "-1");
+      heading?.focus();
+    });
+    return;
+  }
+  if (action === "create-lesson") {
+    openLessonBuilder();
+    return;
+  }
+  if (action === "tour") {
+    state.tourOpen = true;
+    state.tourStep = 0;
+    goToRole(tourSteps[0].role, "Walkthrough started.");
+    return;
+  }
+  if (action === "sign-out") signOut();
+}
+
 function bindEvents() {
   document.querySelectorAll("[data-role]").forEach((button) => {
     button.addEventListener("click", (event) => {
@@ -2574,6 +2878,40 @@ function bindEvents() {
       setActiveRole(button.dataset.role);
     });
   });
+
+  document.querySelectorAll("[data-open-general-menu]").forEach((button) => button.addEventListener("click", () => openGeneralMenu(button)));
+  document.querySelector("[data-close-general-menu]")?.addEventListener("click", () => closeGeneralMenu());
+  const generalMenuDialog = document.querySelector("#general-menu-dialog");
+  generalMenuDialog?.addEventListener("click", (event) => {
+    if (event.target === generalMenuDialog) closeGeneralMenu();
+  });
+  generalMenuDialog?.addEventListener("close", () => {
+    document.querySelectorAll("[data-open-general-menu]").forEach((button) => button.setAttribute("aria-expanded", "false"));
+    const opener = generalMenuOpener;
+    generalMenuOpener = null;
+    if (opener?.isConnected) requestAnimationFrame(() => opener.focus());
+  });
+
+  document.querySelectorAll("[data-menu-workspace]").forEach((link) => link.addEventListener("click", (event) => {
+    event.preventDefault();
+    closeGeneralMenu(false);
+    state.searchTerm = "";
+    setActiveRole(link.dataset.menuWorkspace);
+  }));
+
+  document.querySelectorAll("[data-menu-function]").forEach((link) => link.addEventListener("click", (event) => {
+    event.preventDefault();
+    closeGeneralMenu(false);
+    state.searchTerm = "";
+    const destination = findMenuDestination(link.dataset.menuRole, link.dataset.menuFunction);
+    if (!destination) return;
+    goToRole(destination.role, `${destination.label} opened.`, destination.id);
+  }));
+
+  document.querySelectorAll("[data-menu-action]").forEach((link) => link.addEventListener("click", (event) => {
+    event.preventDefault();
+    handleGeneralMenuAction(link.dataset.menuAction);
+  }));
 
   document.querySelector("[data-reset-demo]")?.addEventListener("click", () => {
     resetDemoState();
@@ -2601,13 +2939,11 @@ function bindEvents() {
   });
 
   document.querySelector("[data-role-controls]")?.addEventListener("click", () => {
-    goToRole("state-admin", "Role Control Center opened.");
-    requestAnimationFrame(() => document.querySelector("#role-control-center")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    goToRole("state-admin", "Role Control Center opened.", "role-control-center");
   });
 
   document.querySelectorAll("[data-school-customization]").forEach((button) => button.addEventListener("click", () => {
-    goToRole("school-admin", "School Customization opened.");
-    requestAnimationFrame(() => document.querySelector("#school-customization")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    goToRole("school-admin", "School Customization opened.", "school-customization");
   }));
 
   document.querySelectorAll("[data-impersonate-profile]").forEach((button) => button.addEventListener("click", () => impersonateProfile(button.dataset.impersonateProfile)));
@@ -3927,13 +4263,23 @@ async function boot() {
     }
   }
   if (authenticatedProfile) {
-    const requested = hashRole();
-    state.role = requested && allowedRoleIds().includes(requested) ? requested : authenticatedProfile.landing;
+    const requested = hashRoute();
+    const requestedRoleAllowed = requested.role && allowedRoleIds().includes(requested.role);
+    state.role = requestedRoleAllowed ? requested.role : authenticatedProfile.landing;
+    const destination = findMenuDestination(state.role, requested.functionId);
+    if (destination?.tab) state.activeOperationsTab = destination.tab;
+    if (destination) pendingMenuFocus = { roleId: state.role, functionId: destination.id };
+    if (requested.role && !requestedRoleAllowed) state.toast = "That workspace is not available for your role.";
+    else if (requested.functionId && !destination) state.toast = "That function is not available for your role.";
+    if (requested.role) {
+      const canonicalHash = destination ? `#${state.role}/${destination.id}` : `#${state.role}`;
+      if (window.location.hash !== canonicalHash) history.replaceState(null, "", canonicalHash);
+    }
   }
   window.addEventListener("hashchange", () => {
     if (!authenticatedProfile) return;
-    const nextRole = hashRole();
-    if (nextRole && nextRole !== state.role) setActiveRole(nextRole, false);
+    const nextRoute = hashRoute();
+    if (nextRoute.role) setActiveRole(nextRoute.role, false, nextRoute.functionId);
   });
   window.addEventListener("load", enhanceIcons);
   render();

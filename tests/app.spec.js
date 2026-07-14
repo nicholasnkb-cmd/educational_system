@@ -71,9 +71,9 @@ test("supports the mobile bottom navigation", async ({ page }) => {
 test("switches demo identities and enforces role permissions", async ({ page }) => {
   await loginAs(page, "parent");
   await expect(page.getByText("Signed in as Demo Guardian.")).toBeVisible();
-  await expect(page.getByRole("link", { name: /State Admin/i })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /Teacher/i })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /Parent/i }).first()).toBeVisible();
+  await expect(page.locator('[data-menu-workspace="state-admin"]')).toHaveCount(0);
+  await expect(page.locator('[data-menu-workspace="teacher"]')).toHaveCount(0);
+  await expect(page.locator('[data-menu-workspace="parent"]').first()).toBeVisible();
 
   await page.getByRole("link", { name: /Messages/i }).first().click();
   await expect(page.getByRole("button", { name: /Enable/i })).toBeDisabled();
@@ -81,8 +81,8 @@ test("switches demo identities and enforces role permissions", async ({ page }) 
   await page.getByLabel("Sign out").click();
   await page.getByLabel("School email or username").fill("district-admin");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByRole("link", { name: /State Admin/i })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /District Admin/i }).first()).toBeVisible();
+  await expect(page.locator('[data-menu-workspace="state-admin"]')).toHaveCount(0);
+  await expect(page.locator('[data-menu-workspace="district-admin"]').first()).toBeVisible();
   await page.getByRole("link", { name: /Messages/i }).first().click();
   await expect(page.getByRole("button", { name: /Enable/i })).toBeEnabled();
 });
@@ -101,13 +101,198 @@ test("uses a public landing page before opening a role workspace", async ({ page
 
 test("gives the global test administrator every workspace", async ({ page }) => {
   await loginAs(page, "global-admin");
-  await expect(page.locator(".role-nav").getByRole("link")).toHaveCount(9);
+  await expect(page.locator(".general-menu-sidebar [data-menu-workspace]")).toHaveCount(9);
   await expect(page.getByRole("heading", { name: "Role Control Center" })).toBeVisible();
   await expect(page.locator(".role-control-launcher").getByRole("button")).toHaveCount(9);
   await page.getByRole("link", { name: /Parent/i }).first().click();
   await expect(page.getByRole("heading", { name: "Parent Dashboard" })).toBeVisible();
   await page.getByRole("link", { name: /Student/i }).first().click();
   await expect(page.getByRole("heading", { name: "Student Dashboard" })).toBeVisible();
+});
+
+test("general menu opens every function group with precise deep links", async ({ page }) => {
+  await loginAs(page, "global-admin");
+  const sidebar = page.locator(".general-menu-sidebar");
+  await expect(sidebar).toBeVisible();
+  for (const width of [981, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+
+  for (const functionId of [
+    "role-control-center",
+    "school-customization",
+    "lesson-library",
+    "lesson-studio",
+    "student-progress",
+    "family-summary",
+    "chat-panel",
+    "community-approval-queue",
+    "operations-services",
+  ]) {
+    await expect(sidebar.locator(`[data-menu-function="${functionId}"]`)).toHaveCount(1);
+  }
+
+  await sidebar.locator('[data-menu-function="school-customization"]').click();
+  await expect(page).toHaveURL(/#school-admin\/school-customization$/);
+  await expect(page.locator("#school-customization")).toBeInViewport();
+  await expect(page.getByRole("heading", { name: "School Customization" })).toBeFocused();
+
+  await page.getByRole("button", { name: "General menu" }).click();
+  const dialog = page.getByRole("dialog", { name: "General menu" });
+  await expect(dialog).toBeVisible();
+  await dialog.locator("summary").filter({ hasText: "Platform operations" }).click();
+  await dialog.locator('[data-menu-function="operations-services"]').click();
+  await expect(page).toHaveURL(/#state-admin\/operations-services$/);
+  await expect(page.getByRole("tab", { name: "Connected services" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "Platform Operations Center" })).toBeInViewport();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/#school-admin\/school-customization$/);
+  await expect(page.getByRole("heading", { name: "School Customization" })).toBeInViewport();
+
+  await page.getByRole("button", { name: "General menu" }).click();
+  await dialog.locator("summary").filter({ hasText: "Teaching & learning" }).click();
+  await dialog.locator('[data-menu-action="create-lesson"]').click();
+  await expect(page).toHaveURL(/#teacher\/lesson-studio$/);
+  await expect(page.getByRole("heading", { name: "Create a lesson" })).toBeVisible();
+});
+
+test("every global-admin menu function resolves to its rendered destination", async ({ page }) => {
+  await loginAs(page, "global-admin");
+  const expectedByRole = {
+    "state-admin": [
+      "state-overview", "role-control-center", "unified-school-os", "district-oversight", "compliance-dashboard",
+      "audit-trail", "statewide-calendar", "governance-chain", "realtime-operations", "launch-control",
+      "login-gateway", "database-blueprint", "admin-onboarding", "platform-file-uploads", "notification-delivery",
+      "security-checklist", "deployment-pipeline", "operations-tenants", "operations-security", "operations-notifications",
+      "operations-services", "operations-jobs", "operations-monitoring", "operations-launch",
+    ],
+    "district-admin": [
+      "district-overview", "district-scope", "district-schools", "district-unified-school-os",
+      "district-realtime-operations", "district-audit-trail",
+    ],
+    "school-admin": [
+      "school-overview", "school-customization", "enrollment-center", "school-success-center", "intervention-center",
+      "campus-tenant", "school-operations", "school-compliance", "school-realtime-operations",
+    ],
+    lms: [
+      "lms-overview", "lesson-library", "background-services", "simple-classroom", "zero-cost-core", "advanced-grading",
+      "gradebook-detail", "deadline-controls", "account-context", "paperless-workflow", "lms-guardrails",
+      "offline-learning", "learning-privacy",
+    ],
+    teacher: [
+      "teacher-overview", "learning-operations", "teaching-calendar", "automated-reminders", "standards-gradebook",
+      "teacher-intervention-center", "lesson-studio", "active-classes", "quick-assignment", "student-activity",
+      "curriculum-planner", "grading-todo", "teacher-roster",
+    ],
+    student: ["student-overview", "student-progress", "student-assignments", "student-lessons", "student-missions", "student-awards"],
+    parent: ["parent-overview", "family-summary", "teacher-note", "family-deadlines", "mobile-parent", "subject-snapshot"],
+    messages: ["messages-overview", "chat-panel", "communication-hours", "emergency-override"],
+    community: [
+      "community-overview", "community-create-post", "community-approvers", "community-approval-queue",
+      "community-published", "community-rules", "community-workflow",
+    ],
+  };
+  const entries = await page.locator(".general-menu-sidebar [data-menu-function]").evaluateAll((links) => links.map((link) => ({
+    role: link.dataset.menuRole,
+    id: link.dataset.menuFunction,
+    target: link.dataset.menuTarget,
+    tab: link.dataset.menuTab || "",
+  })));
+  const keys = entries.map((entry) => `${entry.role}/${entry.id}`);
+  expect(new Set(keys).size).toBe(keys.length);
+  for (const [role, expectedIds] of Object.entries(expectedByRole)) {
+    expect(entries.filter((entry) => entry.role === role).map((entry) => entry.id).sort()).toEqual([...expectedIds].sort());
+  }
+  const actions = await page.locator(".general-menu-sidebar [data-menu-action]").evaluateAll((links) => links.map((link) => link.dataset.menuAction).sort());
+  expect(actions).toEqual(["create-lesson", "dashboard", "notifications", "search", "settings", "sign-out", "tour"]);
+
+  const failures = [];
+  for (const entry of entries) {
+    const result = await page.evaluate(({ role, id, target, tab }) => {
+      const link = document.querySelector(`.general-menu-sidebar [data-menu-role="${role}"][data-menu-function="${id}"]`);
+      link?.click();
+      return {
+        hash: window.location.hash,
+        targetExists: Boolean(document.getElementById(target)),
+        selectedTab: tab ? document.querySelector(`[data-operations-tab="${tab}"]`)?.getAttribute("aria-selected") : "true",
+      };
+    }, entry);
+    if (result.hash !== `#${entry.role}/${entry.id}` || !result.targetExists || result.selectedTab !== "true") {
+      failures.push({ ...entry, ...result });
+    }
+  }
+  expect(failures).toEqual([]);
+});
+
+test("general menu honors parent and student role boundaries", async ({ page }) => {
+  await loginAs(page, "parent");
+  await page.getByRole("button", { name: "General menu" }).click();
+  let dialog = page.getByRole("dialog", { name: "General menu" });
+  await expect(dialog.locator('[data-menu-workspace="parent"]')).toBeVisible();
+  await expect(dialog.locator('[data-menu-workspace="messages"]')).toBeVisible();
+  await expect(dialog.locator('[data-menu-workspace="community"]')).toBeVisible();
+  await expect(dialog.locator('[data-menu-workspace="state-admin"]')).toHaveCount(0);
+  await expect(dialog.locator('[data-menu-function="community-approval-queue"]')).toHaveCount(0);
+  await expect(dialog.locator('[data-menu-function="lesson-studio"]')).toHaveCount(0);
+
+  await page.keyboard.press("Escape");
+  await page.locator('.general-menu-sidebar [data-menu-workspace="community"]').click();
+  await expect(page.locator("#community-create-post")).toBeVisible();
+  await expect(page.locator("#community-approvers")).toHaveCount(0);
+  await expect(page.locator("#community-approval-queue")).toHaveCount(0);
+  await page.getByLabel("Sign out").click();
+  await page.getByLabel("School email or username").fill("student");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("button", { name: "General menu" }).click();
+  dialog = page.getByRole("dialog", { name: "General menu" });
+  await expect(dialog.locator('[data-menu-workspace="student"]')).toBeVisible();
+  await expect(dialog.locator("[data-menu-workspace]")).toHaveCount(1);
+  await dialog.locator("summary").filter({ hasText: "Teaching & learning" }).click();
+  await expect(dialog.locator('[data-menu-function="student-lessons"]')).toBeVisible();
+  await expect(dialog.locator('[data-menu-function="messages-overview"]')).toHaveCount(0);
+});
+
+test("general menu remains usable on a narrow mobile screen", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await loginAs(page, "global-admin");
+  const mobileMenuButton = page.locator(".mobile-role-nav").getByRole("button", { name: "Menu" });
+  await expect(page.locator(".mobile-role-nav").locator("a, button")).toHaveCount(4);
+  await mobileMenuButton.click();
+  const dialog = page.getByRole("dialog", { name: "General menu" });
+  await expect(dialog).toBeVisible();
+  const bounds = await dialog.evaluate((element) => {
+    const dialogRect = element.getBoundingClientRect();
+    const menuRect = element.querySelector(".general-menu").getBoundingClientRect();
+    return {
+      dialogRight: dialogRect.right,
+      dialogBottom: dialogRect.bottom,
+      menuRight: menuRect.right,
+      menuBottom: menuRect.bottom,
+    };
+  });
+  expect(bounds.dialogRight).toBeLessThanOrEqual(320);
+  expect(bounds.dialogBottom).toBeLessThanOrEqual(640);
+  expect(bounds.menuRight).toBeLessThanOrEqual(bounds.dialogRight);
+  expect(bounds.menuBottom).toBeLessThanOrEqual(bounds.dialogBottom);
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await expect(mobileMenuButton).toBeFocused();
+
+  await mobileMenuButton.click();
+  await dialog.locator("summary").filter({ hasText: "Administration" }).click();
+  await dialog.locator('[data-menu-function="school-customization"]').click();
+  await expect(page.locator("#school-customization")).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+});
+
+test("forbidden deep links return to the current authorized workspace", async ({ page }) => {
+  await loginAs(page, "student");
+  await page.evaluate(() => { window.location.hash = "#state-admin/role-control-center"; });
+  await expect(page).toHaveURL(/#student$/);
+  await expect(page.getByRole("heading", { name: "Student Dashboard" })).toBeVisible();
+  await expect(page.getByText("That workspace is not available for your role.")).toBeVisible();
 });
 
 test("manages permissions, roster, gradebook, and audit trail", async ({ page }) => {

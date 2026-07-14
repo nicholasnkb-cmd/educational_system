@@ -1204,25 +1204,30 @@ try {
     }
 
     if ($path === '/api/backups' && $method === 'POST') {
-        require_session($sessionsFile, true);
+        $session = require_session($sessionsFile, true);
         ensure_dir($backupDir);
-        $snapshot = load_snapshot($stateFile, $defaultProfiles);
+        $backupSnapshot = load_snapshot($stateFile, $defaultProfiles);
+        $createdAt = gmdate(DATE_ATOM);
+        $backupSnapshot['productionReadiness']['backups']['lastBackup'] = $createdAt;
         $name = 'educonnect-backup-' . gmdate('Y-m-d-H-i-s') . '.json';
         $core = [
             'schemaVersion' => 2,
-            'createdAt' => gmdate(DATE_ATOM),
-            'snapshot' => $snapshot,
-            'accounts' => load_accounts($accountsFile, $snapshot['userProfiles'] ?? $defaultProfiles, $bootstrapPasswords),
+            'createdAt' => $createdAt,
+            'snapshot' => $backupSnapshot,
+            'accounts' => load_accounts($accountsFile, $backupSnapshot['userProfiles'] ?? $defaultProfiles, $bootstrapPasswords),
         ];
         $checksum = hash('sha256', json_encode($core, JSON_UNESCAPED_SLASHES));
         write_file_json("{$backupDir}/{$name}", array_merge($core, ['checksum' => $checksum]));
         prune_backups($backupDir, 30);
-        audit_event('backup.created', require_session($sessionsFile, true)['user']['id'] ?? 'admin', ['backup' => $name]);
+        $currentSnapshot = load_snapshot($stateFile, $defaultProfiles);
+        $currentSnapshot['productionReadiness']['backups']['lastBackup'] = $createdAt;
+        save_snapshot($stateFile, $currentSnapshot);
+        audit_event('backup.created', $session['user']['id'] ?? 'admin', ['backup' => $name]);
         send_json(201, ['ok' => true, 'backup' => $name, 'schemaVersion' => 2, 'checksum' => $checksum]);
     }
 
     if ($path === '/api/backups/restore-test' && $method === 'POST') {
-        require_session($sessionsFile, true);
+        $session = require_session($sessionsFile, true);
         $body = read_json();
         $files = backup_files($backupDir);
         $name = (string)($body['backup'] ?? ($files[0] ?? ''));
@@ -1235,8 +1240,12 @@ try {
             $checksumVerified = hash_equals((string)$restored['checksum'], hash('sha256', json_encode($core, JSON_UNESCAPED_SLASHES)));
         }
         $valid = isset($snapshot['state']) && is_array($snapshot['userProfiles'] ?? null) && $checksumVerified !== false && (!isset($restored['snapshot']) || is_array($restored['accounts'] ?? null));
-        audit_event('backup.restore_tested', require_session($sessionsFile, true)['user']['id'] ?? 'admin', ['backup' => $name, 'valid' => $valid]);
-        send_json($valid ? 200 : 422, ['ok' => $valid, 'backup' => $name, 'schemaVersion' => $restored['schemaVersion'] ?? 1, 'checksumVerified' => $checksumVerified, 'result' => $valid ? 'Restore validation passed' : 'Backup snapshot is invalid', 'testedAt' => gmdate(DATE_ATOM)]);
+        $testedAt = gmdate(DATE_ATOM);
+        $currentSnapshot = load_snapshot($stateFile, $defaultProfiles);
+        $currentSnapshot['productionReadiness']['backups']['lastRestoreTest'] = ($valid ? 'Passed' : 'Failed') . " • {$testedAt}";
+        save_snapshot($stateFile, $currentSnapshot);
+        audit_event('backup.restore_tested', $session['user']['id'] ?? 'admin', ['backup' => $name, 'valid' => $valid]);
+        send_json($valid ? 200 : 422, ['ok' => $valid, 'backup' => $name, 'schemaVersion' => $restored['schemaVersion'] ?? 1, 'checksumVerified' => $checksumVerified, 'result' => $valid ? 'Restore validation passed' : 'Backup snapshot is invalid', 'testedAt' => $testedAt]);
     }
 
     if ($path === '/api/enrollment/import' && $method === 'POST') {

@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: education-background-jobs
+  group: education-state-writes
   cancel-in-progress: false
 
 jobs:

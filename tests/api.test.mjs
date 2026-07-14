@@ -290,6 +290,9 @@ describe("operational API server", () => {
     assert.equal(backup.status, 201);
     assert.match(backupPayload.backup, /^educonnect-backup-/);
 
+    const stateAfterBackup = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${adminToken}` } })).json();
+    assert.match(stateAfterBackup.snapshot.productionReadiness.backups.lastBackup, /^\d{4}-\d{2}-\d{2}T/);
+
     const list = await (await fetch(`${baseUrl}/api/backups`, { headers: { Authorization: `Bearer ${adminToken}` } })).json();
     assert.ok(list.backups.includes(backupPayload.backup));
 
@@ -299,6 +302,8 @@ describe("operational API server", () => {
     assert.equal(restorePayload.result, "Restore validation passed");
     assert.equal(restorePayload.schemaVersion, 2);
     assert.equal(restorePayload.checksumVerified, true);
+    const stateAfterRestore = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${adminToken}` } })).json();
+    assert.match(stateAfterRestore.snapshot.productionReadiness.backups.lastRestoreTest, /^Passed • \d{4}-\d{2}-\d{2}T/);
 
     const backupPath = join(dataDir, "backups", backupPayload.backup);
     const tampered = JSON.parse(await readFile(backupPath, "utf8"));
@@ -306,6 +311,8 @@ describe("operational API server", () => {
     await writeFile(backupPath, JSON.stringify(tampered));
     const rejectedRestore = await fetch(`${baseUrl}/api/backups/restore-test`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ backup: backupPayload.backup }) });
     assert.equal(rejectedRestore.status, 422);
+    const stateAfterRejectedRestore = await (await fetch(`${baseUrl}/api/state`, { headers: { Authorization: `Bearer ${adminToken}` } })).json();
+    assert.match(stateAfterRejectedRestore.snapshot.productionReadiness.backups.lastRestoreTest, /^Failed • \d{4}-\d{2}-\d{2}T/);
   });
 
   it("protects tenant state and exposes production operations only to administrators", async () => {

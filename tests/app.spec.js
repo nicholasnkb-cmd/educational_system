@@ -151,12 +151,17 @@ test("customizes school identity, instance, logo, and colors from School Admin",
   await page.getByLabel("Logo mark").fill("DL");
   await page.getByLabel("Crest / logo name").fill("Discovery Lab Owls");
   await page.getByLabel("School voice").fill("Curious learners building a brighter future");
+  await page.getByLabel("Custom domain").fill("learn.discoverylab.org");
+  await page.getByLabel("Login welcome message").fill("Welcome, Discovery Lab learners!");
+  await page.getByLabel("Storage quota (GB)").fill("75");
+  await page.getByLabel("Community").uncheck();
   await page.getByLabel("Primary buttons").fill("#3157c8");
   await page.getByRole("button", { name: /Save school customization/i }).click();
 
   await expect(page.getByText("P.S. 118 Discovery Lab customization saved.")).toBeVisible();
   await expect(page.locator(".tenant-bar").getByText("P.S. 118 Discovery Lab", { exact: true }).first()).toBeVisible();
   await expect(page.locator(".tenant-bar").getByText("ps118lab.educonnect.local")).toBeVisible();
+  await expect(page.locator(".school-brand-preview").getByText("learn.discoverylab.org")).toBeVisible();
   await expect(page.locator(".brand-mark")).toHaveText("DL");
 
   await page.getByRole("link", { name: /LMS/i }).first().click();
@@ -179,6 +184,8 @@ test("creates, publishes, previews, and completes a multimedia quiz lesson", asy
   await page.getByLabel("Media title").fill("Persuasion example");
   await page.getByLabel("Media URL").fill("https://example.com/persuasion-video");
   await page.getByLabel("Caption or instructions").fill("Open the example and identify the main claim.");
+  await page.locator("[data-lesson-media-upload]").setInputFiles({ name: "persuasion-guide.pdf", mimeType: "application/pdf", buffer: Buffer.from("teacher media guide") });
+  await expect(page.getByText("persuasion-guide.pdf attached to the lesson.")).toBeVisible();
 
   await page.getByRole("button", { name: /Quiz/i }).click();
   await page.getByLabel("Quiz title").fill("Claim check");
@@ -312,4 +319,47 @@ test("runs production launch controls with backend-ready filler data", async ({ 
   await expect(launch.getByText("File Uploads")).toBeVisible();
   await expect(launch.getByText("Privacy & Security")).toBeVisible();
   await expect(launch.getByText("Deployment Pipeline")).toBeVisible();
+});
+
+test("lets global administrators preview a role and safely return", async ({ page }) => {
+  await loginAs(page, "global-admin");
+  const teacherCard = page.locator(".user-role-card").filter({ hasText: "Demo Teacher" });
+  await teacherCard.getByRole("button", { name: /Preview as this user/i }).click();
+  await expect(page.getByText(/Previewing as/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Teacher Dashboard" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /State Admin/i })).toHaveCount(0);
+  await page.getByRole("button", { name: /Return to Global Admin/i }).click();
+  await expect(page.getByRole("heading", { name: "Tenant Governance" })).toBeVisible();
+  await expect(page.getByText("Returned to Global Admin.")).toBeVisible();
+});
+
+test("supports student assignment submission and teacher feedback", async ({ page }) => {
+  await loginAs(page, "student");
+  const assignment = page.locator(".student-assignment-work").first();
+  await assignment.getByLabel("Written response").fill("My evidence-based response for teacher review.");
+  await assignment.getByRole("button", { name: /Submit assignment/i }).click();
+  await expect(page.getByText(/submitted\./i)).toBeVisible();
+
+  await page.getByLabel("Sign out").click();
+  await page.getByLabel("School email or username").fill("teacher");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  const gradingRow = page.locator("[data-return-submission]").filter({ hasText: "My evidence-based response" });
+  await gradingRow.getByLabel("Score").fill("92");
+  await gradingRow.getByLabel("Feedback").fill("Strong evidence. Add one more source next time.");
+  await gradingRow.getByRole("button", { name: /Return/i }).click();
+  await expect(page.getByText(/returned to/i)).toBeVisible();
+});
+
+test("applies accessibility, language, and notification preferences", async ({ page }) => {
+  await loginAs(page, "student");
+  await page.getByLabel("Settings").click();
+  await page.getByLabel("Language").selectOption("Spanish");
+  await expect(page.getByRole("heading", { name: "Configuración" })).toBeVisible();
+  await page.getByLabel("Text size").selectOption("Large");
+  await expect(page.locator(".app")).toHaveClass(/font-large/);
+  await page.getByLabel("Dyslexia-friendly type").check();
+  await expect(page.locator(".app")).toHaveClass(/dyslexia-friendly/);
+  await page.getByLabel("SMS").check();
+  await page.getByRole("button", { name: /Send test notification/i }).click();
+  await expect(page.getByText(/Test notification added/i)).toBeVisible();
 });

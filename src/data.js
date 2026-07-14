@@ -55,6 +55,16 @@ export const state = {
   lessonPreviewId: "",
   activeStudentLessonId: "lesson-moon-phases",
   lessonProgress: {},
+  activeAssignmentId: "essay",
+  assignmentFilter: "All",
+  studentNotes: {},
+  bookmarkedLessons: [],
+  fontScale: "Normal",
+  dyslexiaFriendly: false,
+  reducedMotion: false,
+  language: "English",
+  notificationPreferences: { email: true, sms: false, push: true, dueDays: 2, missingWork: true, gradeReturned: true },
+  impersonatingFrom: "",
 };
 
 export const userProfiles = [
@@ -175,8 +185,28 @@ export const deadlines = [
 ];
 
 export const lmsAssignments = [
-  { id: "fractions", title: "Fractions Mastery Check", type: "Automated quiz", rubric: "4-domain rubric", analytics: 82, lockDate: "Oct 24, 8:00 PM", exception: "Maya R. +24h" },
-  { id: "essay", title: "Great Depression Essay", type: "Writing task", rubric: "Argument + evidence rubric", analytics: 74, lockDate: "Oct 28, 11:59 PM", exception: "None" },
+  { id: "fractions", title: "Fractions Mastery Check", className: "Basic English", type: "Automated quiz", instructions: "Complete the mastery check and show your reasoning.", rubric: "4-domain rubric", analytics: 82, dueDate: "2026-10-24", points: 20, status: "Published", allowResubmit: true, maxAttempts: 2, lockDate: "Oct 24, 8:00 PM", exception: "Maya R. +24h", attachments: [] },
+  { id: "essay", title: "Great Depression Essay", className: "English Literature", type: "Writing task", instructions: "Write a supported argument using at least three pieces of evidence from the unit.", rubric: "Argument + evidence rubric", analytics: 74, dueDate: "2026-10-28", points: 100, status: "Published", allowResubmit: true, maxAttempts: 3, lockDate: "Oct 28, 11:59 PM", exception: "None", attachments: [] },
+];
+
+export const lmsSubmissions = [
+  { id: "work-essay-demo", assignmentId: "essay", studentId: "student", student: "Demo Learner", response: "The New Deal changed the federal government's role by expanding relief and recovery programs.", attachments: [], status: "Draft", attempt: 1, submittedAt: "", score: null, feedback: "", returnedAt: "" },
+];
+
+export const questionBank = [
+  { id: "qb-claim", subject: "English Language Arts", standard: "CCSS.ELA-LITERACY.W.4.1", questionType: "Multiple choice", question: "Which statement is the strongest claim?", options: ["School is interesting.", "Schools should provide daily reading time because it improves fluency and comprehension.", "Many students read.", "Books have pages."], correctAnswer: 1, points: 5, feedback: "A strong claim is specific and supported by a clear reason." },
+  { id: "qb-moon", subject: "Science", standard: "NGSS 5-ESS1-1", questionType: "True or false", question: "The Moon produces its own visible light.", options: ["True", "False", "", ""], correctAnswer: 1, points: 5, feedback: "The Moon reflects sunlight." },
+  { id: "qb-fraction", subject: "Math", standard: "CCSS.MATH.CONTENT.4.NF.A.1", questionType: "Short answer", question: "Write an equivalent fraction for 1/2.", options: ["2/4", "", "", ""], correctAnswer: 0, points: 5, feedback: "Multiplying the numerator and denominator by the same number creates an equivalent fraction." },
+];
+
+export const curriculumCourses = [
+  { id: "course-ela-4", title: "Grade 4 English Language Arts", subject: "English Language Arts", grade: "4", className: "English Literature", standards: ["CCSS.ELA-LITERACY.RL.4.1", "CCSS.ELA-LITERACY.W.4.1"], units: [
+    { id: "unit-stories", title: "Stories and Perspective", description: "Analyze characters, point of view, and evidence.", lessonIds: ["lesson-story-elements"], assignmentIds: [] },
+    { id: "unit-arguments", title: "Claims and Evidence", description: "Build clear claims supported by relevant evidence.", lessonIds: [], assignmentIds: ["essay"] },
+  ] },
+  { id: "course-science-4", title: "Grade 4 Earth and Space Science", subject: "Science", grade: "4", className: "Basic English", standards: ["NGSS 5-ESS1-1"], units: [
+    { id: "unit-moon", title: "Earth and Moon Systems", description: "Observe patterns in the Moon's appearance.", lessonIds: ["lesson-moon-phases"], assignmentIds: [] },
+  ] },
 ];
 
 export const lmsLessons = [

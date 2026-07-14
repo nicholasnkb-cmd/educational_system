@@ -1,0 +1,20 @@
+{
+  "name": "EduConnect School Portal",
+  "short_name": "EduConnect",
+  "description": "Role-based learning, family, and school operations.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f9ff",
+  "theme_color": "#0050cb",
+  "orientation": "any",
+  "categories": ["education", "productivity"],
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ],
+  "shortcuts": [
+    { "name": "Learning portal", "url": "/#student" },
+    { "name": "Teacher workspace", "url": "/#teacher" },
+    { "name": "Messages", "url": "/#messages" }
+  ]
+}

@@ -77,6 +77,8 @@ import {
   privacyControls,
   complianceMetrics,
   calendarEvents,
+  scheduleEntries,
+  scheduleRequests,
   offlineSyncQueue,
   approvalRules,
   mobileParentActions,
@@ -93,7 +95,7 @@ import {
   persistDemoState,
   resetDemoState,
 } from "./storage.js";
-import { createServerBackup, getServerOperationsStatus, getServerSession, importServerEnrollment, loginServerProfile, runServerPlatformAction, scheduleServerNotification, sendServerNotificationTest, serverFileDownloadUrl, testServerRestore, updateServerMfa, uploadServerFile, verifyServerDomain } from "./mockApi.js";
+import { createServerBackup, createServerSchedule, createServerScheduleRequest, getServerOperationsStatus, getServerSession, importServerEnrollment, loginServerProfile, reviewServerScheduleRequest, runServerPlatformAction, scheduleServerNotification, sendServerNotificationTest, serverFileDownloadUrl, testServerRestore, updateServerMfa, updateServerSchedule, uploadServerFile, verifyServerDomain } from "./mockApi.js";
 import { initializeErrorReporting } from "./errorReporting.js";
 
 initializeErrorReporting();
@@ -487,6 +489,21 @@ const generalMenuCatalog = [
     ],
   },
   {
+    id: "scheduling",
+    label: "Scheduling",
+    icon: "calendar-days",
+    items: [
+      { id: "schedule-calendar", label: "Schedule calendar", role: "state-admin", icon: "calendar-days", permission: "manage-users" },
+      { id: "schedule-requests", label: "Schedule requests", role: "state-admin", icon: "clock", permission: "manage-users" },
+      { id: "district-schedule-calendar", label: "District schedule calendar", role: "district-admin", target: "schedule-calendar", icon: "calendar-days", permission: "manage-users" },
+      { id: "district-schedule-requests", label: "District schedule requests", role: "district-admin", target: "schedule-requests", icon: "clock", permission: "manage-users" },
+      { id: "school-schedule-calendar", label: "School schedule calendar", role: "school-admin", target: "schedule-calendar", icon: "calendar-days", permission: "manage-users" },
+      { id: "school-schedule-requests", label: "School schedule requests", role: "school-admin", target: "schedule-requests", icon: "clock", permission: "manage-users" },
+      { id: "teacher-schedule-calendar", label: "My & student schedules", role: "teacher", target: "schedule-calendar", icon: "calendar-days", permission: "teacher-tools" },
+      { id: "teacher-schedule-requests", label: "Schedule requests", role: "teacher", target: "schedule-requests", icon: "clock", permission: "teacher-tools" },
+    ],
+  },
+  {
     id: "communication",
     label: "Communication",
     icon: "message-circle",
@@ -774,18 +791,39 @@ function enhanceIcons() {
   });
 }
 
+function tenantStatesForActiveUser() {
+  const actor = activeUser();
+  if (actor.permissions?.includes("global-access")) return tenantStates;
+  return tenantStates.filter((item) => item.id === actor.stateId);
+}
+
+function districtsForActiveUser(stateRecord = selectedStateRecord()) {
+  const actor = activeUser();
+  if (actor.permissions?.includes("global-access") || actor.scope === "state") return stateRecord.districts;
+  return stateRecord.districts.filter((item) => item.id === actor.districtId);
+}
+
+function schoolsForActiveUser(district = selectedDistrictRecord()) {
+  const actor = activeUser();
+  if (actor.permissions?.includes("global-access") || ["state", "district"].includes(actor.scope)) return district.schools;
+  return district.schools.filter((item) => item.id === actor.schoolId);
+}
+
 function selectedStateRecord() {
-  return tenantStates.find((item) => item.id === state.selectedState) || tenantStates[0];
+  const allowedStates = tenantStatesForActiveUser();
+  return allowedStates.find((item) => item.id === state.selectedState) || allowedStates[0] || tenantStates[0];
 }
 
 function selectedDistrictRecord() {
   const stateRecord = selectedStateRecord();
-  return stateRecord.districts.find((item) => item.id === state.selectedDistrict) || stateRecord.districts[0];
+  const allowedDistricts = districtsForActiveUser(stateRecord);
+  return allowedDistricts.find((item) => item.id === state.selectedDistrict) || allowedDistricts[0] || stateRecord.districts[0];
 }
 
 function selectedSchoolRecord() {
   const district = selectedDistrictRecord();
-  return district.schools.find((item) => item.id === state.selectedSchool) || district.schools[0];
+  const allowedSchools = schoolsForActiveUser(district);
+  return allowedSchools.find((item) => item.id === state.selectedSchool) || allowedSchools[0] || district.schools[0];
 }
 
 function searchableItems() {
@@ -1254,6 +1292,8 @@ function renderStateAdmin() {
           ${calendarEvents.map((event) => `<article class="calendar-row"><div class="calendar-date">${event.date}</div><div><strong>${event.title}</strong><small>${event.audience} • ${event.type}</small></div></article>`).join("")}
         </div>
       </section>
+      ${renderScheduleCalendar()}
+      ${renderScheduleRequests()}
       <section class="panel hierarchy-panel" id="governance-chain">
         <div class="section-heading"><h3>Governance Chain</h3><span>State to classroom</span></div>
         <div class="hierarchy-list">
@@ -1287,8 +1327,8 @@ function renderDistrictAdmin() {
       <section class="panel tenant-controls" id="district-scope">
         <div class="section-heading"><h3>District Scope</h3><span>${stateRecord.name}</span></div>
         <div class="tenant-selectors">
-          <label><span>State</span><select id="state-filter">${tenantStates.map((item) => `<option value="${item.id}" ${state.selectedState === item.id ? "selected" : ""}>${item.name}</option>`).join("")}</select></label>
-          <label><span>District</span><select id="district-filter">${stateRecord.districts.map((item) => `<option value="${item.id}" ${district.id === item.id ? "selected" : ""}>${item.name}</option>`).join("")}</select></label>
+          <label><span>State</span><select id="state-filter">${tenantStatesForActiveUser().map((item) => `<option value="${item.id}" ${stateRecord.id === item.id ? "selected" : ""}>${item.name}</option>`).join("")}</select></label>
+          <label><span>District</span><select id="district-filter">${districtsForActiveUser(stateRecord).map((item) => `<option value="${item.id}" ${district.id === item.id ? "selected" : ""}>${item.name}</option>`).join("")}</select></label>
         </div>
       </section>
       <section class="panel district-management-panel" id="district-schools">
@@ -1299,6 +1339,8 @@ function renderDistrictAdmin() {
       </section>
       ${renderUnifiedOperatingSystem()}
       ${renderRealtimePanel()}
+      ${renderScheduleCalendar()}
+      ${renderScheduleRequests()}
       <section class="panel audit-panel" id="audit-trail">
         <div class="section-heading"><h3>District Audit Trail</h3><span>School and staff actions</span></div>
         <div class="audit-list">${auditLogs.map((log) => `<article class="audit-row">${icon("clipboard-check")}<div><strong>${log.event}</strong><small>${log.actor} • ${log.scope}</small></div><time>${log.time}</time></article>`).join("")}</div>
@@ -1416,6 +1458,8 @@ function renderSchoolAdmin() {
       ${renderSchoolCustomization()}
       ${renderEnrollmentCenter()}
       ${renderSchoolSuccessCenter()}
+      ${renderScheduleCalendar()}
+      ${renderScheduleRequests()}
       ${renderInterventionCenter()}
       <section class="panel instance-panel" id="campus-tenant">
         <div class="section-heading"><h3>Campus Tenant</h3><span>${school.status}</span></div>
@@ -1505,9 +1549,9 @@ function renderPlatform() {
       <section class="panel tenant-controls">
         <div class="section-heading"><h3>Tenant Instance Selector</h3><span class="badge soft">${school.status}</span></div>
         <div class="tenant-selectors">
-          <label><span>State</span><select id="state-filter">${tenantStates.map((item) => `<option value="${item.id}" ${state.selectedState === item.id ? "selected" : ""}>${item.name}</option>`).join("")}</select></label>
-          <label><span>District</span><select id="district-filter">${stateRecord.districts.map((item) => `<option value="${item.id}" ${district.id === item.id ? "selected" : ""}>${item.name}</option>`).join("")}</select></label>
-          <label><span>School</span><select id="school-filter">${district.schools.map((item) => `<option value="${item.id}" ${school.id === item.id ? "selected" : ""}>${item.name}</option>`).join("")}</select></label>
+          <label><span>State</span><select id="state-filter">${tenantStatesForActiveUser().map((item) => `<option value="${item.id}" ${stateRecord.id === item.id ? "selected" : ""}>${item.name}</option>`).join("")}</select></label>
+          <label><span>District</span><select id="district-filter">${districtsForActiveUser(stateRecord).map((item) => `<option value="${item.id}" ${district.id === item.id ? "selected" : ""}>${item.name}</option>`).join("")}</select></label>
+          <label><span>School</span><select id="school-filter">${schoolsForActiveUser(district).map((item) => `<option value="${item.id}" ${school.id === item.id ? "selected" : ""}>${item.name}</option>`).join("")}</select></label>
         </div>
         <div class="school-profile">
           <div class="avatar">${initials(school.name)}</div>
@@ -2171,6 +2215,285 @@ function renderCurriculumPlanner() {
   </section>`;
 }
 
+function scheduleAdminMode() {
+  return can("manage-users");
+}
+
+function scheduleProfileInScope(profile) {
+  const actor = activeUser();
+  if (actor.permissions?.includes("global-access")) return true;
+  if (actor.scope === "state") return !profile.stateId || profile.stateId === actor.stateId;
+  if (actor.scope === "district") return profile.stateId === actor.stateId && profile.districtId === actor.districtId;
+  return profile.schoolId === actor.schoolId;
+}
+
+function scheduleScopeContext() {
+  const actor = activeUser();
+  if (actor.permissions?.includes("global-access")) {
+    return { state: selectedStateRecord(), district: selectedDistrictRecord(), school: selectedSchoolRecord() };
+  }
+  const stateRecord = tenantStates.find((item) => item.id === actor.stateId) || selectedStateRecord();
+  const district = actor.scope === "state"
+    ? stateRecord.districts.find((item) => item.id === state.selectedDistrict) || stateRecord.districts[0]
+    : stateRecord.districts.find((item) => item.id === actor.districtId) || stateRecord.districts[0];
+  const school = actor.scope === "school"
+    ? district.schools.find((item) => item.id === actor.schoolId) || district.schools[0]
+    : district.schools.find((item) => item.id === state.selectedSchool) || district.schools[0];
+  return { state: stateRecord, district, school };
+}
+
+function teacherScheduleRoster() {
+  const actor = activeUser();
+  const context = scheduleScopeContext();
+  return rosterRecords.filter((record) => {
+    const stateId = record.stateId || context.state.id;
+    const districtId = record.districtId || context.district.id;
+    const schoolId = record.schoolId || context.school.id;
+    if (!scheduleAdminMode() && record.teacher && record.teacher !== actor.label) return false;
+    if (actor.permissions?.includes("global-access")) return true;
+    if (actor.scope === "state") return stateId === actor.stateId;
+    if (actor.scope === "district") return stateId === actor.stateId && districtId === actor.districtId;
+    return schoolId === actor.schoolId;
+  });
+}
+
+function scheduleTargetCatalog() {
+  const actor = activeUser();
+  const context = scheduleScopeContext();
+  const school = context.school;
+  const targets = [];
+  const add = (target) => {
+    if (!targets.some((item) => item.key === target.key)) targets.push(target);
+  };
+  add({ key: `user:${actor.id}`, pickerType: "self", targetType: "staff", id: actor.id, name: actor.label, stateId: actor.stateId || context.state.id, districtId: actor.districtId || context.district.id, schoolId: actor.schoolId || context.school.id });
+  if (scheduleAdminMode()) {
+    userProfiles.filter(scheduleProfileInScope).filter((profile) => profile.id !== actor.id && profile.role !== "Parent").forEach((profile) => add({
+      key: profile.role === "Student" ? `student:${profile.studentId || profile.id}` : `user:${profile.id}`,
+      pickerType: profile.role === "Student" ? "student" : "staff",
+      targetType: profile.role === "Student" ? "student" : "staff",
+      id: profile.role === "Student" ? profile.studentId || profile.id : profile.id,
+      ...(profile.role === "Student" ? { studentId: profile.studentId || profile.id } : {}),
+      name: profile.label,
+      stateId: profile.stateId || context.state.id,
+      districtId: profile.districtId || context.district.id,
+      schoolId: profile.schoolId || context.school.id,
+    }));
+  }
+  teacherScheduleRoster().forEach((record) => add({
+    key: `student:${record.studentId || record.id}`,
+    pickerType: "student",
+    targetType: "student",
+    id: record.studentId || record.id,
+    studentId: record.studentId || record.id,
+    name: record.student,
+    assignedTeacher: record.teacher || "",
+    stateId: record.stateId || actor.stateId || context.state.id,
+    districtId: record.districtId || actor.districtId || context.district.id,
+    schoolId: record.schoolId || actor.schoolId || context.school.id,
+  }));
+  if (scheduleAdminMode()) {
+    teacherClasses.forEach((classRecord) => add({ key: `class:${classRecord.name}`, pickerType: "class", targetType: "class", id: classRecord.name, name: classRecord.name, stateId: context.state.id, districtId: context.district.id, schoolId: context.school.id }));
+    add({ key: `school:${school.id}`, pickerType: "school", targetType: "school", id: school.id, name: `${school.name} community`, stateId: context.state.id, districtId: context.district.id, schoolId: school.id });
+  }
+  return targets;
+}
+
+function schedulePickerTypes() {
+  const options = scheduleAdminMode()
+    ? [["self", "Self"], ["staff", "Staff"], ["student", "Student"], ["class", "Class"], ["school", "School"]]
+    : [["self", "Self"], ["student", "Student"]];
+  return options.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+}
+
+function renderScheduleTargetFields(prefix) {
+  return `
+    <label><span>Schedule for</span><select id="${prefix}-target-type" required>${schedulePickerTypes()}</select></label>
+    <label><span>Person or group</span><select id="${prefix}-target-id" required aria-describedby="${prefix}-scope-help"></select><small id="${prefix}-scope-help">${scheduleAdminMode() ? "Limited to people and groups in your authorized scope." : "Only you and your assigned students are available."}</small></label>
+  `;
+}
+
+function scheduleRecordInScope(record) {
+  const actor = activeUser();
+  if (actor.permissions?.includes("global-access")) return true;
+  if (scheduleAdminMode()) {
+    if (actor.scope === "state") return !record.stateId || record.stateId === actor.stateId;
+    if (actor.scope === "district") return record.stateId === actor.stateId && record.districtId === actor.districtId;
+    return record.schoolId === actor.schoolId;
+  }
+  const studentIds = new Set(teacherScheduleRoster().flatMap((item) => [item.id, item.studentId]).filter(Boolean).map(String));
+  return record.createdBy === actor.id || record.requestedBy === actor.id || record.targetId === actor.id || (record.targetType === "student" && [record.targetId, record.studentId].filter(Boolean).map(String).some((id) => studentIds.has(id)));
+}
+
+function visibleScheduleEntries() {
+  const actor = activeUser();
+  const audienceFilter = !scheduleAdminMode() && !["All", "Mine", "Students"].includes(state.scheduleAudienceFilter) ? "All" : state.scheduleAudienceFilter;
+  return scheduleEntries.filter(scheduleRecordInScope).filter((entry) => {
+    if (audienceFilter === "Mine") return entry.targetId === actor.id;
+    if (audienceFilter === "Students") return entry.targetType === "student";
+    if (audienceFilter === "Staff") return entry.targetType === "staff";
+    if (audienceFilter === "Classes") return entry.targetType === "class";
+    if (audienceFilter === "School") return entry.targetType === "school";
+    return true;
+  }).sort((first, second) => `${first.date}T${first.startTime}`.localeCompare(`${second.date}T${second.startTime}`));
+}
+
+function visibleScheduleRequests() {
+  const actor = activeUser();
+  return scheduleRequests.filter(scheduleRecordInScope).filter((request) => scheduleAdminMode() || request.requestedBy === actor.id).filter((request) => state.scheduleStatusFilter === "All" || request.status === state.scheduleStatusFilter).sort((first, second) => {
+    if (first.status === "Pending" && second.status !== "Pending") return -1;
+    if (second.status === "Pending" && first.status !== "Pending") return 1;
+    return String(second.createdAt || "").localeCompare(String(first.createdAt || ""));
+  });
+}
+
+function scheduleDateLabel(value) {
+  if (!value) return "Date not set";
+  const date = new Date(`${value}T12:00:00`);
+  return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" }).format(date);
+}
+
+function scheduleTimeLabel(value) {
+  if (!value) return "";
+  const [hours, minutes] = value.split(":").map(Number);
+  const date = new Date(2026, 0, 1, hours, minutes);
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
+}
+
+function localScheduleDate(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function nextScheduleDate() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return localScheduleDate(date);
+}
+
+function todayScheduleDate() {
+  return localScheduleDate();
+}
+
+function sameScheduleTarget(first, second) {
+  if (first.targetType !== second.targetType) return false;
+  if (first.targetType !== "student") return first.targetId === second.targetId;
+  const firstIds = new Set([first.targetId, first.studentId].filter(Boolean).map(String));
+  return [second.targetId, second.studentId].filter(Boolean).map(String).some((id) => firstIds.has(id));
+}
+
+function scheduleConflict(candidate, ignoreId = "") {
+  return scheduleEntries.find((entry) => entry.id !== ignoreId && entry.status !== "Cancelled" && entry.date === candidate.date && sameScheduleTarget(entry, candidate) && candidate.startTime < entry.endTime && entry.startTime < candidate.endTime);
+}
+
+function renderScheduleWeek(entries) {
+  const today = new Date();
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() + index);
+    const value = localScheduleDate(date);
+    return { value, label: new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(date), day: date.getDate(), count: entries.filter((entry) => entry.date === value && entry.status !== "Cancelled").length };
+  });
+  return `<ol class="schedule-week-strip" aria-label="Next seven days">${days.map((day) => `<li class="schedule-day ${day.count ? "has-events" : ""}"><span>${day.label}</span><strong>${day.day}</strong><small>${day.count} event${day.count === 1 ? "" : "s"}</small></li>`).join("")}</ol>`;
+}
+
+function renderScheduleAgenda(entries) {
+  if (!entries.length) return `<div class="empty-state">No schedule items match this view.</div>`;
+  const dates = [...new Set(entries.map((entry) => entry.date))];
+  return dates.map((date, dateIndex) => `
+    <section class="schedule-date-group" aria-labelledby="schedule-date-${dateIndex}">
+      <h4 id="schedule-date-${dateIndex}"><time datetime="${escapeHtml(date)}">${escapeHtml(scheduleDateLabel(date))}</time></h4>
+      <ol class="schedule-entry-list" aria-label="${escapeHtml(scheduleDateLabel(date))} schedule items">
+        ${entries.filter((entry) => entry.date === date).map((entry) => `
+          <li class="schedule-entry-card ${entry.status === "Cancelled" ? "is-cancelled" : ""}" id="schedule-entry-${escapeHtml(entry.id)}" aria-labelledby="schedule-entry-title-${escapeHtml(entry.id)}">
+            <div class="schedule-entry-time"><strong>${escapeHtml(scheduleTimeLabel(entry.startTime))}</strong><span>to ${escapeHtml(scheduleTimeLabel(entry.endTime))}</span></div>
+            <div class="schedule-entry-main"><div><h5 id="schedule-entry-title-${escapeHtml(entry.id)}">${escapeHtml(entry.title)}</h5><span class="schedule-status status-${String(entry.status || "Scheduled").toLowerCase()}">${escapeHtml(entry.status || "Scheduled")}</span></div><small>${escapeHtml(entry.targetName)} • ${escapeHtml(entry.category || "Schedule item")}${entry.location ? ` • ${escapeHtml(entry.location)}` : ""}</small>${entry.notes ? `<p>${escapeHtml(entry.notes)}</p>` : ""}</div>
+            ${(scheduleAdminMode() || entry.createdBy === activeUser().id) && entry.status !== "Cancelled" ? `<button class="text-button" type="button" data-cancel-schedule="${escapeHtml(entry.id)}" aria-label="Cancel ${escapeHtml(entry.title)}">Cancel</button>` : ""}
+          </li>
+        `).join("")}
+      </ol>
+    </section>
+  `).join("");
+}
+
+function renderScheduleCalendar() {
+  const entries = visibleScheduleEntries();
+  const activeEntries = entries.filter((entry) => entry.status !== "Cancelled");
+  const pending = scheduleRequests.filter(scheduleRecordInScope).filter((request) => request.status === "Pending").length;
+  const filterOptions = scheduleAdminMode()
+    ? [["All", "All schedules"], ["Mine", "My schedule"], ["Students", "Students"], ["Staff", "Staff"], ["Classes", "Classes"], ["School", "School-wide"]]
+    : [["All", "My & student schedules"], ["Mine", "My schedule"], ["Students", "Students"]];
+  const audienceFilter = filterOptions.some(([value]) => value === state.scheduleAudienceFilter) ? state.scheduleAudienceFilter : "All";
+  return `
+    <section class="panel schedule-calendar-page" id="schedule-calendar" aria-labelledby="schedule-calendar-heading">
+      <div class="section-heading schedule-page-heading"><div><p class="eyebrow">${scheduleAdminMode() ? "Administrator scheduling" : "Teacher scheduling"}</p><h3 id="schedule-calendar-heading">Schedule Calendar</h3><p>${scheduleAdminMode() ? "Set schedules for anyone in your authorized scope and check conflicts before saving." : "Manage your own schedule and the schedules of your assigned students."}</p></div><span>${scheduleAdminMode() ? "All authorized people" : "Self + students"}</span></div>
+      <dl class="schedule-summary" aria-label="Schedule summary"><div><dt>Scheduled</dt><dd>${activeEntries.length}</dd></div><div><dt>Pending requests</dt><dd>${pending}</dd></div><div><dt>Cancelled</dt><dd>${entries.filter((entry) => entry.status === "Cancelled").length}</dd></div></dl>
+      ${renderScheduleWeek(entries)}
+      <div class="schedule-layout">
+        <form class="schedule-entry-form" id="schedule-entry-form" aria-labelledby="schedule-entry-form-heading">
+          <div><p class="eyebrow">New schedule item</p><h4 id="schedule-entry-form-heading">${scheduleAdminMode() ? "Add a confirmed event" : "Add to a schedule"}</h4></div>
+          <label class="span-2"><span>Title</span><input id="schedule-title" maxlength="120" placeholder="Example: Reading conference" required /></label>
+          ${renderScheduleTargetFields("schedule")}
+          <label><span>Category</span><select id="schedule-category"><option>Meeting</option><option>Student support</option><option>Class</option><option>Office hours</option><option>Conference</option><option>Duty</option><option>Other</option></select></label>
+          <label><span>Location or link</span><input id="schedule-location" maxlength="160" placeholder="Room 204 or meeting link" /></label>
+          <label class="span-2"><span>Date</span><input id="schedule-date" type="date" min="${todayScheduleDate()}" value="${nextScheduleDate()}" required /></label>
+          <div class="schedule-time-pair"><label><span>Starts</span><input id="schedule-start" type="time" value="09:00" required /></label><label><span>Ends</span><input id="schedule-end" type="time" value="09:30" required /></label></div>
+          <label class="span-2"><span>Notes</span><textarea id="schedule-notes" maxlength="1000" placeholder="Optional preparation or access details"></textarea></label>
+          <div class="schedule-conflict-help span-2" id="schedule-conflict-help" role="status">${icon("shield-check")} Time conflicts are checked before this item is saved.</div>
+          <button class="primary-action span-2" type="submit">${icon("plus")} Add to schedule</button>
+        </form>
+        <section class="schedule-agenda" aria-labelledby="schedule-agenda-heading">
+          <div class="schedule-toolbar"><div><p class="eyebrow">Agenda</p><h4 id="schedule-agenda-heading">Upcoming schedule</h4></div><label><span>Show</span><select id="schedule-audience-filter">${filterOptions.map(([value, label]) => `<option value="${value}" ${audienceFilter === value ? "selected" : ""}>${label}</option>`).join("")}</select></label></div>
+          ${renderScheduleAgenda(entries)}
+        </section>
+      </div>
+    </section>
+  `;
+}
+
+function renderScheduleRequests() {
+  const requests = visibleScheduleRequests();
+  const scopedRequests = scheduleRequests.filter(scheduleRecordInScope).filter((request) => scheduleAdminMode() || request.requestedBy === activeUser().id);
+  const count = (status) => scopedRequests.filter((request) => request.status === status).length;
+  return `
+    <section class="panel schedule-requests-page" id="schedule-requests" aria-labelledby="schedule-requests-heading">
+      <div class="section-heading schedule-page-heading"><div><p class="eyebrow">Scheduling workflow</p><h3 id="schedule-requests-heading">Schedule Requests</h3><p>${scheduleAdminMode() ? "Submit requests and review schedule changes from teachers across your authorized scope." : "Request time for yourself or an assigned student and track the administrator's response."}</p></div><span>${count("Pending")} awaiting review</span></div>
+      <dl class="schedule-summary" aria-label="Request summary"><div><dt>Pending</dt><dd>${count("Pending")}</dd></div><div><dt>Approved</dt><dd>${count("Approved")}</dd></div><div><dt>Declined</dt><dd>${count("Declined")}</dd></div></dl>
+      <div class="schedule-request-layout">
+        <form class="schedule-request-form" id="schedule-request-form" aria-labelledby="schedule-request-form-heading">
+          <div><p class="eyebrow">New request</p><h4 id="schedule-request-form-heading">Request schedule time</h4></div>
+          <label class="span-2"><span>Request title</span><input id="schedule-request-title" maxlength="120" placeholder="Example: Student support meeting" required /></label>
+          ${renderScheduleTargetFields("schedule-request")}
+          <label><span>Request type</span><select id="schedule-request-type"><option>Meeting</option><option>Student support</option><option>Observation</option><option>Coverage</option><option>Conference</option><option>Office hours</option><option>Other</option></select></label>
+          <label><span>Flexibility</span><select id="schedule-request-flexibility"><option>Exact time</option><option>Within 15 minutes</option><option>Flexible that day</option></select></label>
+          <label class="span-2"><span>Requested date</span><input id="schedule-request-date" type="date" min="${todayScheduleDate()}" value="${nextScheduleDate()}" required /></label>
+          <div class="schedule-time-pair"><label><span>Starts</span><input id="schedule-request-start" type="time" value="10:00" required /></label><label><span>Ends</span><input id="schedule-request-end" type="time" value="10:30" required /></label></div>
+          <label class="span-2"><span>Reason</span><textarea id="schedule-request-reason" maxlength="1000" placeholder="Explain why this time is needed" required></textarea></label>
+          <label class="span-2"><span>Location or notes</span><input id="schedule-request-notes" maxlength="500" placeholder="Optional room, meeting link, or alternatives" /></label>
+          <button class="primary-action span-2" type="submit">${icon("send")} Submit schedule request</button>
+        </form>
+        <section class="schedule-request-queue" aria-labelledby="schedule-request-queue-heading">
+          <div class="schedule-toolbar"><div><p class="eyebrow">Request queue</p><h4 id="schedule-request-queue-heading">${scheduleAdminMode() ? "Review requests" : "My requests"}</h4></div><label><span>Status</span><select id="schedule-status-filter">${["All", "Pending", "Approved", "Declined"].map((status) => `<option ${state.scheduleStatusFilter === status ? "selected" : ""}>${status}</option>`).join("")}</select></label></div>
+          ${requests.length ? `<ol class="schedule-request-list" aria-label="Schedule requests">
+            ${requests.map((request) => `
+              <li class="schedule-request-card" id="schedule-request-${escapeHtml(request.id)}" aria-labelledby="schedule-request-title-${escapeHtml(request.id)}">
+                <div class="schedule-request-card-heading"><div><h5 id="schedule-request-title-${escapeHtml(request.id)}">${escapeHtml(request.title)}</h5><small>${escapeHtml(request.requestType || "Schedule request")} • ${escapeHtml(request.targetName)}</small></div><span class="schedule-status status-${String(request.status).toLowerCase()}">${escapeHtml(request.status)}</span></div>
+                <p><time datetime="${escapeHtml(request.date)}">${escapeHtml(scheduleDateLabel(request.date))}</time> • ${escapeHtml(scheduleTimeLabel(request.startTime))} to ${escapeHtml(scheduleTimeLabel(request.endTime))} • ${escapeHtml(request.flexibility || "Exact time")}</p>
+                <p>${escapeHtml(request.reason)}</p>
+                ${scheduleConflict(request, request.scheduleId || "") ? `<div class="schedule-conflict-warning" role="status">${icon("alert-triangle")} This request overlaps ${escapeHtml(scheduleConflict(request, request.scheduleId || "").title)} for ${escapeHtml(request.targetName)}.</div>` : ""}
+                <small>Requested by ${escapeHtml(request.requestedByName || request.requestedBy)}${request.reviewedByName ? ` • Reviewed by ${escapeHtml(request.reviewedByName)}` : ""}</small>
+                ${request.reviewNote ? `<div class="schedule-review-note"><strong>Review note</strong><span>${escapeHtml(request.reviewNote)}</span></div>` : ""}
+                ${scheduleAdminMode() && request.status === "Pending" ? `<div class="schedule-review-actions"><label><span>Review note</span><input data-schedule-review-note="${escapeHtml(request.id)}" maxlength="500" placeholder="Required when declining" /></label><div class="inline-actions"><button class="primary-action" type="button" data-review-schedule-request="${escapeHtml(request.id)}" data-review-status="Approved" aria-label="Approve ${escapeHtml(request.title)}">${icon("check")} Approve</button><button class="secondary-action" type="button" data-review-schedule-request="${escapeHtml(request.id)}" data-review-status="Declined" aria-label="Decline ${escapeHtml(request.title)}">Decline</button></div></div>` : ""}
+              </li>
+            `).join("")}
+          </ol>` : `<div class="empty-state">No schedule requests match this view.</div>`}
+        </section>
+      </div>
+    </section>
+  `;
+}
+
 function renderTeacherPlanningCalendar() {
   const items = [
     ...lmsLessons.filter((item) => item.dueDate).map((item) => ({ title: item.title, date: item.dueDate, kind: "Lesson", status: item.status })),
@@ -2419,6 +2742,8 @@ function renderTeacher() {
       ${statCard("Messages", school.messages, "mail", "gold")}
       ${renderTeacherLearningOperations()}
       ${renderTeacherPlanningCalendar()}
+      ${renderScheduleCalendar()}
+      ${renderScheduleRequests()}
       ${renderNotificationAutomation()}
       ${renderStandardsGradebook()}
       ${renderInterventionCenter({ compact: true })}
@@ -3023,7 +3348,268 @@ function handleGeneralMenuAction(action) {
   if (action === "sign-out") signOut();
 }
 
+function bindScheduleTargetPicker(prefix) {
+  const typeSelect = document.querySelector(`#${prefix}-target-type`);
+  const targetSelect = document.querySelector(`#${prefix}-target-id`);
+  if (!typeSelect || !targetSelect) return;
+  const updateTargets = () => {
+    const targets = scheduleTargetCatalog().filter((target) => target.pickerType === typeSelect.value);
+    targetSelect.innerHTML = targets.map((target) => `<option value="${escapeHtml(target.key)}">${escapeHtml(target.name)}${target.pickerType === "self" ? " (myself)" : ""}</option>`).join("");
+    targetSelect.disabled = !targets.length;
+    clearScheduleFormValidity(prefix);
+  };
+  typeSelect.addEventListener("change", updateTargets);
+  targetSelect.addEventListener("change", () => clearScheduleFormValidity(prefix));
+  updateTargets();
+}
+
+function selectedScheduleTarget(prefix) {
+  const key = document.querySelector(`#${prefix}-target-id`)?.value;
+  return scheduleTargetCatalog().find((target) => target.key === key) || null;
+}
+
+function clearScheduleFormValidity(prefix) {
+  document.querySelector(`#${prefix}-start`)?.setCustomValidity("");
+  document.querySelector(`#${prefix}-end`)?.setCustomValidity("");
+}
+
+function validateScheduleFormTimes(prefix) {
+  const date = document.querySelector(`#${prefix}-date`);
+  const start = document.querySelector(`#${prefix}-start`);
+  const end = document.querySelector(`#${prefix}-end`);
+  clearScheduleFormValidity(prefix);
+  if (!date?.value || !start?.value || !end?.value) return false;
+  if (end.value <= start.value) {
+    end.setCustomValidity("End time must be later than start time.");
+    end.reportValidity();
+    end.focus();
+    return false;
+  }
+  return true;
+}
+
+function focusScheduleRecord(selector) {
+  requestAnimationFrame(() => {
+    const record = document.querySelector(selector);
+    if (!record) return;
+    record.setAttribute("tabindex", "-1");
+    record.focus({ preventScroll: true });
+    record.scrollIntoView({ block: "nearest", behavior: state.reducedMotion ? "auto" : "smooth" });
+  });
+}
+
+async function createScheduleFromForm(form) {
+  if (!validateScheduleFormTimes("schedule")) return;
+  const target = selectedScheduleTarget("schedule");
+  if (!target) {
+    document.querySelector("#schedule-target-id")?.focus();
+    return;
+  }
+  const entry = {
+    id: `schedule-${Date.now()}`,
+    title: form.querySelector("#schedule-title").value.trim(),
+    date: form.querySelector("#schedule-date").value,
+    startTime: form.querySelector("#schedule-start").value,
+    endTime: form.querySelector("#schedule-end").value,
+    targetType: target.targetType,
+    targetId: target.id,
+    targetName: target.name,
+    ...(target.studentId ? { studentId: target.studentId } : {}),
+    ...(target.assignedTeacher ? { assignedTeacher: target.assignedTeacher } : {}),
+    category: form.querySelector("#schedule-category").value,
+    location: form.querySelector("#schedule-location").value.trim(),
+    notes: form.querySelector("#schedule-notes").value.trim(),
+    createdBy: activeUser().id,
+    createdByName: activeUser().label,
+    status: "Scheduled",
+    stateId: target.stateId,
+    districtId: target.districtId,
+    schoolId: target.schoolId,
+    createdAt: new Date().toISOString(),
+  };
+  const conflict = scheduleConflict(entry);
+  if (conflict) {
+    const start = form.querySelector("#schedule-start");
+    start.setCustomValidity(`Conflicts with ${conflict.title} for ${conflict.targetName} from ${scheduleTimeLabel(conflict.startTime)} to ${scheduleTimeLabel(conflict.endTime)}.`);
+    start.reportValidity();
+    start.focus();
+    return;
+  }
+  try {
+    const result = state.apiMode === "live-api" ? await createServerSchedule(entry) : { schedule: entry };
+    const saved = result.schedule || entry;
+    const existingIndex = scheduleEntries.findIndex((item) => item.id === saved.id);
+    if (existingIndex >= 0) scheduleEntries[existingIndex] = saved;
+    else scheduleEntries.unshift(saved);
+    state.scheduleAudienceFilter = "All";
+    addAudit(`Scheduled ${saved.title}`, saved.targetName);
+    pushNotification("FYI", `${saved.title} added to ${saved.targetName}'s schedule`, saved.targetName, "Scheduling");
+    state.toast = `${saved.title} added to the schedule.`;
+    render();
+    focusScheduleRecord(`#schedule-entry-${CSS.escape(saved.id)}`);
+  } catch (error) {
+    announce(error.message);
+  }
+}
+
+async function createScheduleRequestFromForm(form) {
+  if (!validateScheduleFormTimes("schedule-request")) return;
+  const target = selectedScheduleTarget("schedule-request");
+  if (!target) {
+    document.querySelector("#schedule-request-target-id")?.focus();
+    return;
+  }
+  const request = {
+    id: `schedule-request-${Date.now()}`,
+    title: form.querySelector("#schedule-request-title").value.trim(),
+    requestType: form.querySelector("#schedule-request-type").value,
+    flexibility: form.querySelector("#schedule-request-flexibility").value,
+    date: form.querySelector("#schedule-request-date").value,
+    startTime: form.querySelector("#schedule-request-start").value,
+    endTime: form.querySelector("#schedule-request-end").value,
+    targetType: target.targetType,
+    targetId: target.id,
+    targetName: target.name,
+    ...(target.studentId ? { studentId: target.studentId } : {}),
+    ...(target.assignedTeacher ? { assignedTeacher: target.assignedTeacher } : {}),
+    reason: form.querySelector("#schedule-request-reason").value.trim(),
+    notes: form.querySelector("#schedule-request-notes").value.trim(),
+    status: "Pending",
+    requestedBy: activeUser().id,
+    requestedByName: activeUser().label,
+    reviewedBy: "",
+    reviewedByName: "",
+    reviewNote: "",
+    stateId: target.stateId,
+    districtId: target.districtId,
+    schoolId: target.schoolId,
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    const result = state.apiMode === "live-api" ? await createServerScheduleRequest(request) : { request };
+    const saved = result.request || request;
+    const existingIndex = scheduleRequests.findIndex((item) => item.id === saved.id);
+    if (existingIndex >= 0) scheduleRequests[existingIndex] = saved;
+    else scheduleRequests.unshift(saved);
+    state.scheduleStatusFilter = "All";
+    addAudit(`Submitted schedule request: ${saved.title}`, saved.targetName);
+    pushNotification("Action", `${activeUser().label} submitted a schedule request`, saved.targetName, "Scheduling");
+    state.toast = `${saved.title} sent for schedule review.`;
+    render();
+    focusScheduleRecord(`#schedule-request-${CSS.escape(saved.id)}`);
+  } catch (error) {
+    announce(error.message);
+  }
+}
+
+async function cancelSchedule(id) {
+  const entry = scheduleEntries.find((item) => item.id === id);
+  if (!entry || (!scheduleAdminMode() && entry.createdBy !== activeUser().id)) return;
+  try {
+    const result = state.apiMode === "live-api" ? await updateServerSchedule(id, { status: "Cancelled" }) : { schedule: { ...entry, status: "Cancelled", updatedAt: new Date().toISOString() } };
+    Object.assign(entry, result.schedule || { status: "Cancelled" });
+    addAudit(`Cancelled schedule item: ${entry.title}`, entry.targetName);
+    announce(`${entry.title} cancelled.`);
+    focusScheduleRecord(`#schedule-entry-${CSS.escape(entry.id)}`);
+  } catch (error) {
+    announce(error.message);
+  }
+}
+
+async function reviewScheduleRequest(id, status, noteInput) {
+  const request = scheduleRequests.find((item) => item.id === id);
+  if (!request || !scheduleAdminMode()) return;
+  const reviewNote = noteInput?.value.trim() || "";
+  noteInput?.setCustomValidity("");
+  if (status === "Declined" && !reviewNote) {
+    noteInput.setCustomValidity("Add a review note before declining this request.");
+    noteInput.reportValidity();
+    noteInput.focus();
+    return;
+  }
+  const conflict = status === "Approved" ? scheduleConflict(request) : null;
+  if (conflict) {
+    noteInput?.setCustomValidity(`Resolve the conflict with ${conflict.title} before approving.`);
+    noteInput?.reportValidity();
+    noteInput?.focus();
+    return;
+  }
+  try {
+    let result;
+    if (state.apiMode === "live-api") {
+      result = await reviewServerScheduleRequest(id, status, reviewNote);
+    } else {
+      const reviewedRequest = { ...request, status, reviewNote, reviewedBy: activeUser().id, reviewedByName: activeUser().label, updatedAt: new Date().toISOString() };
+      let schedule = null;
+      if (status === "Approved") {
+        schedule = {
+          id: `schedule-${Date.now()}`,
+          title: request.title,
+          date: request.date,
+          startTime: request.startTime,
+          endTime: request.endTime,
+          targetType: request.targetType,
+          targetId: request.targetId,
+          targetName: request.targetName,
+          ...(request.studentId ? { studentId: request.studentId } : {}),
+          ...(request.assignedTeacher ? { assignedTeacher: request.assignedTeacher } : {}),
+          category: request.requestType,
+          location: request.notes || "To be confirmed",
+          notes: request.reason,
+          createdBy: activeUser().id,
+          createdByName: activeUser().label,
+          status: "Scheduled",
+          sourceRequestId: request.id,
+          stateId: request.stateId,
+          districtId: request.districtId,
+          schoolId: request.schoolId,
+          createdAt: new Date().toISOString(),
+        };
+        reviewedRequest.scheduleId = schedule.id;
+      }
+      result = { request: reviewedRequest, schedule };
+    }
+    Object.assign(request, result.request || { status, reviewNote });
+    if (result.schedule && !scheduleEntries.some((entry) => entry.id === result.schedule.id)) scheduleEntries.unshift(result.schedule);
+    addAudit(`${status} schedule request: ${request.title}`, request.targetName);
+    pushNotification(status === "Approved" ? "FYI" : "Action", `${request.title} was ${status.toLowerCase()}`, request.targetName, "Scheduling");
+    announce(`${request.title} ${status.toLowerCase()}.`);
+    focusScheduleRecord(`#schedule-request-${CSS.escape(request.id)}`);
+  } catch (error) {
+    announce(error.message);
+  }
+}
+
+function bindSchedulingEvents() {
+  bindScheduleTargetPicker("schedule");
+  bindScheduleTargetPicker("schedule-request");
+  ["schedule-date", "schedule-start", "schedule-end"].forEach((id) => document.querySelector(`#${id}`)?.addEventListener("input", () => clearScheduleFormValidity("schedule")));
+  ["schedule-request-date", "schedule-request-start", "schedule-request-end"].forEach((id) => document.querySelector(`#${id}`)?.addEventListener("input", () => clearScheduleFormValidity("schedule-request")));
+  document.querySelector("#schedule-entry-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await createScheduleFromForm(event.currentTarget);
+  });
+  document.querySelector("#schedule-request-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await createScheduleRequestFromForm(event.currentTarget);
+  });
+  document.querySelector("#schedule-audience-filter")?.addEventListener("change", (event) => {
+    state.scheduleAudienceFilter = event.target.value;
+    render();
+  });
+  document.querySelector("#schedule-status-filter")?.addEventListener("change", (event) => {
+    state.scheduleStatusFilter = event.target.value;
+    render();
+  });
+  document.querySelectorAll("[data-cancel-schedule]").forEach((button) => button.addEventListener("click", () => cancelSchedule(button.dataset.cancelSchedule)));
+  document.querySelectorAll("[data-review-schedule-request]").forEach((button) => button.addEventListener("click", () => {
+    const note = document.querySelector(`[data-schedule-review-note="${CSS.escape(button.dataset.reviewScheduleRequest)}"]`);
+    reviewScheduleRequest(button.dataset.reviewScheduleRequest, button.dataset.reviewStatus, note);
+  }));
+}
+
 function bindEvents() {
+  bindSchedulingEvents();
   document.querySelectorAll("[data-role]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.preventDefault();

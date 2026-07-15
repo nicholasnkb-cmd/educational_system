@@ -173,3 +173,27 @@ export function runServerPlatformAction(action, payload = {}) {
     body: JSON.stringify({ action, ...payload }),
   });
 }
+
+export function listServerSchedules() {
+  return requestServer("/api/schedules", { method: "GET" });
+}
+
+export function createServerSchedule(entry) {
+  return requestServer("/api/schedules", { method: "POST", body: JSON.stringify(entry) });
+}
+
+export function updateServerSchedule(id, updates) {
+  return requestServer(`/api/schedules/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(updates) });
+}
+
+export function listServerScheduleRequests() {
+  return requestServer("/api/schedule-requests", { method: "GET" });
+}
+
+export function createServerScheduleRequest(request) {
+  return requestServer("/api/schedule-requests", { method: "POST", body: JSON.stringify(request) });
+}
+
+export function reviewServerScheduleRequest(id, status, reviewNote = "") {
+  return requestServer(`/api/schedule-requests/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status, reviewNote }) });
+}

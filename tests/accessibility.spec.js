@@ -54,6 +54,8 @@ test("representative routed function pages have no serious automated WCAG violat
     ["school-admin", "school-customization"],
     ["teacher", "create-lesson"],
     ["state-admin", "operations-services"],
+    ["state-admin", "schedule-calendar"],
+    ["teacher", "teacher-schedule-requests"],
   ]) {
     await openFunction(page, role, functionId);
     expect(await seriousViolations(page), `${role}/${functionId}`).toEqual([]);
@@ -76,5 +78,14 @@ test("mobile routed page and general menu have no serious automated WCAG violati
 
   await page.locator(".mobile-role-nav").getByRole("button", { name: "Menu" }).click();
   await expect(page.getByRole("dialog", { name: "General menu" })).toBeVisible();
+  expect(await seriousViolations(page)).toEqual([]);
+});
+
+test("mobile teacher scheduling form has no serious automated WCAG violations", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await loginAs(page, "teacher");
+  await openFunction(page, "teacher", "teacher-schedule-requests");
+  await expect(page.locator("#schedule-request-form")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expect(await seriousViolations(page)).toEqual([]);
 });

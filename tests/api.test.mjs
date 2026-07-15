@@ -386,9 +386,9 @@ describe("operational API server", () => {
     const otherScope = { stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118", studentId: "learner-2" };
     const outsideScope = { stateId: "ny", districtId: "nyc-doe", schoolId: "bronx-charter", studentId: "learner-1" };
     globalState.snapshot.rosterRecords = [
-      { id: "privacy-roster-own", student: "Linked learner", ...ownScope },
-      { id: "privacy-roster-other", student: "Other learner", ...otherScope },
-      { id: "privacy-roster-outside", student: "Outside school", ...outsideScope },
+      { id: "privacy-roster-own", student: "Linked learner", teacher: "Demo Teacher", ...ownScope },
+      { id: "privacy-roster-other", student: "Other learner", teacher: "Other Teacher", ...otherScope },
+      { id: "privacy-roster-outside", student: "Outside school", teacher: "Demo Teacher", ...outsideScope },
     ];
     globalState.snapshot.gradebookSubmissions = [
       { id: "privacy-grade-own", assignment: "Reading", ...ownScope },
@@ -581,5 +581,302 @@ describe("operational API server", () => {
     const scheduled = await fetch(`${baseUrl}/api/notifications/schedule`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ channel: "Email", audience: "Families", template: "Weekly summary" }) });
     assert.equal(scheduled.status, 201);
     assert.equal((await scheduled.json()).delivery.status, "Scheduled");
+  });
+
+  it("persists tenant-scoped schedules and enforces the schedule request review workflow", async () => {
+    const loginAs = async (profileId) => {
+      const response = await fetch(`${baseUrl}/api/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId, password: testPasswords[profileId] }),
+      });
+      assert.equal(response.status, 200);
+      return response.json();
+    };
+    const request = (path, token, method = "GET", body) => fetch(`${baseUrl}${path}`, {
+      method,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+
+    const anonymous = await fetch(`${baseUrl}/api/schedules`);
+    assert.equal(anonymous.status, 401);
+
+    const globalAdmin = await loginAs("global-admin");
+    const schoolAdmin = await loginAs("school-admin");
+    const teacher = await loginAs("teacher");
+    const parent = await loginAs("parent");
+    const student = await loginAs("student");
+
+    const initial = await request("/api/schedules", globalAdmin.token);
+    const initialPayload = await initial.json();
+    assert.equal(initial.status, 200);
+    assert.ok(initialPayload.schedules.some((entry) => entry.id === "schedule-teacher-planning"));
+    assert.ok(initialPayload.schedules.some((entry) => entry.id === "schedule-learner-conference"));
+
+    const adminStaffSchedule = await request("/api/schedules", schoolAdmin.token, "POST", {
+      title: "Principal planning",
+      date: "2026-11-02",
+      startTime: "08:00",
+      endTime: "08:30",
+      targetType: "staff",
+      targetId: "school-admin",
+      targetName: "Spoofed name",
+      category: "Planning",
+      location: "Main office",
+      notes: "Prepare the weekly campus brief.",
+      createdBy: "teacher",
+      schoolId: "ps-118",
+    });
+    const adminStaffPayload = await adminStaffSchedule.json();
+    assert.equal(adminStaffSchedule.status, 201);
+    assert.equal(adminStaffPayload.schedule.targetName, "School Admin");
+    assert.equal(adminStaffPayload.schedule.createdBy, "school-admin");
+
+    const teacherSelfSchedule = await request("/api/schedules", teacher.token, "POST", {
+      title: "Teacher office hours",
+      date: "2026-11-03",
+      startTime: "15:00",
+      endTime: "15:45",
+      targetType: "staff",
+      targetId: "teacher",
+      targetName: "Untrusted display name",
+      category: "Office Hours",
+      location: "Room 304",
+      notes: "Student questions and writing support.",
+      status: "Completed",
+      stateId: "ca",
+      districtId: "la-usd",
+      schoolId: "bronx-charter",
+    });
+    const teacherSelfPayload = await teacherSelfSchedule.json();
+    assert.equal(teacherSelfSchedule.status, 201);
+    assert.equal(teacherSelfPayload.schedule.targetName, "Demo Teacher");
+    assert.equal(teacherSelfPayload.schedule.status, "Scheduled");
+    assert.equal(teacherSelfPayload.schedule.schoolId, "ps-118");
+
+    const directConflict = await request("/api/schedules", teacher.token, "POST", {
+      title: "Overlapping office hours", date: "2026-11-03", startTime: "15:30", endTime: "16:00", targetType: "staff", targetId: "teacher",
+    });
+    const directConflictPayload = await directConflict.json();
+    assert.equal(directConflict.status, 409);
+    assert.match(directConflictPayload.error, /conflicts with Teacher office hours/i);
+
+    const teacherStudentSchedule = await request("/api/schedules", teacher.token, "POST", {
+      title: "Reading support",
+      date: "2026-11-04",
+      startTime: "10:00",
+      endTime: "10:30",
+      targetType: "student",
+      targetId: "learner-1",
+      category: "Student Support",
+      location: "Reading lab",
+    });
+    assert.equal(teacherStudentSchedule.status, 201);
+    assert.equal((await teacherStudentSchedule.json()).schedule.targetName, "Linked learner");
+
+    const teacherRosterStudentSchedule = await request("/api/schedules", teacher.token, "POST", {
+      title: "Roster-linked reading check-in", date: "2026-11-04", startTime: "10:30", endTime: "10:45", targetType: "student", targetId: "privacy-roster-own", category: "Student Support",
+    });
+    const teacherRosterStudentPayload = await teacherRosterStudentSchedule.json();
+    assert.equal(teacherRosterStudentSchedule.status, 201);
+    assert.equal(teacherRosterStudentPayload.schedule.studentId, "learner-1");
+
+    const aliasConflict = await request("/api/schedules", teacher.token, "POST", {
+      title: "Alias overlap", date: "2026-11-04", startTime: "10:15", endTime: "10:25", targetType: "student", targetId: "privacy-roster-own",
+    });
+    assert.equal(aliasConflict.status, 409);
+
+    const teacherOtherStaff = await request("/api/schedules", teacher.token, "POST", {
+      title: "Unauthorized staff block", date: "2026-11-04", startTime: "11:00", endTime: "11:30", targetType: "staff", targetId: "school-admin",
+    });
+    assert.equal(teacherOtherStaff.status, 403);
+
+    const teacherOutsideStudent = await request("/api/schedules", teacher.token, "POST", {
+      title: "Outside learner", date: "2026-11-04", startTime: "12:00", endTime: "12:30", targetType: "student", targetId: "privacy-roster-outside",
+    });
+    assert.equal(teacherOutsideStudent.status, 403);
+
+    const teacherUnassignedStudent = await request("/api/schedules", teacher.token, "POST", {
+      title: "Unassigned learner", date: "2026-11-04", startTime: "12:30", endTime: "13:00", targetType: "student", targetId: "privacy-roster-other",
+    });
+    assert.equal(teacherUnassignedStudent.status, 403);
+
+    const teacherClass = await request("/api/schedules", teacher.token, "POST", {
+      title: "Unauthorized class block", date: "2026-11-04", startTime: "13:00", endTime: "13:30", targetType: "class", targetId: "English Literature", schoolId: "ps-118",
+    });
+    assert.equal(teacherClass.status, 403);
+
+    const adminClass = await request("/api/schedules", schoolAdmin.token, "POST", {
+      title: "Class assessment window", date: "2026-11-05", startTime: "09:00", endTime: "10:00", targetType: "class", targetId: "English Literature", schoolId: "ps-118", category: "Assessment",
+    });
+    assert.equal(adminClass.status, 201);
+    assert.equal((await adminClass.json()).schedule.targetName, "English Literature");
+
+    const malformed = await request("/api/schedules", teacher.token, "POST", {
+      title: "Malformed", date: "2026-02-30", startTime: "10:00", endTime: "09:00", targetType: "staff", targetId: "teacher",
+    });
+    assert.equal(malformed.status, 400);
+
+    const teacherList = await (await request("/api/schedules", teacher.token)).json();
+    assert.equal(teacherList.schedules.some((entry) => entry.id === adminStaffPayload.schedule.id), false);
+    assert.equal(teacherList.schedules.some((entry) => entry.id === teacherSelfPayload.schedule.id), true);
+
+    const patchConflict = await request(`/api/schedules/${teacherRosterStudentPayload.schedule.id}`, teacher.token, "PATCH", { startTime: "10:15", endTime: "10:45" });
+    assert.equal(patchConflict.status, 409);
+
+    const updateOwn = await request(`/api/schedules/${teacherSelfPayload.schedule.id}`, teacher.token, "PATCH", { status: "Completed", notes: "Office hours completed." });
+    assert.equal(updateOwn.status, 200);
+    assert.equal((await updateOwn.json()).schedule.status, "Completed");
+    const updateOtherStaff = await request(`/api/schedules/${adminStaffPayload.schedule.id}`, teacher.token, "PATCH", { status: "Cancelled" });
+    assert.equal(updateOtherStaff.status, 403);
+    const retargetOwnToOtherStaff = await request(`/api/schedules/${teacherSelfPayload.schedule.id}`, teacher.token, "PATCH", { targetType: "staff", targetId: "school-admin" });
+    assert.equal(retargetOwnToOtherStaff.status, 403);
+
+    const adminAssignedStudent = await request("/api/schedules", schoolAdmin.token, "POST", {
+      title: "Administrator-created assigned support", date: "2026-11-06", startTime: "10:00", endTime: "10:30", targetType: "student", targetId: "privacy-roster-own",
+    });
+    const adminAssignedStudentPayload = await adminAssignedStudent.json();
+    assert.equal(adminAssignedStudent.status, 201);
+    const teacherCancelsAssigned = await request(`/api/schedules/${adminAssignedStudentPayload.schedule.id}`, teacher.token, "PATCH", { status: "Cancelled" });
+    assert.equal(teacherCancelsAssigned.status, 200);
+
+    const adminUnassignedStudent = await request("/api/schedules", schoolAdmin.token, "POST", {
+      title: "Administrator-created unassigned support", date: "2026-11-06", startTime: "11:00", endTime: "11:30", targetType: "student", targetId: "privacy-roster-other",
+    });
+    const adminUnassignedStudentPayload = await adminUnassignedStudent.json();
+    assert.equal(adminUnassignedStudent.status, 201);
+    const teacherCancelsUnassigned = await request(`/api/schedules/${adminUnassignedStudentPayload.schedule.id}`, teacher.token, "PATCH", { status: "Cancelled" });
+    assert.equal(teacherCancelsUnassigned.status, 403);
+    const teacherListAfterAdminSchedules = await (await request("/api/schedules", teacher.token)).json();
+    assert.ok(teacherListAfterAdminSchedules.schedules.some((entry) => entry.id === adminAssignedStudentPayload.schedule.id));
+    assert.equal(teacherListAfterAdminSchedules.schedules.some((entry) => entry.id === adminUnassignedStudentPayload.schedule.id), false);
+    const parentScheduleCreate = await request("/api/schedules", parent.token, "POST", {
+      title: "Unauthorized family entry", date: "2026-11-06", startTime: "09:00", endTime: "09:30", targetType: "student", targetId: "learner-1",
+    });
+    assert.equal(parentScheduleCreate.status, 403);
+
+    const familyRequest = await request("/api/schedule-requests", parent.token, "POST", {
+      title: "Family reading conference",
+      requestType: "Conference",
+      date: "2026-11-09",
+      startTime: "15:30",
+      endTime: "16:00",
+      targetType: "student",
+      targetId: "privacy-roster-own",
+      targetName: "Spoofed learner",
+      reason: "Review reading growth and home supports.",
+      flexibility: "Within 15 minutes",
+      notes: "Room 304",
+      status: "Approved",
+      requestedBy: "global-admin",
+      reviewedBy: "school-admin",
+    });
+    const familyRequestPayload = await familyRequest.json();
+    assert.equal(familyRequest.status, 201);
+    assert.equal(familyRequestPayload.request.status, "Pending");
+    assert.equal(familyRequestPayload.request.requestedBy, "parent");
+    assert.equal(familyRequestPayload.request.targetName, "Linked learner");
+    assert.equal(familyRequestPayload.request.flexibility, "Within 15 minutes");
+    assert.equal(familyRequestPayload.request.location, "Room 304");
+    assert.equal(familyRequestPayload.request.reviewedBy, "");
+
+    const outsideFamilyRequest = await request("/api/schedule-requests", parent.token, "POST", {
+      title: "Outside learner request", requestType: "Conference", date: "2026-11-09", startTime: "16:00", endTime: "16:30", targetType: "student", targetId: "privacy-roster-outside", reason: "Unauthorized",
+    });
+    assert.equal(outsideFamilyRequest.status, 403);
+
+    const teacherReview = await request(`/api/schedule-requests/${familyRequestPayload.request.id}`, teacher.token, "PATCH", { status: "Approved", reviewNote: "Should fail" });
+    assert.equal(teacherReview.status, 403);
+
+    const conflictingRequest = await request("/api/schedule-requests", schoolAdmin.token, "POST", {
+      title: "Conflicting learner request", requestType: "Student support", date: "2026-11-04", startTime: "10:15", endTime: "10:25", targetType: "student", targetId: "privacy-roster-own", reason: "Exercise approval conflict enforcement.",
+    });
+    const conflictingRequestPayload = await conflictingRequest.json();
+    assert.equal(conflictingRequest.status, 201);
+    const conflictingApproval = await request(`/api/schedule-requests/${conflictingRequestPayload.request.id}`, schoolAdmin.token, "PATCH", { status: "Approved" });
+    assert.equal(conflictingApproval.status, 409);
+    const requestsAfterConflict = await (await request("/api/schedule-requests", schoolAdmin.token)).json();
+    const stillPending = requestsAfterConflict.requests.find((item) => item.id === conflictingRequestPayload.request.id);
+    assert.equal(stillPending.status, "Pending");
+    assert.equal(stillPending.scheduleId, "");
+
+    const approval = await request(`/api/schedule-requests/${familyRequestPayload.request.id}`, schoolAdmin.token, "PATCH", { status: "Approved", reviewNote: "Confirmed with the teacher." });
+    const approvalPayload = await approval.json();
+    assert.equal(approval.status, 200);
+    assert.equal(approvalPayload.request.status, "Approved");
+    assert.equal(approvalPayload.request.reviewedBy, "school-admin");
+    assert.equal(approvalPayload.request.scheduleId, approvalPayload.schedule.id);
+    assert.equal(approvalPayload.schedule.sourceRequestId, familyRequestPayload.request.id);
+    assert.equal(approvalPayload.schedule.targetId, "privacy-roster-own");
+    assert.equal(approvalPayload.schedule.studentId, "learner-1");
+    assert.equal(approvalPayload.schedule.category, "Conference");
+    assert.equal(approvalPayload.schedule.location, "Room 304");
+
+    const approvalAgain = await request(`/api/schedule-requests/${familyRequestPayload.request.id}`, schoolAdmin.token, "PATCH", { status: "Approved" });
+    const approvalAgainPayload = await approvalAgain.json();
+    assert.equal(approvalAgain.status, 200);
+    assert.equal(approvalAgainPayload.idempotent, true);
+    assert.equal(approvalAgainPayload.schedule.id, approvalPayload.schedule.id);
+    const conflictingReview = await request(`/api/schedule-requests/${familyRequestPayload.request.id}`, schoolAdmin.token, "PATCH", { status: "Declined", reviewNote: "This request was already approved." });
+    assert.equal(conflictingReview.status, 409);
+
+    const teacherRequest = await request("/api/schedule-requests", teacher.token, "POST", {
+      title: "Planning time request", requestType: "Planning", date: "2026-11-10", startTime: "14:30", endTime: "15:00", targetType: "staff", targetId: "teacher", reason: "Prepare differentiated reading materials.",
+    });
+    const teacherRequestPayload = await teacherRequest.json();
+    assert.equal(teacherRequest.status, 201);
+    const teacherRequests = await (await request("/api/schedule-requests", teacher.token)).json();
+    assert.ok(teacherRequests.requests.some((item) => item.id === teacherRequestPayload.request.id));
+    assert.equal(teacherRequests.requests.some((item) => item.id === familyRequestPayload.request.id), false);
+    const teacherUnassignedRequest = await request("/api/schedule-requests", teacher.token, "POST", {
+      title: "Unassigned learner request", requestType: "Student support", date: "2026-11-10", startTime: "15:00", endTime: "15:30", targetType: "student", targetId: "privacy-roster-other", reason: "This target is not assigned to the teacher.",
+    });
+    assert.equal(teacherUnassignedRequest.status, 403);
+    const declinedWithoutNote = await request(`/api/schedule-requests/${teacherRequestPayload.request.id}`, schoolAdmin.token, "PATCH", { status: "Declined" });
+    assert.equal(declinedWithoutNote.status, 400);
+    assert.match((await declinedWithoutNote.json()).error, /review note/i);
+    const requestAfterMissingNote = await (await request("/api/schedule-requests", schoolAdmin.token)).json();
+    assert.equal(requestAfterMissingNote.requests.find((item) => item.id === teacherRequestPayload.request.id).status, "Pending");
+    const declined = await request(`/api/schedule-requests/${teacherRequestPayload.request.id}`, schoolAdmin.token, "PATCH", { status: "Declined", reviewNote: "Choose the alternate planning block." });
+    const declinedPayload = await declined.json();
+    assert.equal(declined.status, 200);
+    assert.equal(declinedPayload.request.status, "Declined");
+    assert.equal(declinedPayload.request.scheduleId, "");
+    assert.equal(declinedPayload.schedule, null);
+
+    const outsideRequest = await request("/api/schedule-requests", globalAdmin.token, "POST", {
+      title: "Bronx learner conference", requestType: "Conference", date: "2026-11-11", startTime: "13:00", endTime: "13:30", targetType: "student", targetId: "privacy-roster-outside", reason: "Cross-school scope test.",
+    });
+    const outsideRequestPayload = await outsideRequest.json();
+    assert.equal(outsideRequest.status, 201);
+    const outsideReview = await request(`/api/schedule-requests/${outsideRequestPayload.request.id}`, schoolAdmin.token, "PATCH", { status: "Approved" });
+    assert.equal(outsideReview.status, 403);
+    const schoolRequests = await (await request("/api/schedule-requests", schoolAdmin.token)).json();
+    assert.equal(schoolRequests.requests.some((item) => item.id === outsideRequestPayload.request.id), false);
+
+    const familySchedules = await (await request("/api/schedules", parent.token)).json();
+    assert.ok(familySchedules.schedules.every((entry) => entry.targetType === "student" && [entry.targetId, entry.studentId].includes("learner-1")));
+    assert.ok(familySchedules.schedules.some((entry) => entry.id === approvalPayload.schedule.id));
+    assert.ok(familySchedules.schedules.some((entry) => entry.id === teacherRosterStudentPayload.schedule.id));
+    const learnerSchedules = await (await request("/api/schedules", student.token)).json();
+    assert.ok(learnerSchedules.schedules.some((entry) => entry.targetId === "learner-1"));
+
+    const staleState = await (await request("/api/state", globalAdmin.token)).json();
+    staleState.snapshot.scheduleEntries = [{ id: "browser-injected-schedule", title: "Untrusted browser overwrite" }];
+    staleState.snapshot.scheduleRequests = [];
+    const staleSave = await request("/api/state", globalAdmin.token, "PUT", { snapshot: staleState.snapshot });
+    assert.equal(staleSave.status, 200);
+    const authoritativeSchedules = await (await request("/api/schedules", globalAdmin.token)).json();
+    assert.equal(authoritativeSchedules.schedules.some((entry) => entry.id === "browser-injected-schedule"), false);
+    assert.equal(authoritativeSchedules.schedules.filter((entry) => entry.id === approvalPayload.schedule.id).length, 1);
+    const authoritativeRequests = await (await request("/api/schedule-requests", globalAdmin.token)).json();
+    assert.ok(authoritativeRequests.requests.some((entry) => entry.id === familyRequestPayload.request.id));
+
+    const reset = await request("/api/reset", globalAdmin.token, "POST", {});
+    const resetPayload = await reset.json();
+    assert.equal(reset.status, 200);
+    assert.ok(resetPayload.snapshot.scheduleEntries.some((entry) => entry.id === "schedule-ela-class"));
+    assert.ok(resetPayload.snapshot.scheduleRequests.some((entry) => entry.id === "schedule-request-family-conference"));
   });
 });

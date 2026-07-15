@@ -32,6 +32,8 @@ import {
   activityFeed,
   conversations,
   communityBoards,
+  scheduleEntries,
+  scheduleRequests,
 } from "./src/data.js";
 
 const distDir = resolve(process.env.PUBLIC_DIR || "dist");
@@ -149,6 +151,8 @@ function initialSnapshot() {
     activityFeed,
     conversations,
     communityBoards,
+    scheduleEntries,
+    scheduleRequests,
   });
 }
 
@@ -259,7 +263,8 @@ function scopedFiles(files, session) {
   return files.filter((file) => canAccessScope(session.user, file.scope || file));
 }
 
-const tenantCollections = ["rosterRecords", "gradebookSubmissions", "lmsAssignments", "lmsLessons", "lmsSubmissions", "questionBank", "curriculumCourses", "lmsFiles", "lmsNotifications", "fileUploads", "notificationDeliveryLog", "auditLogs", "activityFeed", "conversations", "realtimeEvents", "offlineSyncQueue", "interventions"];
+const tenantCollections = ["rosterRecords", "gradebookSubmissions", "lmsAssignments", "lmsLessons", "lmsSubmissions", "questionBank", "curriculumCourses", "lmsFiles", "lmsNotifications", "fileUploads", "notificationDeliveryLog", "auditLogs", "activityFeed", "conversations", "realtimeEvents", "offlineSyncQueue", "interventions", "scheduleEntries", "scheduleRequests"];
+const serverManagedTenantCollections = new Set(["scheduleEntries", "scheduleRequests"]);
 const studentSensitiveCollections = new Set(["rosterRecords", "gradebookSubmissions", "lmsSubmissions", "activityFeed", "conversations", "offlineSyncQueue"]);
 const staffOnlyCollections = new Set(["questionBank", "notificationDeliveryLog", "auditLogs", "realtimeEvents", "interventions"]);
 
@@ -279,13 +284,54 @@ function canAccessSchoolSensitiveRecords(actor) {
 
 function recordStudentIds(record) {
   const ids = [record?.studentId, record?.learnerId, record?.ownerStudentId];
+  if (record?.targetType === "student") ids.push(record.targetId);
   if (Array.isArray(record?.studentIds)) ids.push(...record.studentIds);
   if (record?.student && typeof record.student === "object") ids.push(record.student.id, record.student.studentId);
   return [...new Set(ids.filter(Boolean).map(String))];
 }
 
+function isScheduleAdmin(actor) {
+  return hasAnyPermission(actor, ["manage-users", "manage-tenants"]);
+}
+
+function canAccessScheduleTenant(actor, record) {
+  if (actor.permissions?.includes("global-access")) return true;
+  const target = normalizeTenantRecord(record);
+  if (actor.scope === "state") return target.stateId === actor.stateId;
+  if (actor.scope === "district") return target.stateId === actor.stateId && target.districtId === actor.districtId;
+  return target.schoolId === actor.schoolId;
+}
+
+function canViewScheduleRecord(actor, record, collection, snapshot = null) {
+  if (!canAccessScheduleTenant(actor, record)) return false;
+  if (isScheduleAdmin(actor)) return true;
+  const actorId = String(actor.id || "");
+  const targetIds = new Set([record.targetId, record.studentId].filter(Boolean).map(String));
+  const targetId = String(record.targetId || "");
+  const requestedBy = String(record.requestedBy || "");
+  if (collection === "scheduleRequests") return requestedBy === actorId;
+  if (actor.scope === "school" && actor.permissions?.includes("teacher-tools")) {
+    if (record.targetType === "staff") return targetId === actorId;
+    if (record.targetType === "student") {
+      const student = snapshot ? findScheduleStudent(snapshot, record.studentId || record.targetId) : null;
+      return (student?.assignedTeacher || record.assignedTeacher) === actor.label;
+    }
+    return ["class", "school"].includes(record.targetType);
+  }
+  if (actor.scope === "guardian") {
+    return (record.targetType === "staff" && targetId === actorId)
+      || (record.targetType === "student" && (actor.studentIds || []).map(String).some((id) => targetIds.has(id)));
+  }
+  if (actor.scope === "student") {
+    const ownIds = new Set([actorId, String(actor.studentId || "")]);
+    return (record.targetType === "student" && [...ownIds].some((id) => targetIds.has(id))) || ["class", "school"].includes(record.targetType);
+  }
+  return false;
+}
+
 function canAccessTenantResource(actor, record, collection = "") {
   if (actor.permissions?.includes("global-access")) return true;
+  if (["scheduleEntries", "scheduleRequests"].includes(collection)) return canViewScheduleRecord(actor, record, collection);
   const target = normalizeTenantRecord(record);
   let tenantAllowed = false;
   if (actor.scope === "state") tenantAllowed = target.stateId === actor.stateId;
@@ -373,7 +419,9 @@ function scopedSnapshot(snapshot, session) {
   const actor = session.user;
   result.userProfiles = scopedProfiles(result.userProfiles || [], session);
   tenantCollections.forEach((collection) => {
-    result[collection] = (result[collection] || []).filter((record) => canAccessTenantResource(actor, record, collection));
+    result[collection] = (result[collection] || []).filter((record) => serverManagedTenantCollections.has(collection)
+      ? canViewScheduleRecord(actor, record, collection, result)
+      : canAccessTenantResource(actor, record, collection));
   });
   if (!canAdmin(session)) {
     const limitedReadiness = {
@@ -405,6 +453,7 @@ function mergeScopedSnapshot(existing, incoming, session) {
     merged.userProfiles = [...preservedProfiles, ...incomingProfiles];
   }
   tenantCollections.forEach((collection) => {
+    if (serverManagedTenantCollections.has(collection)) return;
     const preserved = (existing[collection] || []).filter((record) => !canAccessTenantResource(actor, record, collection));
     const accepted = (incoming[collection] || []).filter((record) => canAccessTenantResource(actor, normalizeTenantRecord(record, actor), collection)).map((record) => normalizeTenantRecord(record, actor));
     merged[collection] = [...preserved, ...accepted];
@@ -483,6 +532,23 @@ async function loadSnapshot() {
     return nextProfile;
   });
 
+  for (const [collection, defaults] of [["scheduleEntries", scheduleEntries], ["scheduleRequests", scheduleRequests]]) {
+    if (!Array.isArray(snapshot[collection])) {
+      snapshot[collection] = structuredClone(defaults);
+      changed = true;
+    }
+  }
+
+  const defaultRosterStudentIds = new Map(rosterRecords.filter((record) => record.studentId).map((record) => [record.id, record.studentId]));
+  snapshot.rosterRecords = (snapshot.rosterRecords || []).map((record) => {
+    const studentId = record.studentId || defaultRosterStudentIds.get(record.id);
+    if (studentId && studentId !== record.studentId) {
+      changed = true;
+      return { ...record, studentId };
+    }
+    return record;
+  });
+
   tenantCollections.forEach((collection) => {
     snapshot[collection] = (snapshot[collection] || []).map((record) => {
       const normalized = normalizeTenantRecord(record);
@@ -533,6 +599,198 @@ function sendJson(res, statusCode, payload) {
     "X-Content-Type-Options": "nosniff",
   });
   res.end(JSON.stringify(payload));
+}
+
+const scheduleTargetTypes = new Set(["staff", "student", "school", "class"]);
+const scheduleStatuses = new Set(["Scheduled", "Cancelled", "Completed"]);
+const scheduleReviewStatuses = new Set(["Approved", "Declined"]);
+
+function scheduleError(message, statusCode = 400) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  throw error;
+}
+
+function scheduleText(value, fallback = "", maximum = 500) {
+  return String(value ?? fallback).trim().slice(0, maximum);
+}
+
+function validateScheduleDateAndTime(record) {
+  const parsedDate = new Date(`${record.date}T00:00:00.000Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(record.date) || Number.isNaN(parsedDate.valueOf()) || parsedDate.toISOString().slice(0, 10) !== record.date) {
+    scheduleError("A valid schedule date is required");
+  }
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(record.startTime) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(record.endTime)) {
+    scheduleError("Schedule times must use 24-hour HH:mm format");
+  }
+  if (record.endTime <= record.startTime) scheduleError("Schedule end time must be after start time");
+}
+
+function findScheduleStudent(snapshot, targetId) {
+  const id = String(targetId || "");
+  const roster = (snapshot.rosterRecords || []).find((record) => [record.id, record.studentId, record.learnerId].filter(Boolean).map(String).includes(id));
+  if (roster) return { name: roster.student || roster.label || "Student", studentId: roster.studentId || roster.learnerId || roster.id, assignedTeacher: roster.teacher || "", scope: normalizeTenantRecord(roster) };
+  const profile = (snapshot.userProfiles || []).find((item) => item.scope === "student" && [item.id, item.studentId].filter(Boolean).map(String).includes(id));
+  if (profile) return { name: profile.label || "Student", studentId: profile.studentId || profile.id, assignedTeacher: "", scope: normalizeProfileScope(profile) };
+  return null;
+}
+
+function resolveScheduleTarget(snapshot, actor, input, { allowPersonalRequest = false } = {}) {
+  const targetType = scheduleText(input.targetType).toLowerCase();
+  const targetId = scheduleText(input.targetId, "", 160);
+  if (!scheduleTargetTypes.has(targetType)) scheduleError("Schedule targetType must be staff, student, school, or class");
+  if (!targetId) scheduleError("A schedule targetId is required");
+
+  const admin = isScheduleAdmin(actor);
+  const teacher = !admin && actor.scope === "school" && actor.permissions?.includes("teacher-tools");
+  const requestedSchoolId = scheduleText(input.schoolId || actor.schoolId, "", 160);
+  let context;
+  let targetName;
+  let studentId = "";
+  let targetAssignedTeacher = "";
+
+  if (targetType === "staff") {
+    const profile = (snapshot.userProfiles || []).find((item) => item.id === targetId);
+    if (!profile || profile.role === "Student") scheduleError("Schedule staff target was not found", 404);
+    const targetScope = normalizeProfileScope(profile);
+    if (!admin && (!teacher || targetId !== actor.id)) scheduleError("Teachers may schedule only themselves or students in their school", 403);
+    if (!admin && allowPersonalRequest && targetId !== actor.id) scheduleError("You may request a staff schedule only for yourself", 403);
+    if (admin && !canAccessScope(actor, targetScope)) scheduleError("Schedule target is outside your tenant scope", 403);
+    context = requireSchoolAccess(actor, findSchoolContext(snapshot, targetScope.schoolId || requestedSchoolId));
+    targetName = profile.label || profile.id;
+  }
+  else if (targetType === "student") {
+    const student = findScheduleStudent(snapshot, targetId);
+    if (!student) scheduleError("Schedule student target was not found", 404);
+    if (!canAccessScope(actor, student.scope)) scheduleError("Schedule target is outside your tenant scope", 403);
+    if (teacher && student.assignedTeacher !== actor.label) scheduleError("Schedule student is not assigned to this teacher", 403);
+    if (!admin && !teacher && allowPersonalRequest) {
+      const targetStudentIds = new Set([targetId, student.studentId].filter(Boolean).map(String));
+      const linked = actor.scope === "guardian"
+        ? (actor.studentIds || []).map(String).some((id) => targetStudentIds.has(id))
+        : actor.scope === "student" && [String(actor.id || ""), String(actor.studentId || "")].some((id) => targetStudentIds.has(id));
+      if (!linked) scheduleError("Schedule target is not linked to your account", 403);
+    }
+    if (!admin && !teacher && !allowPersonalRequest) scheduleError("Teacher or administrator permission required", 403);
+    context = requireSchoolAccess(actor, findSchoolContext(snapshot, student.scope.schoolId));
+    targetName = student.name;
+    studentId = student.studentId;
+    targetAssignedTeacher = student.assignedTeacher;
+  }
+  else {
+    if (!admin) scheduleError("Only administrators may schedule schools or classes", 403);
+    context = requireSchoolAccess(actor, findSchoolContext(snapshot, targetType === "school" ? targetId : requestedSchoolId));
+    targetName = targetType === "school" ? context.school.name : targetId;
+  }
+
+  return { targetType, targetId, targetName, studentId, assignedTeacher: targetAssignedTeacher, stateId: context.stateId, districtId: context.districtId, schoolId: context.schoolId };
+}
+
+function scheduleRecordFromInput(input, actor, target, existing = null) {
+  const record = {
+    id: existing?.id || `schedule-${Date.now()}-${randomUUID().slice(0, 8)}`,
+    title: scheduleText(input.title ?? existing?.title, "", 160),
+    date: scheduleText(input.date ?? existing?.date, "", 10),
+    startTime: scheduleText(input.startTime ?? existing?.startTime, "", 5),
+    endTime: scheduleText(input.endTime ?? existing?.endTime, "", 5),
+    targetType: target.targetType,
+    targetId: target.targetId,
+    targetName: target.targetName,
+    ...(target.studentId ? { studentId: target.studentId } : {}),
+    ...(target.assignedTeacher ? { assignedTeacher: target.assignedTeacher } : {}),
+    category: scheduleText(input.category ?? existing?.category, "General", 80) || "General",
+    location: scheduleText(input.location ?? existing?.location, "", 200),
+    notes: scheduleText(input.notes ?? existing?.notes, "", 2000),
+    createdBy: existing?.createdBy || actor.id,
+    createdByName: existing?.createdByName || actor.label,
+    status: scheduleText(input.status ?? existing?.status, "Scheduled", 20) || "Scheduled",
+    stateId: target.stateId,
+    districtId: target.districtId,
+    schoolId: target.schoolId,
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  if (!record.title) scheduleError("A schedule title is required");
+  if (!scheduleStatuses.has(record.status)) scheduleError("Schedule status must be Scheduled, Cancelled, or Completed");
+  validateScheduleDateAndTime(record);
+  return record;
+}
+
+function scheduleTargetsMatch(first, second) {
+  if (first.targetType !== second.targetType) return false;
+  if (first.targetType !== "student") return String(first.targetId || "") === String(second.targetId || "");
+  const firstIds = new Set([first.targetId, first.studentId].filter(Boolean).map(String));
+  return [second.targetId, second.studentId].filter(Boolean).map(String).some((id) => firstIds.has(id));
+}
+
+function findScheduleConflict(entries, candidate, ignoreId = "") {
+  if (candidate.status === "Cancelled") return null;
+  return (entries || []).find((entry) => entry.id !== ignoreId
+    && entry.status !== "Cancelled"
+    && entry.stateId === candidate.stateId
+    && entry.districtId === candidate.districtId
+    && entry.schoolId === candidate.schoolId
+    && entry.date === candidate.date
+    && scheduleTargetsMatch(entry, candidate)
+    && candidate.startTime < entry.endTime
+    && entry.startTime < candidate.endTime) || null;
+}
+
+function requireNoScheduleConflict(snapshot, candidate, ignoreId = "") {
+  const conflict = findScheduleConflict(snapshot.scheduleEntries, candidate, ignoreId);
+  if (conflict) scheduleError(`Schedule conflicts with ${conflict.title} (${conflict.startTime}-${conflict.endTime})`, 409);
+}
+
+function requestRecordFromInput(input, actor, target, snapshot) {
+  let requester = actor;
+  if (isScheduleAdmin(actor) && input.requestedBy && input.requestedBy !== actor.id) {
+    const requestedProfile = (snapshot.userProfiles || []).find((profile) => profile.id === input.requestedBy);
+    if (!requestedProfile || !canAccessScope(actor, normalizeProfileScope(requestedProfile))) scheduleError("Schedule requester is outside your tenant scope", 403);
+    requester = requestedProfile;
+  }
+  const record = {
+    id: `schedule-request-${Date.now()}-${randomUUID().slice(0, 8)}`,
+    title: scheduleText(input.title, "", 160),
+    requestType: scheduleText(input.requestType, "General", 80) || "General",
+    date: scheduleText(input.date, "", 10),
+    startTime: scheduleText(input.startTime, "", 5),
+    endTime: scheduleText(input.endTime, "", 5),
+    targetType: target.targetType,
+    targetId: target.targetId,
+    targetName: target.targetName,
+    ...(target.studentId ? { studentId: target.studentId } : {}),
+    ...(target.assignedTeacher ? { assignedTeacher: target.assignedTeacher } : {}),
+    reason: scheduleText(input.reason, "", 2000),
+    flexibility: scheduleText(input.flexibility, "Exact time", 80) || "Exact time",
+    location: scheduleText(input.location || input.notes, "", 500),
+    notes: scheduleText(input.notes, "", 500),
+    status: "Pending",
+    requestedBy: requester.id,
+    requestedByName: requester.label,
+    reviewedBy: "",
+    reviewedByName: "",
+    reviewNote: "",
+    scheduleId: "",
+    stateId: target.stateId,
+    districtId: target.districtId,
+    schoolId: target.schoolId,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  if (!record.title) scheduleError("A schedule request title is required");
+  if (!record.reason) scheduleError("A schedule request reason is required");
+  validateScheduleDateAndTime(record);
+  return record;
+}
+
+function canManageSchedule(snapshot, actor, record) {
+  if (!canAccessScope(actor, normalizeTenantRecord(record))) return false;
+  if (isScheduleAdmin(actor)) return true;
+  if (actor.scope !== "school" || !actor.permissions?.includes("teacher-tools")) return false;
+  if (record.targetType === "staff") return record.targetId === actor.id;
+  if (record.targetType !== "student") return false;
+  const student = findScheduleStudent(snapshot, record.studentId || record.targetId);
+  return student?.assignedTeacher === actor.label;
 }
 
 function notFound(res) {
@@ -866,6 +1124,150 @@ async function handleApi(req, res, pathname) {
 
   if (pathname === "/api/platform/actions" && req.method === "POST") {
     await handlePlatformAction(req, res);
+    return true;
+  }
+
+  if (pathname === "/api/schedules" && req.method === "GET") {
+    const session = requireSession(req);
+    const snapshot = await loadSnapshot();
+    const schedules = (snapshot.scheduleEntries || []).filter((record) => canViewScheduleRecord(session.user, record, "scheduleEntries", snapshot));
+    sendJson(res, 200, { ok: true, schedules });
+    return true;
+  }
+
+  if (pathname === "/api/schedules" && req.method === "POST") {
+    const session = requireSession(req);
+    const actor = session.user;
+    if (!isScheduleAdmin(actor) && !(actor.scope === "school" && actor.permissions?.includes("teacher-tools"))) {
+      sendJson(res, 403, { ok: false, error: "Teacher or administrator permission required" });
+      return true;
+    }
+    const body = await readJson(req);
+    const snapshot = await loadSnapshot();
+    const target = resolveScheduleTarget(snapshot, actor, body);
+    const schedule = scheduleRecordFromInput({ ...body, status: "Scheduled" }, actor, target);
+    requireNoScheduleConflict(snapshot, schedule);
+    snapshot.scheduleEntries = [schedule, ...(snapshot.scheduleEntries || [])];
+    await saveSnapshot(snapshot);
+    sendJson(res, 201, { ok: true, schedule });
+    return true;
+  }
+
+  const scheduleMatch = pathname.match(/^\/api\/schedules\/([^/]+)$/);
+  if (scheduleMatch && req.method === "PATCH") {
+    const session = requireSession(req);
+    const actor = session.user;
+    const body = await readJson(req);
+    const snapshot = await loadSnapshot();
+    const id = decodeURIComponent(scheduleMatch[1]);
+    const index = (snapshot.scheduleEntries || []).findIndex((record) => record.id === id);
+    if (index < 0) {
+      sendJson(res, 404, { ok: false, error: "Schedule not found" });
+      return true;
+    }
+    const existing = snapshot.scheduleEntries[index];
+    if (!canManageSchedule(snapshot, actor, existing)) {
+      sendJson(res, 403, { ok: false, error: "Schedule is outside your authorized targets" });
+      return true;
+    }
+    const target = resolveScheduleTarget(snapshot, actor, { ...existing, ...body });
+    const schedule = scheduleRecordFromInput(body, actor, target, existing);
+    requireNoScheduleConflict(snapshot, schedule, existing.id);
+    snapshot.scheduleEntries[index] = schedule;
+    await saveSnapshot(snapshot);
+    sendJson(res, 200, { ok: true, schedule });
+    return true;
+  }
+
+  if (pathname === "/api/schedule-requests" && req.method === "GET") {
+    const session = requireSession(req);
+    const snapshot = await loadSnapshot();
+    const requests = (snapshot.scheduleRequests || []).filter((record) => canViewScheduleRecord(session.user, record, "scheduleRequests", snapshot));
+    sendJson(res, 200, { ok: true, requests });
+    return true;
+  }
+
+  if (pathname === "/api/schedule-requests" && req.method === "POST") {
+    const session = requireSession(req);
+    const actor = session.user;
+    const body = await readJson(req);
+    const snapshot = await loadSnapshot();
+    const target = resolveScheduleTarget(snapshot, actor, body, { allowPersonalRequest: true });
+    const request = requestRecordFromInput(body, actor, target, snapshot);
+    snapshot.scheduleRequests = [request, ...(snapshot.scheduleRequests || [])];
+    await saveSnapshot(snapshot);
+    sendJson(res, 201, { ok: true, request });
+    return true;
+  }
+
+  const scheduleRequestMatch = pathname.match(/^\/api\/schedule-requests\/([^/]+)$/);
+  if (scheduleRequestMatch && req.method === "PATCH") {
+    const session = requireSession(req);
+    const actor = session.user;
+    if (!isScheduleAdmin(actor)) {
+      sendJson(res, 403, { ok: false, error: "Administrator permission required to review schedule requests" });
+      return true;
+    }
+    const body = await readJson(req);
+    const status = scheduleText(body.status, "", 20);
+    if (!scheduleReviewStatuses.has(status)) {
+      sendJson(res, 400, { ok: false, error: "Schedule request status must be Approved or Declined" });
+      return true;
+    }
+    const reviewNote = scheduleText(body.reviewNote, "", 2000);
+    if (status === "Declined" && !reviewNote) {
+      sendJson(res, 400, { ok: false, error: "A review note is required when declining a schedule request" });
+      return true;
+    }
+    const snapshot = await loadSnapshot();
+    const id = decodeURIComponent(scheduleRequestMatch[1]);
+    const request = (snapshot.scheduleRequests || []).find((record) => record.id === id);
+    if (!request) {
+      sendJson(res, 404, { ok: false, error: "Schedule request not found" });
+      return true;
+    }
+    if (!canAccessScope(actor, normalizeTenantRecord(request))) {
+      sendJson(res, 403, { ok: false, error: "Schedule request is outside your tenant scope" });
+      return true;
+    }
+    if (request.status !== "Pending") {
+      if (request.status === status) {
+        const schedule = status === "Approved" ? (snapshot.scheduleEntries || []).find((entry) => entry.id === request.scheduleId) || null : null;
+        sendJson(res, 200, { ok: true, request, schedule, idempotent: true });
+        return true;
+      }
+      sendJson(res, 409, { ok: false, error: `Schedule request is already ${request.status.toLowerCase()}` });
+      return true;
+    }
+
+    let schedule = null;
+    if (status === "Approved") {
+      schedule = request.scheduleId ? (snapshot.scheduleEntries || []).find((entry) => entry.id === request.scheduleId) || null : null;
+      if (!schedule) {
+        const target = resolveScheduleTarget(snapshot, actor, request);
+        schedule = scheduleRecordFromInput({
+          ...request,
+          category: request.requestType,
+          location: body.location || request.location || "To be confirmed",
+          notes: [request.reason, request.notes].filter(Boolean).join(" — "),
+          status: "Scheduled",
+        }, actor, target);
+        schedule.sourceRequestId = request.id;
+        requireNoScheduleConflict(snapshot, schedule);
+        snapshot.scheduleEntries = [schedule, ...(snapshot.scheduleEntries || [])];
+        request.scheduleId = schedule.id;
+      }
+    }
+    Object.assign(request, {
+      status,
+      reviewedBy: actor.id,
+      reviewedByName: actor.label,
+      reviewNote,
+      reviewedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    await saveSnapshot(snapshot);
+    sendJson(res, 200, { ok: true, request, schedule, idempotent: false });
     return true;
   }
 

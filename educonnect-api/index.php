@@ -30,7 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 $baseDir = __DIR__;
-$dataDir = "{$baseDir}/data";
+$configuredDataDir = getenv('EDUCONNECT_DATA_DIR');
+$dataDir = is_string($configuredDataDir) && trim($configuredDataDir) !== ''
+    ? rtrim($configuredDataDir, "/\\")
+    : "{$baseDir}/data";
 $uploadDir = "{$dataDir}/uploads";
 $backupDir = "{$dataDir}/backups";
 $stateFile = "{$dataDir}/educonnect-state.json";
@@ -205,8 +208,36 @@ function default_snapshot(array $profiles): array {
             'gatewayMode' => 'backend',
             'backendProvider' => 'EduConnect API',
             'authProvider' => 'Role-based secure login',
+            'scheduleAudienceFilter' => 'All',
+            'scheduleStatusFilter' => 'All',
         ],
         'userProfiles' => $profiles,
+        'tenantStates' => [[
+            'id' => 'ny',
+            'name' => 'New York',
+            'districts' => [[
+                'id' => 'nyc-doe',
+                'name' => 'New York City Public Schools',
+                'schools' => [
+                    ['id' => 'ps-118', 'name' => 'P.S. 118 Discovery Academy'],
+                    ['id' => 'bronx-charter', 'name' => 'Bronx Learning Charter'],
+                ],
+            ]],
+        ]],
+        'rosterRecords' => [
+            ['id' => 'stu-1', 'studentId' => 'learner-1', 'student' => 'Demo Learner 1', 'teacher' => 'Demo Teacher', 'className' => 'English Literature', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118'],
+            ['id' => 'stu-2', 'studentId' => 'learner-2', 'student' => 'Demo Learner 2', 'teacher' => 'Demo Teacher', 'className' => 'Creative Writing', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118'],
+            ['id' => 'stu-3', 'studentId' => 'learner-3', 'student' => 'Demo Learner 3', 'teacher' => 'Demo Teacher', 'className' => 'English Literature', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118'],
+            ['id' => 'stu-4', 'studentId' => 'learner-4', 'student' => 'Demo Learner 4', 'teacher' => 'Demo Teacher', 'className' => 'Creative Writing', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118'],
+        ],
+        'scheduleEntries' => [
+            ['id' => 'schedule-ela-class', 'title' => 'English Literature', 'date' => '2026-10-21', 'startTime' => '09:00', 'endTime' => '09:50', 'targetType' => 'class', 'targetId' => 'English Literature', 'targetName' => 'English Literature', 'category' => 'Class', 'location' => 'Room 304', 'notes' => 'Daily English Literature class block.', 'createdBy' => 'school-admin', 'createdByName' => 'School Admin', 'status' => 'Scheduled', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'createdAt' => '2026-07-14T14:00:00.000Z'],
+            ['id' => 'schedule-teacher-planning', 'title' => 'Weekly planning block', 'date' => '2026-10-22', 'startTime' => '14:30', 'endTime' => '15:15', 'targetType' => 'staff', 'targetId' => 'teacher', 'targetName' => 'Demo Teacher', 'category' => 'Planning', 'location' => 'Faculty collaboration room', 'notes' => 'Protected instructional planning time.', 'createdBy' => 'teacher', 'createdByName' => 'Demo Teacher', 'status' => 'Scheduled', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'createdAt' => '2026-07-14T14:05:00.000Z'],
+            ['id' => 'schedule-learner-conference', 'title' => 'Learner progress conference', 'date' => '2026-10-27', 'startTime' => '15:30', 'endTime' => '16:00', 'targetType' => 'student', 'targetId' => 'learner-1', 'targetName' => 'Demo Learner', 'studentId' => 'learner-1', 'assignedTeacher' => 'Demo Teacher', 'category' => 'Conference', 'location' => 'Room 304', 'notes' => 'Review reading progress and upcoming goals.', 'createdBy' => 'school-admin', 'createdByName' => 'School Admin', 'status' => 'Scheduled', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'createdAt' => '2026-07-14T14:10:00.000Z'],
+        ],
+        'scheduleRequests' => [[
+            'id' => 'schedule-request-family-conference', 'title' => 'Family conference request', 'requestType' => 'Conference', 'date' => '2026-10-29', 'startTime' => '15:30', 'endTime' => '16:00', 'targetType' => 'student', 'targetId' => 'learner-1', 'targetName' => 'Demo Learner', 'studentId' => 'learner-1', 'assignedTeacher' => 'Demo Teacher', 'reason' => 'Review reading growth and agree on next-step supports.', 'status' => 'Pending', 'requestedBy' => 'parent', 'requestedByName' => 'Demo Guardian', 'reviewedBy' => '', 'reviewedByName' => '', 'reviewNote' => '', 'scheduleId' => '', 'stateId' => 'ny', 'districtId' => 'nyc-doe', 'schoolId' => 'ps-118', 'createdAt' => '2026-07-14T14:15:00.000Z',
+        ]],
         'fileUploads' => [],
         'notificationDeliveryLog' => [],
         'lmsNotifications' => [],
@@ -330,8 +361,14 @@ function load_accounts(string $accountsFile, array $profiles, array $bootstrapPa
 }
 
 function load_snapshot(string $stateFile, array $profiles): array {
-    if (!is_file($stateFile)) write_file_json($stateFile, default_snapshot($profiles));
-    $snapshot = read_file_json($stateFile, default_snapshot($profiles));
+    $defaults = default_snapshot($profiles);
+    if (!is_file($stateFile)) write_file_json($stateFile, $defaults);
+    $snapshot = read_file_json($stateFile, $defaults);
+    foreach (['tenantStates', 'rosterRecords', 'scheduleEntries', 'scheduleRequests'] as $collection) {
+        if (!array_key_exists($collection, $snapshot) || !is_array($snapshot[$collection])) {
+            $snapshot[$collection] = $defaults[$collection];
+        }
+    }
     $snapshot['state']['apiMode'] = 'live-api';
     if (($snapshot['state']['role'] ?? '') === 'platform') $snapshot['state']['role'] = 'state-admin';
     if (($snapshot['state']['currentUser'] ?? '') === 'district-admin' && !in_array('state-admin', array_column($snapshot['userProfiles'] ?? [], 'id'), true)) {
@@ -352,6 +389,14 @@ function load_snapshot(string $stateFile, array $profiles): array {
     $snapshot['userProfiles'] = array_map(function ($profile) use ($defaultProfileMap) {
         return normalize_profile_scope($profile, $defaultProfileMap[$profile['id'] ?? ''] ?? []);
     }, $snapshot['userProfiles'] ?? []);
+    $defaultRosterStudentIds = [];
+    foreach ($defaults['rosterRecords'] as $record) $defaultRosterStudentIds[$record['id']] = $record['studentId'];
+    $snapshot['rosterRecords'] = array_map(function ($record) use ($defaultRosterStudentIds) {
+        if (empty($record['studentId']) && isset($defaultRosterStudentIds[$record['id'] ?? ''])) {
+            $record['studentId'] = $defaultRosterStudentIds[$record['id']];
+        }
+        return $record;
+    }, $snapshot['rosterRecords']);
     foreach (tenant_collections() as $collection) {
         $snapshot[$collection] = array_map(fn($record) => normalize_tenant_record($record), $snapshot[$collection] ?? []);
     }
@@ -442,7 +487,11 @@ function scoped_files(array $files, array $session): array {
 }
 
 function tenant_collections(): array {
-    return ['rosterRecords', 'gradebookSubmissions', 'lmsAssignments', 'lmsLessons', 'lmsSubmissions', 'questionBank', 'curriculumCourses', 'lmsFiles', 'lmsNotifications', 'fileUploads', 'notificationDeliveryLog', 'auditLogs', 'activityFeed', 'conversations', 'realtimeEvents', 'offlineSyncQueue', 'interventions'];
+    return ['rosterRecords', 'gradebookSubmissions', 'lmsAssignments', 'lmsLessons', 'lmsSubmissions', 'questionBank', 'curriculumCourses', 'lmsFiles', 'lmsNotifications', 'fileUploads', 'notificationDeliveryLog', 'auditLogs', 'activityFeed', 'conversations', 'realtimeEvents', 'offlineSyncQueue', 'interventions', 'scheduleEntries', 'scheduleRequests'];
+}
+
+function server_managed_tenant_collections(): array {
+    return ['scheduleEntries', 'scheduleRequests'];
 }
 
 function student_sensitive_collections(): array {
@@ -467,6 +516,7 @@ function can_access_school_sensitive_records(array $actor): bool {
 
 function record_student_ids(array $record): array {
     $ids = [$record['studentId'] ?? null, $record['learnerId'] ?? null, $record['ownerStudentId'] ?? null];
+    if (($record['targetType'] ?? '') === 'student') $ids[] = $record['targetId'] ?? null;
     if (is_array($record['studentIds'] ?? null)) $ids = array_merge($ids, $record['studentIds']);
     if (is_array($record['student'] ?? null)) {
         $ids[] = $record['student']['id'] ?? null;
@@ -498,7 +548,9 @@ function scoped_snapshot(array $snapshot, array $session): array {
     $actor = $session['user'] ?? [];
     $snapshot['userProfiles'] = scoped_profiles($snapshot['userProfiles'] ?? [], $session);
     foreach (tenant_collections() as $collection) {
-        $snapshot[$collection] = array_values(array_filter($snapshot[$collection] ?? [], fn($record) => can_access_tenant_resource($actor, $record, $collection)));
+        $snapshot[$collection] = array_values(array_filter($snapshot[$collection] ?? [], fn($record) => in_array($collection, server_managed_tenant_collections(), true)
+            ? can_view_schedule_record($snapshot, $actor, $record, $collection)
+            : can_access_tenant_resource($actor, $record, $collection)));
     }
     $canAdmin = in_array('manage-users', $actor['permissions'] ?? [], true);
     if (!$canAdmin) {
@@ -531,6 +583,7 @@ function merge_scoped_snapshot(array $existing, array $incoming, array $session)
         $existing['userProfiles'] = array_merge($preserved, $accepted);
     }
     foreach (tenant_collections() as $collection) {
+        if (in_array($collection, server_managed_tenant_collections(), true)) continue;
         $preserved = array_values(array_filter($existing[$collection] ?? [], fn($record) => !can_access_tenant_resource($actor, $record, $collection)));
         $accepted = array_values(array_map(fn($record) => normalize_tenant_record($record, $actor), array_filter($incoming[$collection] ?? [], fn($record) => can_access_tenant_resource($actor, normalize_tenant_record($record, $actor), $collection))));
         $existing[$collection] = array_merge($preserved, $accepted);
@@ -705,6 +758,231 @@ function require_school_context(array $snapshot, array $actor, string $schoolId)
     if (!$context) send_json(404, ['ok' => false, 'error' => 'School not found']);
     if (!can_access_tenant_resource($actor, $context)) send_json(403, ['ok' => false, 'error' => 'School is outside your tenant scope']);
     return $context;
+}
+
+function schedule_text($value, string $fallback = '', int $maximum = 500): string {
+    if ($value === null) $value = $fallback;
+    if (is_array($value) || is_object($value)) return '';
+    return substr(trim((string)$value), 0, $maximum);
+}
+
+function schedule_is_admin(array $actor): bool {
+    return count(array_intersect($actor['permissions'] ?? [], ['manage-users', 'manage-tenants'])) > 0;
+}
+
+function can_access_schedule_tenant(array $actor, array $record): bool {
+    if (in_array('global-access', $actor['permissions'] ?? [], true)) return true;
+    $target = normalize_tenant_record($record);
+    $scope = $actor['scope'] ?? scope_for_role((string)($actor['role'] ?? 'Student'));
+    if ($scope === 'state') return ($target['stateId'] ?? '') === ($actor['stateId'] ?? '');
+    if ($scope === 'district') return ($target['stateId'] ?? '') === ($actor['stateId'] ?? '') && ($target['districtId'] ?? '') === ($actor['districtId'] ?? '');
+    return ($target['schoolId'] ?? '') === ($actor['schoolId'] ?? '');
+}
+
+function find_schedule_student(array $snapshot, string $targetId): ?array {
+    foreach ($snapshot['rosterRecords'] ?? [] as $record) {
+        $ids = array_values(array_filter([$record['id'] ?? null, $record['studentId'] ?? null, $record['learnerId'] ?? null]));
+        if (in_array($targetId, array_map('strval', $ids), true)) return [
+            'name' => (string)($record['student'] ?? $record['label'] ?? 'Student'),
+            'studentId' => (string)($record['studentId'] ?? $record['learnerId'] ?? $record['id'] ?? ''),
+            'assignedTeacher' => (string)($record['teacher'] ?? ''),
+            'scope' => normalize_tenant_record($record),
+        ];
+    }
+    foreach ($snapshot['userProfiles'] ?? [] as $profile) {
+        $ids = array_values(array_filter([$profile['id'] ?? null, $profile['studentId'] ?? null]));
+        if (($profile['scope'] ?? '') === 'student' && in_array($targetId, array_map('strval', $ids), true)) return [
+            'name' => (string)($profile['label'] ?? 'Student'),
+            'studentId' => (string)($profile['studentId'] ?? $profile['id'] ?? ''),
+            'assignedTeacher' => '',
+            'scope' => normalize_profile_scope($profile),
+        ];
+    }
+    return null;
+}
+
+function can_view_schedule_record(array $snapshot, array $actor, array $record, string $collection): bool {
+    if (!can_access_schedule_tenant($actor, $record)) return false;
+    if (schedule_is_admin($actor)) return true;
+    $actorId = (string)($actor['id'] ?? '');
+    $targetId = (string)($record['targetId'] ?? '');
+    $targetIds = array_map('strval', array_values(array_filter([$record['targetId'] ?? null, $record['studentId'] ?? null])));
+    if ($collection === 'scheduleRequests') return (string)($record['requestedBy'] ?? '') === $actorId;
+    if (($actor['scope'] ?? '') === 'school' && in_array('teacher-tools', $actor['permissions'] ?? [], true)) {
+        if (($record['targetType'] ?? '') === 'staff') return $targetId === $actorId;
+        if (($record['targetType'] ?? '') === 'student') {
+            $student = find_schedule_student($snapshot, (string)($record['studentId'] ?? $record['targetId'] ?? ''));
+            return (string)($student['assignedTeacher'] ?? $record['assignedTeacher'] ?? '') === (string)($actor['label'] ?? '');
+        }
+        return in_array($record['targetType'] ?? '', ['class', 'school'], true);
+    }
+    if (($actor['scope'] ?? '') === 'guardian') {
+        if (($record['targetType'] ?? '') === 'staff') return $targetId === $actorId;
+        return ($record['targetType'] ?? '') === 'student' && count(array_intersect(array_map('strval', $actor['studentIds'] ?? []), $targetIds)) > 0;
+    }
+    if (($actor['scope'] ?? '') === 'student') {
+        $ownIds = [(string)($actor['id'] ?? ''), (string)($actor['studentId'] ?? '')];
+        return (($record['targetType'] ?? '') === 'student' && count(array_intersect($ownIds, $targetIds)) > 0)
+            || in_array($record['targetType'] ?? '', ['class', 'school'], true);
+    }
+    return false;
+}
+
+function validate_schedule_date_and_time(array $record): void {
+    $date = (string)($record['date'] ?? '');
+    $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $date, new DateTimeZone('UTC'));
+    if (!$parsed || $parsed->format('Y-m-d') !== $date) send_json(400, ['ok' => false, 'error' => 'A valid schedule date is required']);
+    $start = (string)($record['startTime'] ?? '');
+    $end = (string)($record['endTime'] ?? '');
+    if (!preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $start) || !preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $end)) {
+        send_json(400, ['ok' => false, 'error' => 'Schedule times must use 24-hour HH:mm format']);
+    }
+    if ($end <= $start) send_json(400, ['ok' => false, 'error' => 'Schedule end time must be after start time']);
+}
+
+function resolve_schedule_target(array $snapshot, array $actor, array $input, bool $allowPersonalRequest = false): array {
+    $targetType = strtolower(schedule_text($input['targetType'] ?? null, '', 20));
+    $targetId = schedule_text($input['targetId'] ?? null, '', 160);
+    if (!in_array($targetType, ['staff', 'student', 'school', 'class'], true)) send_json(400, ['ok' => false, 'error' => 'Schedule targetType must be staff, student, school, or class']);
+    if ($targetId === '') send_json(400, ['ok' => false, 'error' => 'A schedule targetId is required']);
+
+    $admin = schedule_is_admin($actor);
+    $teacher = !$admin && ($actor['scope'] ?? '') === 'school' && in_array('teacher-tools', $actor['permissions'] ?? [], true);
+    $requestedSchoolId = schedule_text($input['schoolId'] ?? $actor['schoolId'] ?? null, '', 160);
+    $context = null;
+    $targetName = '';
+    $studentId = '';
+    $assignedTeacher = '';
+
+    if ($targetType === 'staff') {
+        $profile = null;
+        foreach ($snapshot['userProfiles'] ?? [] as $item) if (($item['id'] ?? '') === $targetId) { $profile = $item; break; }
+        if (!$profile || ($profile['role'] ?? '') === 'Student') send_json(404, ['ok' => false, 'error' => 'Schedule staff target was not found']);
+        $targetScope = normalize_profile_scope($profile);
+        if (!$admin && (!$teacher || $targetId !== ($actor['id'] ?? ''))) send_json(403, ['ok' => false, 'error' => 'Teachers may schedule only themselves or students assigned to them']);
+        if (!$admin && $allowPersonalRequest && $targetId !== ($actor['id'] ?? '')) send_json(403, ['ok' => false, 'error' => 'You may request a staff schedule only for yourself']);
+        if ($admin && !can_access_scope($actor, $targetScope)) send_json(403, ['ok' => false, 'error' => 'Schedule target is outside your tenant scope']);
+        $context = require_school_context($snapshot, $actor, (string)($targetScope['schoolId'] ?? $requestedSchoolId));
+        $targetName = (string)($profile['label'] ?? $profile['id']);
+    } elseif ($targetType === 'student') {
+        $student = find_schedule_student($snapshot, $targetId);
+        if (!$student) send_json(404, ['ok' => false, 'error' => 'Schedule student target was not found']);
+        if (!can_access_scope($actor, $student['scope'])) send_json(403, ['ok' => false, 'error' => 'Schedule target is outside your tenant scope']);
+        if ($teacher && ($student['assignedTeacher'] ?? '') !== ($actor['label'] ?? '')) send_json(403, ['ok' => false, 'error' => 'Schedule student is not assigned to this teacher']);
+        if (!$admin && !$teacher && $allowPersonalRequest) {
+            $targetStudentIds = array_map('strval', array_values(array_filter([$targetId, $student['studentId'] ?? null])));
+            $linked = ($actor['scope'] ?? '') === 'guardian'
+                ? count(array_intersect(array_map('strval', $actor['studentIds'] ?? []), $targetStudentIds)) > 0
+                : ($actor['scope'] ?? '') === 'student' && count(array_intersect([(string)($actor['id'] ?? ''), (string)($actor['studentId'] ?? '')], $targetStudentIds)) > 0;
+            if (!$linked) send_json(403, ['ok' => false, 'error' => 'Schedule target is not linked to your account']);
+        }
+        if (!$admin && !$teacher && !$allowPersonalRequest) send_json(403, ['ok' => false, 'error' => 'Teacher or administrator permission required']);
+        $context = require_school_context($snapshot, $actor, (string)($student['scope']['schoolId'] ?? ''));
+        $targetName = (string)$student['name'];
+        $studentId = (string)$student['studentId'];
+        $assignedTeacher = (string)$student['assignedTeacher'];
+    } else {
+        if (!$admin) send_json(403, ['ok' => false, 'error' => 'Only administrators may schedule schools or classes']);
+        $context = require_school_context($snapshot, $actor, $targetType === 'school' ? $targetId : $requestedSchoolId);
+        $targetName = $targetType === 'school' ? (string)($context['school']['name'] ?? $targetId) : $targetId;
+    }
+
+    return [
+        'targetType' => $targetType, 'targetId' => $targetId, 'targetName' => $targetName,
+        'studentId' => $studentId, 'assignedTeacher' => $assignedTeacher,
+        'stateId' => $context['stateId'], 'districtId' => $context['districtId'], 'schoolId' => $context['schoolId'],
+    ];
+}
+
+function schedule_record_from_input(array $input, array $actor, array $target, ?array $existing = null): array {
+    $record = [
+        'id' => $existing['id'] ?? ('schedule-' . time() . '-' . bin2hex(random_bytes(4))),
+        'title' => schedule_text($input['title'] ?? $existing['title'] ?? null, '', 160),
+        'date' => schedule_text($input['date'] ?? $existing['date'] ?? null, '', 10),
+        'startTime' => schedule_text($input['startTime'] ?? $existing['startTime'] ?? null, '', 5),
+        'endTime' => schedule_text($input['endTime'] ?? $existing['endTime'] ?? null, '', 5),
+        'targetType' => $target['targetType'], 'targetId' => $target['targetId'], 'targetName' => $target['targetName'],
+        'category' => schedule_text($input['category'] ?? $existing['category'] ?? null, 'General', 80) ?: 'General',
+        'location' => schedule_text($input['location'] ?? $existing['location'] ?? null, '', 200),
+        'notes' => schedule_text($input['notes'] ?? $existing['notes'] ?? null, '', 2000),
+        'createdBy' => $existing['createdBy'] ?? ($actor['id'] ?? ''),
+        'createdByName' => $existing['createdByName'] ?? ($actor['label'] ?? ''),
+        'status' => schedule_text($input['status'] ?? $existing['status'] ?? null, 'Scheduled', 20) ?: 'Scheduled',
+        'stateId' => $target['stateId'], 'districtId' => $target['districtId'], 'schoolId' => $target['schoolId'],
+        'createdAt' => $existing['createdAt'] ?? gmdate(DATE_ATOM), 'updatedAt' => gmdate(DATE_ATOM),
+    ];
+    if (($target['studentId'] ?? '') !== '') $record['studentId'] = $target['studentId'];
+    if (($target['assignedTeacher'] ?? '') !== '') $record['assignedTeacher'] = $target['assignedTeacher'];
+    if ($record['title'] === '') send_json(400, ['ok' => false, 'error' => 'A schedule title is required']);
+    if (!in_array($record['status'], ['Scheduled', 'Cancelled', 'Completed'], true)) send_json(400, ['ok' => false, 'error' => 'Schedule status must be Scheduled, Cancelled, or Completed']);
+    validate_schedule_date_and_time($record);
+    return $record;
+}
+
+function schedule_targets_match(array $first, array $second): bool {
+    if (($first['targetType'] ?? '') !== ($second['targetType'] ?? '')) return false;
+    if (($first['targetType'] ?? '') !== 'student') return (string)($first['targetId'] ?? '') === (string)($second['targetId'] ?? '');
+    $firstIds = array_map('strval', array_values(array_filter([$first['targetId'] ?? null, $first['studentId'] ?? null])));
+    $secondIds = array_map('strval', array_values(array_filter([$second['targetId'] ?? null, $second['studentId'] ?? null])));
+    return count(array_intersect($firstIds, $secondIds)) > 0;
+}
+
+function find_schedule_conflict(array $entries, array $candidate, string $ignoreId = ''): ?array {
+    if (($candidate['status'] ?? '') === 'Cancelled') return null;
+    foreach ($entries as $entry) {
+        if (($entry['id'] ?? '') === $ignoreId || ($entry['status'] ?? '') === 'Cancelled') continue;
+        if (($entry['stateId'] ?? '') !== ($candidate['stateId'] ?? '') || ($entry['districtId'] ?? '') !== ($candidate['districtId'] ?? '') || ($entry['schoolId'] ?? '') !== ($candidate['schoolId'] ?? '')) continue;
+        if (($entry['date'] ?? '') !== ($candidate['date'] ?? '') || !schedule_targets_match($entry, $candidate)) continue;
+        if (($candidate['startTime'] ?? '') < ($entry['endTime'] ?? '') && ($entry['startTime'] ?? '') < ($candidate['endTime'] ?? '')) return $entry;
+    }
+    return null;
+}
+
+function require_no_schedule_conflict(array $snapshot, array $candidate, string $ignoreId = ''): void {
+    $conflict = find_schedule_conflict($snapshot['scheduleEntries'] ?? [], $candidate, $ignoreId);
+    if ($conflict) send_json(409, ['ok' => false, 'error' => 'Schedule conflicts with ' . ($conflict['title'] ?? 'an existing entry') . ' (' . ($conflict['startTime'] ?? '') . '-' . ($conflict['endTime'] ?? '') . ')']);
+}
+
+function schedule_request_record_from_input(array $input, array $actor, array $target, array $snapshot): array {
+    $requester = $actor;
+    $requestedBy = schedule_text($input['requestedBy'] ?? null, '', 160);
+    if (schedule_is_admin($actor) && $requestedBy !== '' && $requestedBy !== ($actor['id'] ?? '')) {
+        $requestedProfile = null;
+        foreach ($snapshot['userProfiles'] ?? [] as $profile) if (($profile['id'] ?? '') === $requestedBy) { $requestedProfile = $profile; break; }
+        if (!$requestedProfile || !can_access_scope($actor, normalize_profile_scope($requestedProfile))) send_json(403, ['ok' => false, 'error' => 'Schedule requester is outside your tenant scope']);
+        $requester = $requestedProfile;
+    }
+    $locationValue = !empty($input['location']) ? $input['location'] : ($input['notes'] ?? null);
+    $record = [
+        'id' => 'schedule-request-' . time() . '-' . bin2hex(random_bytes(4)),
+        'title' => schedule_text($input['title'] ?? null, '', 160),
+        'requestType' => schedule_text($input['requestType'] ?? null, 'General', 80) ?: 'General',
+        'date' => schedule_text($input['date'] ?? null, '', 10), 'startTime' => schedule_text($input['startTime'] ?? null, '', 5), 'endTime' => schedule_text($input['endTime'] ?? null, '', 5),
+        'targetType' => $target['targetType'], 'targetId' => $target['targetId'], 'targetName' => $target['targetName'],
+        'reason' => schedule_text($input['reason'] ?? null, '', 2000),
+        'flexibility' => schedule_text($input['flexibility'] ?? null, 'Exact time', 80) ?: 'Exact time',
+        'location' => schedule_text($locationValue, '', 500), 'notes' => schedule_text($input['notes'] ?? null, '', 500),
+        'status' => 'Pending', 'requestedBy' => $requester['id'] ?? '', 'requestedByName' => $requester['label'] ?? '',
+        'reviewedBy' => '', 'reviewedByName' => '', 'reviewNote' => '', 'scheduleId' => '',
+        'stateId' => $target['stateId'], 'districtId' => $target['districtId'], 'schoolId' => $target['schoolId'],
+        'createdAt' => gmdate(DATE_ATOM), 'updatedAt' => gmdate(DATE_ATOM),
+    ];
+    if (($target['studentId'] ?? '') !== '') $record['studentId'] = $target['studentId'];
+    if (($target['assignedTeacher'] ?? '') !== '') $record['assignedTeacher'] = $target['assignedTeacher'];
+    if ($record['title'] === '') send_json(400, ['ok' => false, 'error' => 'A schedule request title is required']);
+    if ($record['reason'] === '') send_json(400, ['ok' => false, 'error' => 'A schedule request reason is required']);
+    validate_schedule_date_and_time($record);
+    return $record;
+}
+
+function can_manage_schedule(array $snapshot, array $actor, array $record): bool {
+    if (!can_access_schedule_tenant($actor, $record)) return false;
+    if (schedule_is_admin($actor)) return true;
+    if (($actor['scope'] ?? '') !== 'school' || !in_array('teacher-tools', $actor['permissions'] ?? [], true)) return false;
+    if (($record['targetType'] ?? '') === 'staff') return ($record['targetId'] ?? '') === ($actor['id'] ?? '');
+    if (($record['targetType'] ?? '') !== 'student') return false;
+    $student = find_schedule_student($snapshot, (string)($record['studentId'] ?? $record['targetId'] ?? ''));
+    return ($student['assignedTeacher'] ?? '') === ($actor['label'] ?? '');
 }
 
 function records_for_school(array $records, array $context): array {
@@ -988,6 +1266,125 @@ try {
 
     if ($path === '/api/platform/actions' && $method === 'POST') {
         handle_platform_action($sessionsFile, $stateFile, $defaultProfiles);
+    }
+
+    if ($path === '/api/schedules' && $method === 'GET') {
+        $session = require_session($sessionsFile);
+        $snapshot = load_snapshot($stateFile, $defaultProfiles);
+        $schedules = array_values(array_filter($snapshot['scheduleEntries'] ?? [], fn($record) => can_view_schedule_record($snapshot, $session['user'] ?? [], $record, 'scheduleEntries')));
+        send_json(200, ['ok' => true, 'schedules' => $schedules]);
+    }
+
+    if ($path === '/api/schedules' && $method === 'POST') {
+        $session = require_session($sessionsFile);
+        $actor = $session['user'] ?? [];
+        if (!schedule_is_admin($actor) && !(($actor['scope'] ?? '') === 'school' && in_array('teacher-tools', $actor['permissions'] ?? [], true))) {
+            send_json(403, ['ok' => false, 'error' => 'Teacher or administrator permission required']);
+        }
+        $body = read_json();
+        $snapshot = load_snapshot($stateFile, $defaultProfiles);
+        $target = resolve_schedule_target($snapshot, $actor, $body);
+        $schedule = schedule_record_from_input(array_merge($body, ['status' => 'Scheduled']), $actor, $target);
+        require_no_schedule_conflict($snapshot, $schedule);
+        array_unshift($snapshot['scheduleEntries'], $schedule);
+        save_snapshot($stateFile, $snapshot);
+        send_json(201, ['ok' => true, 'schedule' => $schedule]);
+    }
+
+    if (preg_match('#^/api/schedules/([^/]+)$#', $path, $matches) && $method === 'PATCH') {
+        $session = require_session($sessionsFile);
+        $actor = $session['user'] ?? [];
+        $body = read_json();
+        $snapshot = load_snapshot($stateFile, $defaultProfiles);
+        $id = rawurldecode($matches[1]);
+        $index = null;
+        foreach ($snapshot['scheduleEntries'] ?? [] as $candidateIndex => $record) if (($record['id'] ?? '') === $id) { $index = $candidateIndex; break; }
+        if ($index === null) send_json(404, ['ok' => false, 'error' => 'Schedule not found']);
+        $existing = $snapshot['scheduleEntries'][$index];
+        if (!can_manage_schedule($snapshot, $actor, $existing)) send_json(403, ['ok' => false, 'error' => 'Schedule is outside your authorized targets']);
+        $target = resolve_schedule_target($snapshot, $actor, array_merge($existing, $body));
+        $schedule = schedule_record_from_input($body, $actor, $target, $existing);
+        require_no_schedule_conflict($snapshot, $schedule, (string)$existing['id']);
+        $snapshot['scheduleEntries'][$index] = $schedule;
+        save_snapshot($stateFile, $snapshot);
+        send_json(200, ['ok' => true, 'schedule' => $schedule]);
+    }
+
+    if ($path === '/api/schedule-requests' && $method === 'GET') {
+        $session = require_session($sessionsFile);
+        $snapshot = load_snapshot($stateFile, $defaultProfiles);
+        $requests = array_values(array_filter($snapshot['scheduleRequests'] ?? [], fn($record) => can_view_schedule_record($snapshot, $session['user'] ?? [], $record, 'scheduleRequests')));
+        send_json(200, ['ok' => true, 'requests' => $requests]);
+    }
+
+    if ($path === '/api/schedule-requests' && $method === 'POST') {
+        $session = require_session($sessionsFile);
+        $actor = $session['user'] ?? [];
+        $body = read_json();
+        $snapshot = load_snapshot($stateFile, $defaultProfiles);
+        $target = resolve_schedule_target($snapshot, $actor, $body, true);
+        $request = schedule_request_record_from_input($body, $actor, $target, $snapshot);
+        array_unshift($snapshot['scheduleRequests'], $request);
+        save_snapshot($stateFile, $snapshot);
+        send_json(201, ['ok' => true, 'request' => $request]);
+    }
+
+    if (preg_match('#^/api/schedule-requests/([^/]+)$#', $path, $matches) && $method === 'PATCH') {
+        $session = require_session($sessionsFile);
+        $actor = $session['user'] ?? [];
+        if (!schedule_is_admin($actor)) send_json(403, ['ok' => false, 'error' => 'Administrator permission required to review schedule requests']);
+        $body = read_json();
+        $status = schedule_text($body['status'] ?? null, '', 20);
+        if (!in_array($status, ['Approved', 'Declined'], true)) send_json(400, ['ok' => false, 'error' => 'Schedule request status must be Approved or Declined']);
+        $reviewNote = schedule_text($body['reviewNote'] ?? null, '', 2000);
+        if ($status === 'Declined' && $reviewNote === '') send_json(400, ['ok' => false, 'error' => 'A review note is required when declining a schedule request']);
+
+        $snapshot = load_snapshot($stateFile, $defaultProfiles);
+        $id = rawurldecode($matches[1]);
+        $index = null;
+        foreach ($snapshot['scheduleRequests'] ?? [] as $candidateIndex => $record) if (($record['id'] ?? '') === $id) { $index = $candidateIndex; break; }
+        if ($index === null) send_json(404, ['ok' => false, 'error' => 'Schedule request not found']);
+        $request = $snapshot['scheduleRequests'][$index];
+        if (!can_access_schedule_tenant($actor, $request)) send_json(403, ['ok' => false, 'error' => 'Schedule request is outside your tenant scope']);
+        if (($request['status'] ?? '') !== 'Pending') {
+            if (($request['status'] ?? '') === $status) {
+                $linkedSchedule = null;
+                if ($status === 'Approved') foreach ($snapshot['scheduleEntries'] ?? [] as $entry) if (($entry['id'] ?? '') === ($request['scheduleId'] ?? '')) { $linkedSchedule = $entry; break; }
+                send_json(200, ['ok' => true, 'request' => $request, 'schedule' => $linkedSchedule, 'idempotent' => true]);
+            }
+            send_json(409, ['ok' => false, 'error' => 'Schedule request is already ' . strtolower((string)($request['status'] ?? 'reviewed'))]);
+        }
+
+        $schedule = null;
+        if ($status === 'Approved') {
+            if (!empty($request['scheduleId'])) foreach ($snapshot['scheduleEntries'] ?? [] as $entry) if (($entry['id'] ?? '') === $request['scheduleId']) { $schedule = $entry; break; }
+            if (!$schedule) {
+                $target = resolve_schedule_target($snapshot, $actor, $request);
+                $noteParts = array_values(array_filter([$request['reason'] ?? '', $request['notes'] ?? ''], fn($value) => trim((string)$value) !== ''));
+                $approvalInput = array_merge($request, [
+                    'category' => $request['requestType'] ?? 'General',
+                    'location' => !empty($body['location']) ? $body['location'] : (!empty($request['location']) ? $request['location'] : 'To be confirmed'),
+                    'notes' => implode(' — ', $noteParts),
+                    'status' => 'Scheduled',
+                ]);
+                $schedule = schedule_record_from_input($approvalInput, $actor, $target);
+                $schedule['sourceRequestId'] = $request['id'];
+                require_no_schedule_conflict($snapshot, $schedule);
+                array_unshift($snapshot['scheduleEntries'], $schedule);
+                $request['scheduleId'] = $schedule['id'];
+            }
+        }
+        $request = array_merge($request, [
+            'status' => $status,
+            'reviewedBy' => $actor['id'] ?? '',
+            'reviewedByName' => $actor['label'] ?? '',
+            'reviewNote' => $reviewNote,
+            'reviewedAt' => gmdate(DATE_ATOM),
+            'updatedAt' => gmdate(DATE_ATOM),
+        ]);
+        $snapshot['scheduleRequests'][$index] = $request;
+        save_snapshot($stateFile, $snapshot);
+        send_json(200, ['ok' => true, 'request' => $request, 'schedule' => $schedule, 'idempotent' => false]);
     }
 
     if ($path === '/api/reset' && $method === 'POST') {

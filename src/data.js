@@ -68,6 +68,8 @@ export const state = {
   pwaInstalled: false,
   activeOperationsTab: "tenants",
   academicRolloverPreview: null,
+  scheduleAudienceFilter: "All",
+  scheduleStatusFilter: "All",
 };
 
 export const userProfiles = [
@@ -163,10 +165,10 @@ export const teacherClasses = [
 ];
 
 export const rosterRecords = [
-  { id: "stu-1", student: "Demo Learner 1", guardian: "Demo Guardian 1", teacher: "Demo Teacher", className: "English Literature", grade: 91, attendance: 98, accommodations: "Visual vocabulary cards", status: "Active" },
-  { id: "stu-2", student: "Demo Learner 2", guardian: "Demo Guardian 2", teacher: "Demo Teacher", className: "Creative Writing", grade: 88, attendance: 94, accommodations: "Extended quiz time", status: "Active" },
-  { id: "stu-3", student: "Demo Learner 3", guardian: "Demo Guardian 3", teacher: "Demo Teacher", className: "English Literature", grade: 82, attendance: 91, accommodations: "Reading support", status: "Watch" },
-  { id: "stu-4", student: "Demo Learner 4", guardian: "Demo Guardian 4", teacher: "Demo Teacher", className: "Creative Writing", grade: 96, attendance: 99, accommodations: "None", status: "Active" },
+  { id: "stu-1", studentId: "learner-1", student: "Demo Learner 1", guardian: "Demo Guardian 1", teacher: "Demo Teacher", className: "English Literature", grade: 91, attendance: 98, accommodations: "Visual vocabulary cards", status: "Active", stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118" },
+  { id: "stu-2", studentId: "learner-2", student: "Demo Learner 2", guardian: "Demo Guardian 2", teacher: "Demo Teacher", className: "Creative Writing", grade: 88, attendance: 94, accommodations: "Extended quiz time", status: "Active", stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118" },
+  { id: "stu-3", studentId: "learner-3", student: "Demo Learner 3", guardian: "Demo Guardian 3", teacher: "Demo Teacher", className: "English Literature", grade: 82, attendance: 91, accommodations: "Reading support", status: "Watch", stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118" },
+  { id: "stu-4", studentId: "learner-4", student: "Demo Learner 4", guardian: "Demo Guardian 4", teacher: "Demo Teacher", className: "Creative Writing", grade: 96, attendance: 99, accommodations: "None", status: "Active", stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118" },
 ];
 
 export const gradebookSubmissions = [
@@ -333,6 +335,16 @@ export const calendarEvents = [
   { title: "Science Night", audience: "P.S. 118 families", date: "Oct 23", type: "Community" },
   { title: "Fractions Mastery Lock Date", audience: "Grade 4 Math", date: "Oct 24", type: "LMS" },
   { title: "Parent Conference Block", audience: "Teachers + guardians", date: "Oct 27", type: "Messaging" },
+];
+
+export const scheduleEntries = [
+  { id: "schedule-ela-class", title: "English Literature", date: "2026-10-21", startTime: "09:00", endTime: "09:50", targetType: "class", targetId: "English Literature", targetName: "English Literature", category: "Class", location: "Room 304", notes: "Daily English Literature class block.", createdBy: "school-admin", createdByName: "School Admin", status: "Scheduled", stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118", createdAt: "2026-07-14T14:00:00.000Z" },
+  { id: "schedule-teacher-planning", title: "Weekly planning block", date: "2026-10-22", startTime: "14:30", endTime: "15:15", targetType: "staff", targetId: "teacher", targetName: "Demo Teacher", category: "Planning", location: "Faculty collaboration room", notes: "Protected instructional planning time.", createdBy: "teacher", createdByName: "Demo Teacher", status: "Scheduled", stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118", createdAt: "2026-07-14T14:05:00.000Z" },
+  { id: "schedule-learner-conference", title: "Learner progress conference", date: "2026-10-27", startTime: "15:30", endTime: "16:00", targetType: "student", targetId: "learner-1", targetName: "Demo Learner", studentId: "learner-1", assignedTeacher: "Demo Teacher", category: "Conference", location: "Room 304", notes: "Review reading progress and upcoming goals.", createdBy: "school-admin", createdByName: "School Admin", status: "Scheduled", stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118", createdAt: "2026-07-14T14:10:00.000Z" },
+];
+
+export const scheduleRequests = [
+  { id: "schedule-request-family-conference", title: "Family conference request", requestType: "Conference", date: "2026-10-29", startTime: "15:30", endTime: "16:00", targetType: "student", targetId: "learner-1", targetName: "Demo Learner", reason: "Review reading growth and agree on next-step supports.", status: "Pending", requestedBy: "parent", requestedByName: "Demo Guardian", reviewedBy: "", reviewedByName: "", reviewNote: "", scheduleId: "", stateId: "ny", districtId: "nyc-doe", schoolId: "ps-118", createdAt: "2026-07-14T14:15:00.000Z" },
 ];
 
 export const offlineSyncQueue = [

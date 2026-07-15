@@ -16,7 +16,8 @@
     "test:config": "node --test tests/api-config.test.mjs",
     "test:ui": "playwright test",
     "test:accessibility": "playwright test tests/accessibility.spec.js",
-    "test:api": "node --test tests/api.test.mjs",
+    "test:api": "node --test tests/api.test.mjs && npm run test:api:php",
+    "test:api:php": "node --test tests/php-api.test.mjs",
     "audit:lighthouse": "node scripts/lighthouse-audit.mjs",
     "test:live": "playwright test -c playwright.live.config.js"
   },

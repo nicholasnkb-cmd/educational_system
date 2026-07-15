@@ -25,6 +25,8 @@ import {
   activityFeed,
   conversations,
   communityBoards,
+  scheduleEntries,
+  scheduleRequests,
 } from "./dataSource.js";
 import { loadMockApiState, saveMockApiState } from "./mockApi.js";
 
@@ -57,6 +59,8 @@ const initialSnapshot = structuredClone({
   activityFeed,
   conversations,
   communityBoards,
+  scheduleEntries,
+  scheduleRequests,
 });
 
 function replaceObject(target, next) {
@@ -113,6 +117,8 @@ export function getDemoSnapshot() {
     activityFeed,
     conversations,
     communityBoards,
+    scheduleEntries,
+    scheduleRequests,
   });
 }
 
@@ -144,6 +150,8 @@ export function applyDemoSnapshot(snapshot) {
   if (snapshot.activityFeed) replaceArray(activityFeed, snapshot.activityFeed);
   if (snapshot.conversations) replaceArray(conversations, snapshot.conversations);
   if (snapshot.communityBoards) replaceObject(communityBoards, snapshot.communityBoards);
+  if (snapshot.scheduleEntries) replaceArray(scheduleEntries, snapshot.scheduleEntries);
+  if (snapshot.scheduleRequests) replaceArray(scheduleRequests, snapshot.scheduleRequests);
 }
 
 export function persistDemoState() {
@@ -185,4 +193,6 @@ export function resetDemoState() {
   replaceArray(activityFeed, initialSnapshot.activityFeed);
   replaceArray(conversations, initialSnapshot.conversations);
   replaceObject(communityBoards, initialSnapshot.communityBoards);
+  replaceArray(scheduleEntries, initialSnapshot.scheduleEntries);
+  replaceArray(scheduleRequests, initialSnapshot.scheduleRequests);
 }

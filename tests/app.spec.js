@@ -207,17 +207,19 @@ test("every global-admin menu function resolves to its rendered destination", as
     "state-admin": [
       "state-overview", "role-control-center", "unified-school-os", "district-oversight", "compliance-dashboard",
       "audit-trail", "statewide-calendar", "governance-chain", "realtime-operations", "launch-control",
+      "schedule-calendar", "schedule-requests",
       "login-gateway", "database-blueprint", "admin-onboarding", "platform-file-uploads", "notification-delivery",
       "security-checklist", "deployment-pipeline", "operations-tenants", "operations-security", "operations-notifications",
       "operations-services", "operations-jobs", "operations-monitoring", "operations-launch",
     ],
     "district-admin": [
       "district-overview", "district-scope", "district-schools", "district-unified-school-os",
-      "district-realtime-operations", "district-audit-trail",
+      "district-realtime-operations", "district-audit-trail", "district-schedule-calendar", "district-schedule-requests",
     ],
     "school-admin": [
       "school-overview", "school-customization", "enrollment-center", "school-success-center", "intervention-center",
       "campus-tenant", "school-operations", "school-compliance", "school-realtime-operations",
+      "school-schedule-calendar", "school-schedule-requests",
     ],
     lms: [
       "lms-overview", "lesson-library", "background-services", "simple-classroom", "zero-cost-core", "advanced-grading",
@@ -227,7 +229,7 @@ test("every global-admin menu function resolves to its rendered destination", as
     teacher: [
       "teacher-overview", "learning-operations", "teaching-calendar", "automated-reminders", "standards-gradebook",
       "teacher-intervention-center", "create-lesson", "lesson-studio", "active-classes", "quick-assignment", "student-activity",
-      "curriculum-planner", "grading-todo", "teacher-roster",
+      "curriculum-planner", "grading-todo", "teacher-roster", "teacher-schedule-calendar", "teacher-schedule-requests",
     ],
     student: ["student-overview", "student-progress", "student-assignments", "student-lessons", "student-missions", "student-awards"],
     parent: ["parent-overview", "family-summary", "teacher-note", "family-deadlines", "mobile-parent", "subject-snapshot"],
@@ -300,6 +302,177 @@ test("every workspace link opens one isolated overview page", async ({ page }) =
     await expect(routePage.locator(`#${target}`)).toBeVisible();
     await expect(page.locator(`.general-menu-sidebar [data-menu-workspace="${role}"]`)).toHaveAttribute("aria-current", "page");
   }
+});
+
+test("keeps role-scoped schedule calendars and request queues on separate pages", async ({ page }) => {
+  await loginAs(page, "global-admin");
+  const routes = [
+    ["state-admin", "schedule-calendar", "schedule-requests"],
+    ["district-admin", "district-schedule-calendar", "district-schedule-requests"],
+    ["school-admin", "school-schedule-calendar", "school-schedule-requests"],
+    ["teacher", "teacher-schedule-calendar", "teacher-schedule-requests"],
+  ];
+
+  for (const [role, calendarRoute, requestsRoute] of routes) {
+    await openFunction(page, role, calendarRoute);
+    await expect(page.locator("#schedule-calendar")).toBeVisible();
+    await expect(page.locator("#schedule-requests")).toHaveCount(0);
+    await openFunction(page, role, requestsRoute);
+    await expect(page.locator("#schedule-requests")).toBeVisible();
+    await expect(page.locator("#schedule-calendar")).toHaveCount(0);
+  }
+});
+
+test("lets teachers schedule only themselves or assigned students and submit requests", async ({ page }) => {
+  await loginAs(page, "teacher");
+  await openFunction(page, "teacher", "teacher-schedule-calendar");
+  const calendar = page.locator("#schedule-calendar");
+  const scheduleForm = calendar.locator("#schedule-entry-form");
+  await expect(scheduleForm.getByLabel("Schedule for").locator("option")).toHaveText(["Self", "Student"]);
+  await scheduleForm.getByLabel("Schedule for").selectOption("Student");
+  await expect(scheduleForm.getByLabel("Person or group").locator("option")).not.toHaveCount(0);
+  await scheduleForm.getByLabel("Person or group").selectOption({ index: 0 });
+  await scheduleForm.getByLabel("Title").fill("Student reading support block");
+  await scheduleForm.getByLabel("Category").selectOption("Student support");
+  await scheduleForm.getByLabel("Location or link").fill("Room 304");
+  await scheduleForm.getByLabel("Date").fill("2026-11-09");
+  await scheduleForm.getByLabel("Starts").fill("15:00");
+  await scheduleForm.getByLabel("Ends").fill("15:30");
+  await scheduleForm.getByLabel("Notes").fill("Targeted reading support for the assigned learner.");
+  await scheduleForm.getByRole("button", { name: "Add to schedule" }).click();
+  await expect(page.getByText("Student reading support block added to the schedule.")).toBeVisible();
+  await expect(calendar.getByText("Student reading support block")).toBeVisible();
+
+  await openFunction(page, "teacher", "teacher-schedule-requests");
+  const requests = page.locator("#schedule-requests");
+  const form = requests.locator("#schedule-request-form");
+  await expect(form.getByLabel("Schedule for").locator("option")).toHaveText(["Self", "Student"]);
+  await form.getByLabel("Schedule for").selectOption("Student");
+  await form.getByLabel("Person or group").selectOption({ index: 0 });
+  await form.getByLabel("Request title").fill("Learner reading support request");
+  await form.getByLabel("Request type").selectOption("Meeting");
+  await form.getByLabel("Requested date").fill("2026-11-10");
+  await form.getByLabel("Starts").fill("15:00");
+  await form.getByLabel("Ends").fill("15:30");
+  await form.getByLabel("Flexibility").selectOption("Exact time");
+  await form.getByLabel("Reason").fill("Review the learner's new reading support schedule.");
+  await form.getByLabel("Location or notes").fill("Room 304; please include the reading specialist.");
+  await form.getByRole("button", { name: "Submit schedule request" }).click();
+  await expect(page.getByText("Learner reading support request sent for schedule review.")).toBeVisible();
+  await expect(requests.getByText("Review the learner's new reading support schedule.")).toBeVisible();
+  const teacherReviewActions = requests.getByRole("button", { name: /Approve|Decline/ });
+  expect(await teacherReviewActions.evaluateAll((buttons) => buttons.every((button) => button.disabled || button.getAttribute("aria-disabled") === "true"))).toBe(true);
+});
+
+test("canonicalizes learner targets and clears stale schedule validation", async ({ page }) => {
+  await loginAs(page, "teacher");
+  await openFunction(page, "teacher", "teacher-schedule-calendar");
+  let form = page.locator("#schedule-entry-form");
+  await form.getByLabel("Schedule for").selectOption("Student");
+  const targets = form.getByLabel("Person or group").locator("option");
+  await expect(targets).toHaveCount(4);
+  expect(new Set(await targets.evaluateAll((options) => options.map((option) => option.value))).size).toBe(4);
+
+  await form.getByLabel("Person or group").selectOption("student:learner-1");
+  await form.getByLabel("Title").fill("Overlapping learner conference");
+  await form.getByLabel("Date").fill("2026-10-27");
+  await form.getByLabel("Starts").fill("15:45");
+  await form.getByLabel("Ends").fill("16:15");
+  await form.getByRole("button", { name: "Add to schedule" }).click();
+  await expect.poll(() => form.getByLabel("Starts").evaluate((input) => input.validationMessage)).toContain("Conflicts with Learner progress conference");
+
+  await form.getByLabel("Date").fill("2026-10-28");
+  await form.getByRole("button", { name: "Add to schedule" }).click();
+  await expect(page.getByText("Overlapping learner conference added to the schedule.")).toBeVisible();
+
+  form = page.locator("#schedule-entry-form");
+  await form.getByLabel("Title").fill("Corrected meeting time");
+  await form.getByLabel("Date").fill("2026-10-30");
+  await form.getByLabel("Starts").fill("10:30");
+  await form.getByLabel("Ends").fill("10:00");
+  await form.getByRole("button", { name: "Add to schedule" }).click();
+  await expect.poll(() => form.getByLabel("Ends").evaluate((input) => input.validationMessage)).toContain("End time must be later");
+  await form.getByLabel("Starts").fill("09:30");
+  await form.getByRole("button", { name: "Add to schedule" }).click();
+  await expect(page.getByText("Corrected meeting time added to the schedule.")).toBeVisible();
+});
+
+test("constrains district scheduling to the administrator tenant", async ({ page }) => {
+  await loginAs(page, "district-admin");
+  await openFunction(page, "district-admin", "district-scope");
+  await expect(page.locator("#state-filter option")).toHaveText(["New York"]);
+  await expect(page.locator("#district-filter option")).toHaveText(["New York City Public Schools"]);
+  await openFunction(page, "district-admin", "district-schedule-calendar");
+  const form = page.locator("#schedule-entry-form");
+  await form.getByLabel("Schedule for").selectOption("School");
+  await expect(form.getByLabel("Person or group").locator("option")).toHaveText(["P.S. 118 Discovery Academy community"]);
+});
+
+test("lets school administrators add scoped events and approve or decline pending requests", async ({ page }) => {
+  await loginAs(page, "teacher");
+  await openFunction(page, "teacher", "teacher-schedule-requests");
+  let requests = page.locator("#schedule-requests");
+  let requestForm = requests.locator("#schedule-request-form");
+  await requestForm.getByLabel("Schedule for").selectOption("Self");
+  await requestForm.getByLabel("Person or group").selectOption({ index: 0 });
+  await requestForm.getByLabel("Request title").fill("Protected literacy planning request");
+  await requestForm.getByLabel("Request type").selectOption("Office hours");
+  await requestForm.getByLabel("Requested date").fill("2026-11-11");
+  await requestForm.getByLabel("Starts").fill("14:00");
+  await requestForm.getByLabel("Ends").fill("14:30");
+  await requestForm.getByLabel("Flexibility").selectOption("Flexible that day");
+  await requestForm.getByLabel("Reason").fill("Protected planning request for the literacy unit.");
+  await requestForm.getByLabel("Location or notes").fill("Faculty collaboration room; no substitute coverage is needed.");
+  await requestForm.getByRole("button", { name: "Submit schedule request" }).click();
+  await expect(page.getByText("Protected literacy planning request sent for schedule review.")).toBeVisible();
+
+  await page.getByLabel("Sign out").click();
+  await page.getByLabel("School email or username").fill("school-admin");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await openFunction(page, "school-admin", "school-schedule-calendar");
+  const calendar = page.locator("#schedule-calendar");
+  const eventForm = calendar.locator("#schedule-entry-form");
+  await expect(eventForm.getByLabel("Schedule for").locator("option")).toHaveText(["Self", "Staff", "Student", "Class", "School"]);
+  for (const targetType of ["Staff", "Student", "Class", "School"]) {
+    await eventForm.getByLabel("Schedule for").selectOption(targetType);
+    await expect(eventForm.getByLabel("Person or group").locator("option")).not.toHaveCount(0);
+  }
+  await eventForm.getByLabel("Schedule for").selectOption("Class");
+  await eventForm.getByLabel("Person or group").selectOption({ label: "English Literature" });
+  await eventForm.getByLabel("Title").fill("Literacy planning conference");
+  await eventForm.getByLabel("Category").selectOption("Meeting");
+  await eventForm.getByLabel("Date").fill("2026-11-12");
+  await eventForm.getByLabel("Starts").fill("13:00");
+  await eventForm.getByLabel("Ends").fill("13:45");
+  await eventForm.getByLabel("Location or link").fill("Conference room A");
+  await eventForm.getByLabel("Notes").fill("Coordinate the next literacy unit.");
+  await eventForm.getByRole("button", { name: "Add to schedule" }).click();
+  await expect(page.getByText("Literacy planning conference added to the schedule.")).toBeVisible();
+  await expect(calendar.getByText("Literacy planning conference")).toBeVisible();
+
+  await openFunction(page, "school-admin", "school-schedule-requests");
+  requests = page.locator("#schedule-requests");
+  const teacherRequest = requests.locator(".schedule-request-card").filter({ hasText: "Protected planning request for the literacy unit." });
+  await teacherRequest.getByRole("button", { name: "Approve" }).click();
+  await expect(page.getByText("Protected literacy planning request approved.")).toBeVisible();
+  await expect(teacherRequest.locator(".schedule-conflict-warning")).toHaveCount(0);
+  await expect(teacherRequest).toBeFocused();
+
+  const familyRequest = requests.locator(".schedule-request-card").filter({ hasText: "Family conference request" });
+  await familyRequest.getByLabel("Review note").fill("Please select a conference time during the published family window.");
+  await familyRequest.getByRole("button", { name: "Decline" }).click();
+  await expect(page.getByText("Family conference request declined.")).toBeVisible();
+});
+
+test("keeps scheduling forms contained on a 320px screen", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await loginAs(page, "teacher");
+  await openFunction(page, "teacher", "teacher-schedule-requests");
+  const requests = page.locator("#schedule-requests");
+  await expect(requests.locator("#schedule-request-form")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const rightEdge = await requests.locator("#schedule-request-form").evaluate((element) => element.getBoundingClientRect().right);
+  expect(rightEdge).toBeLessThanOrEqual(320);
 });
 
 test("preserves an authorized direct function link through sign in", async ({ page }) => {
